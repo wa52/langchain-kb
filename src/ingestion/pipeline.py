@@ -10,27 +10,27 @@ from src.vector_store.chroma_client import get_vector_store, reset_vector_store,
 from src.vector_store.embedding import get_embedding_model
 
 
-def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_overlap: int | None = None):
+def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_overlap: int | None = None, echo_fn: callable = print):
     chunk_size = chunk_size or CHUNK_SIZE
     chunk_overlap = chunk_overlap or CHUNK_OVERLAP
 
-    print(f"[1/4] Loading documents from {data_dir} ...")
-    loader = MarkdownLoader(data_dir)
+    echo_fn(f"[1/4] Loading documents from {data_dir} ...")
+    loader = MarkdownLoader(data_dir, echo_fn=echo_fn)
     docs = loader.load_all()
 
-    print(f"[2/4] Splitting documents (chunk_size={chunk_size}, overlap={chunk_overlap}) ...")
+    echo_fn(f"[2/4] Splitting documents (chunk_size={chunk_size}, overlap={chunk_overlap}) ...")
     splitter = create_splitter(chunk_size, chunk_overlap)
     chunks = splitter.split_documents(docs)
-    print(f"  -> {len(chunks)} chunks created")
+    echo_fn(f"  -> {len(chunks)} chunks created")
 
-    print(f"[3/4] Initializing embedding model ...")
+    echo_fn(f"[2.5/4] Loading embedding model ...")
     embeddings = get_embedding_model()
 
-    print(f"[4/4] Building vector store ...")
+    echo_fn(f"[3/4] Building vector store ...")
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks)
+    add_documents_with_progress(chunks, echo_fn=echo_fn)
 
-    rebuild_bm25(get_vector_store())
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
@@ -41,35 +41,35 @@ def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_ove
     return len(chunks)
 
 
-def run_incremental_update(internal_dir: str, external_dir: str):
+def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callable = print):
     data_dirs = [(internal_dir, "internal"), (external_dir, "external")]
     changed, unchanged = get_changed_files(data_dirs)
     if not changed:
-        print("没有检测到文件变更")
+        echo_fn("没有检测到文件变更")
         return 0
 
-    print(f"检测到 {len(changed)} 个文件变更，{len(unchanged)} 个文件未变更")
+    echo_fn(f"检测到 {len(changed)} 个文件变更，{len(unchanged)} 个文件未变更")
 
     all_docs = []
     for dir_path, _ in data_dirs:
-        loader = MarkdownLoader(dir_path)
+        loader = MarkdownLoader(dir_path, echo_fn=echo_fn)
         all_docs.extend(loader.load_all())
 
     changed_docs = [d for d in all_docs if Path(d.metadata["source"]).name in [Path(p).name for p in changed]]
 
     if not changed_docs:
-        print("没有需要更新的文档")
+        echo_fn("没有需要更新的文档")
         return 0
 
     splitter = create_splitter()
     chunks = splitter.split_documents(changed_docs)
-    print(f"  -> {len(chunks)} 个新文档片段")
+    echo_fn(f"  -> {len(chunks)} 个新文档片段")
 
     embeddings = get_embedding_model()
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks)
+    add_documents_with_progress(chunks, echo_fn=echo_fn)
 
-    rebuild_bm25(get_vector_store())
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
@@ -88,14 +88,14 @@ def run_incremental_update(internal_dir: str, external_dir: str):
     update_tracker("internal", internal_dir, changed)
     update_tracker("external", external_dir, changed)
 
-    print(f"  -> Done! 更新了 {len(chunks)} 个片段")
+    echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return len(chunks)
 
 
-def run_single_file_update(filepath: str):
+def run_single_file_update(filepath: str, echo_fn: callable = print):
     path = Path(filepath)
     if not path.exists():
-        print(f"文件不存在: {filepath}")
+        echo_fn(f"文件不存在: {filepath}")
         return 0
 
     from src.ingestion.loader import TextLoader
@@ -106,11 +106,11 @@ def run_single_file_update(filepath: str):
 
     splitter = create_splitter()
     chunks = splitter.split_documents(docs)
-    print(f"  -> {path.name}: {len(chunks)} 个片段")
+    echo_fn(f"  -> {path.name}: {len(chunks)} 个片段")
 
     embeddings = get_embedding_model()
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks)
+    add_documents_with_progress(chunks, echo_fn=echo_fn)
 
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
@@ -126,14 +126,14 @@ def run_single_file_update(filepath: str):
         kg.save()
         set_graph(kg)
 
-    print(f"  -> Done! 更新了 {len(chunks)} 个片段")
+    echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return len(chunks)
 
 
-def run_add_path(path: str, external_dir: str = "./data/external"):
+def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: callable = print):
     src = Path(path)
     if not src.exists():
-        print(f"路径不存在: {path}")
+        echo_fn(f"路径不存在: {path}")
         return 0
 
     target_base = Path(external_dir)
@@ -150,10 +150,10 @@ def run_add_path(path: str, external_dir: str = "./data/external"):
             while target.exists():
                 target = target_base / f"{stem}_{counter}{suffix}"
                 counter += 1
-            print(f"  同名文件已存在，重命名为: {target.name}")
+            echo_fn(f"  同名文件已存在，重命名为: {target.name}")
         shutil.copy2(str(src), str(target))
         copied_paths.append(str(target))
-        print(f"[1/3] Copying {src.name} -> {target}")
+        echo_fn(f"[1/3] Copying {src.name} -> {target}")
 
     elif src.is_dir():
         target = target_base / src.name
@@ -163,28 +163,30 @@ def run_add_path(path: str, external_dir: str = "./data/external"):
             while target.exists():
                 target = target_base / f"{stem}_{counter}"
                 counter += 1
-            print(f"  同名目录已存在，重命名为: {target.name}")
+            echo_fn(f"  同名目录已存在，重命名为: {target.name}")
         shutil.copytree(str(src), str(target))
         copied_paths.append(str(target))
-        print(f"[1/3] Copying directory {src.name} -> {target}")
+        echo_fn(f"[1/3] Copying directory {src.name} -> {target}")
 
-    print(f"[2/3] Loading and splitting ...")
+    echo_fn(f"[2/3] Loading and splitting ...")
     docs = load_path(target)
     if not docs:
-        print("  未找到可处理的文档")
+        echo_fn("  -> 未找到可处理的文档，已复制到外部目录")
         return 0
-    print(f"  -> {len(docs)} documents loaded")
+    echo_fn(f"  -> {len(docs)} documents loaded")
 
     splitter = create_splitter()
     chunks = splitter.split_documents(docs)
-    print(f"  -> {len(chunks)} chunks created")
+    echo_fn(f"  -> {len(chunks)} chunks created")
 
-    print(f"[3/3] Vectorizing ...")
+    echo_fn(f"[2.5/3] Loading embedding model ...")
     embeddings = get_embedding_model()
-    get_vector_store(embeddings)
-    add_documents_with_progress(chunks)
 
-    rebuild_bm25(get_vector_store())
+    echo_fn(f"[3/3] Vectorizing ...")
+    get_vector_store(embeddings)
+    add_documents_with_progress(chunks, echo_fn=echo_fn)
+
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
@@ -201,11 +203,11 @@ def run_add_path(path: str, external_dir: str = "./data/external"):
         set_graph(kg)
 
     update_tracker("external", target_base, copied_paths)
-    print(f"  -> Done! 添加了 {len(chunks)} 个片段")
+    echo_fn(f"  -> Done! 添加了 {len(chunks)} 个片段")
     return len(chunks)
 
 
-def run_remove(source_name: str, external_dir: str = "./data/external"):
+def run_remove(source_name: str, external_dir: str = "./data/external", echo_fn: callable = print):
     delete_by_source(source_name)
 
     target_base = Path(external_dir)
@@ -213,13 +215,13 @@ def run_remove(source_name: str, external_dir: str = "./data/external"):
         if f.name == source_name or f.name == source_name:
             if f.is_file():
                 f.unlink()
-                print(f"  删除文件: {f}")
+                echo_fn(f"  删除文件: {f}")
             elif f.is_dir():
                 shutil.rmtree(str(f))
-                print(f"  删除目录: {f}")
+                echo_fn(f"  删除目录: {f}")
 
     remove_from_tracker(source_name)
-    print(f"  -> 已从知识库移除: {source_name}")
+    echo_fn(f"  -> 已从知识库移除: {source_name}")
 
 
 

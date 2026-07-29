@@ -154,8 +154,10 @@ def handle_command(line: str, state: dict) -> str | None:
     if cmd == "/add":
         if not arg:
             return "用法: /add <文件路径>"
-        count = run_add_path(arg, EXTERNAL_DIR)
-        return f"成功添加 {count} 个文档片段"
+        count = run_add_path(arg, EXTERNAL_DIR, echo_fn=echo)
+        if count == 0:
+            return "  -> 未添加任何文档片段，请检查路径和文件类型"
+        return f"  -> 成功添加 {count} 个文档片段"
 
     if cmd == "/files":
         from src.ingestion.tracker import list_all_files
@@ -171,8 +173,8 @@ def handle_command(line: str, state: dict) -> str | None:
     if cmd == "/remove":
         if not arg:
             return "用法: /remove <文件名>"
-        run_remove(arg, EXTERNAL_DIR)
-        return f"已处理: {arg}"
+        run_remove(arg, EXTERNAL_DIR, echo_fn=echo)
+        return f"  已处理: {arg}"
 
     if cmd == "/mode":
         import config as cfg
@@ -193,7 +195,7 @@ def handle_command(line: str, state: dict) -> str | None:
 
     if cmd == "/ingest":
         echo("全量导入中...")
-        count = run_ingestion(DATA_DIR)
+        count = run_ingestion(DATA_DIR, echo_fn=echo)
         return f"成功导入 {count} 个文档片段"
 
     if cmd == "/rebuild":

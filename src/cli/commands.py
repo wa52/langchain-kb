@@ -9,11 +9,12 @@ from src.vector_store.chroma_client import get_vector_store, reset_vector_store
 from src.vector_store.embedding import get_embedding_model
 
 
-def echo(msg: str):
+def echo(msg: str = "", end: str = "\n"):
     try:
-        print(msg)
+        print(msg, end=end)
     except UnicodeEncodeError:
-        print(msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+        safe = str(msg).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        print(safe, end=end)
 
 
 @click.group()
@@ -31,14 +32,14 @@ def ingest(chunk_size, chunk_overlap):
         kwargs["chunk_size"] = chunk_size
     if chunk_overlap:
         kwargs["chunk_overlap"] = chunk_overlap
-    count = run_ingestion(DATA_DIR, **kwargs)
+    count = run_ingestion(DATA_DIR, echo_fn=echo, **kwargs)
     echo(f"==> 成功导入 {count} 个文档片段")
 
 
 @cli.command()
 def update():
     """增量更新：扫描 DATA_DIR + data/external/ 的变更文件"""
-    count = run_incremental_update(str(DATA_DIR), EXTERNAL_DIR)
+    count = run_incremental_update(str(DATA_DIR), EXTERNAL_DIR, echo_fn=echo)
     echo(f"==> 增量更新完成，处理了 {count} 个片段")
 
 
@@ -46,7 +47,7 @@ def update():
 @click.argument("filepath")
 def update_file(filepath):
     """更新单个文件"""
-    count = run_single_file_update(filepath)
+    count = run_single_file_update(filepath, echo_fn=echo)
     echo(f"==> 文件更新完成，处理了 {count} 个片段")
 
 
@@ -61,7 +62,7 @@ def rebuild():
     vs = get_vector_store(embeddings)
     vs.delete_collection()
     reset_vector_store()
-    run_ingestion(DATA_DIR)
+    run_ingestion(DATA_DIR, echo_fn=echo)
     echo("==> 索引重建完成")
 
 
@@ -70,7 +71,7 @@ def rebuild():
 @click.option("--type", "file_type", default=None, help="File type (md/txt)")
 def add(path, file_type):
     """添加外部文件或目录到知识库（自动复制到 data/external/）"""
-    count = run_add_path(path, EXTERNAL_DIR)
+    count = run_add_path(path, EXTERNAL_DIR, echo_fn=echo)
     echo(f"==> 成功添加 {count} 个文档片段")
 
 
@@ -94,7 +95,7 @@ def list_files():
 @click.option("--keep-file", is_flag=True, help="保留文件，仅从向量库删除")
 def remove(name, keep_file):
     """从知识库移除某个文件"""
-    run_remove(name, EXTERNAL_DIR)
+    run_remove(name, EXTERNAL_DIR, echo_fn=echo)
 
 
 @cli.command()

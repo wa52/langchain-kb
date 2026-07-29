@@ -34,7 +34,7 @@ def get_retriever(k: int | None = None):
     return vector_retriever
 
 
-def rebuild_bm25(store):
+def rebuild_bm25(store, echo_fn: callable = print):
     global _bm25_retriever
     try:
         all_data = store._collection.get(include=["documents", "metadatas"])
@@ -50,6 +50,6 @@ def rebuild_bm25(store):
             texts, metadatas=[doc.metadata for doc in docs]
         )
         _bm25_retriever.k = TOP_K
-        print(f"  -> BM25 索引构建完成 ({len(docs)} 篇, {time.time()-t0:.1f}s)")
+        echo_fn(f"  -> BM25 索引构建完成 ({len(docs)} 篇, {time.time()-t0:.1f}s)")
     except Exception as e:
-        print(f"  [BM25] 索引更新失败: {e}")
+        echo_fn(f"  [BM25] 索引更新失败: {e}")

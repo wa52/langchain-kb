@@ -51,23 +51,27 @@ def get_collection_stats() -> dict:
     return {"count": count, "sources": sorted(sources), "source_count": len(sources)}
 
 
-def add_documents_with_progress(chunks: list, batch_size: int = 32):
+def add_documents_with_progress(chunks: list, batch_size: int = 32, echo_fn: callable = print):
     vs = get_vector_store()
     total = len(chunks)
     if total == 0:
         return
 
-    print(f"  向量化 {total} 个文档片段 (batch_size={batch_size}) ...")
+    bar_width = 20
     t0 = time.time()
 
     for i in range(0, total, batch_size):
         batch = chunks[i : i + batch_size]
         vs.add_documents(batch)
-        pct = min(100, int((i + len(batch)) / total * 100))
-        elapsed = time.time() - t0
-        speed = (i + len(batch)) / elapsed if elapsed > 0 else 0
-        print(f"  [{pct:3d}%] {min(i + len(batch), total):>4d}/{total}  ({elapsed:.1f}s, {speed:.0f} chunks/s)")
 
+        done = min(i + len(batch), total)
+        pct = done / total
+        filled = int(pct * bar_width)
+        bar = "#" * filled + "." * (bar_width - filled)
+        elapsed = time.time() - t0
+        speed = done / elapsed if elapsed > 0 else 0
+        echo_fn(f"\r  [{pct*100:3.0f}%] {bar} {done:>4d}/{total}  ({elapsed:.1f}s, {speed:.0f} ch/s)", end="")
+
+    echo_fn()
     total_elapsed = time.time() - t0
-    dims = len(chunks[0].page_content) if chunks else 0
-    print(f"  -> 完成! {total} 个向量, {total_elapsed:.1f}s, {total/total_elapsed:.0f} chunks/s")
+    echo_fn(f"  -> 完成! {total} 个向量, {total_elapsed:.1f}s, {total/total_elapsed:.0f} ch/s")

@@ -38,8 +38,9 @@ def _load_file(path: Path) -> list:
 
 
 class MarkdownLoader:
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: str | Path, echo_fn: callable = print):
         self.data_dir = Path(data_dir)
+        self.echo_fn = echo_fn
 
     def load_all(self) -> list:
         all_files = list(_iter_files(self.data_dir))
@@ -47,8 +48,8 @@ class MarkdownLoader:
         for i, f in enumerate(all_files):
             docs.extend(_load_file(f))
             if (i + 1) % 20 == 0 or i == len(all_files) - 1:
-                print(f"  [{i+1}/{len(all_files)}] 已加载 {len(docs)} 个文档", end="\r")
-        print()
+                self.echo_fn(f"\r  [{i+1}/{len(all_files)}] 已加载 {len(docs)} 个文档", end="")
+        self.echo_fn()
         return docs
 
 
