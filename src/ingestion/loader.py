@@ -20,8 +20,11 @@ def _iter_files(data_dir: Path):
     for path in data_dir.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffix.lower() in _ALL_EXTS:
-            yield path
+        if path.suffix.lower() not in _ALL_EXTS:
+            continue
+        if path.stem.startswith("~$"):
+            continue
+        yield path
 
 
 def _load_file(path: Path, base_dir: Path | None = None) -> list:

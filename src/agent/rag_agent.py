@@ -1,10 +1,11 @@
 from deepagents import create_deep_agent
-from langchain_openai import ChatOpenAI
 
-from config import DEEPSEEK_API_BASE, DEEPSEEK_API_KEY, LLM_MODEL, ENABLE_HYBRID_SEARCH, ENABLE_GRAPH
-from src.agent.tools import retrieve_knowledge, retrieve_graph, set_tool_llm
+from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH
+from src.agent.tools import retrieve_knowledge, retrieve_graph
 from src.vector_store.embedding import get_embedding_model
+from src.vector_store.service import VectorStoreService
 from src.vector_store.chroma_client import get_vector_store
+from src.llm import get_llm
 
 SYSTEM_PROMPT = """你是一个 LangChain 技术助手，基于已有的教程文档回答用户问题。你的底层模型是 DeepSeek Chat，不要自称 Claude、GPT 或其他模型。
 
@@ -29,17 +30,9 @@ def create_rag_agent():
     get_vector_store()
 
     if ENABLE_HYBRID_SEARCH:
-        from src.retrieval.retriever import rebuild_bm25
-        rebuild_bm25(get_vector_store())
+        VectorStoreService().rebuild_bm25()
 
-    model = ChatOpenAI(
-        model=LLM_MODEL,
-        temperature=0,
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_API_BASE,
-    )
-
-    set_tool_llm(model)
+    model = get_llm(temperature=0)
 
     tools = [retrieve_knowledge]
     if ENABLE_GRAPH:

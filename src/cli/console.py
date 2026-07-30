@@ -8,12 +8,11 @@ from config import (
     ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION,
 )
 from src.agent.chat_history import save_history, load_history, list_sessions, compress_history
-from langchain_openai import ChatOpenAI
-from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path, run_remove
-from src.vector_store.chroma_client import get_vector_store, reset_vector_store
-from src.vector_store.embedding import get_embedding_model
+from src.vector_store.service import VectorStoreService
+from src.graph_store.service import GraphService
+from src.llm import get_llm
 from src.cli.commands import echo as _cli_echo
 
 try:
@@ -90,10 +89,7 @@ def _load_agent_background():
     global _agent_result
     try:
         agent = create_rag_agent()
-        llm = ChatOpenAI(
-            model=LLM_MODEL, api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_API_BASE, temperature=0,
-        )
+        llm = get_llm(temperature=0)
         _agent_result = (agent, llm)
     except Exception as e:
         _agent_result = e
@@ -115,15 +111,12 @@ def get_status_bar(state: dict) -> str:
     except Exception:
         file_count = "?"
     try:
-        from src.vector_store.chroma_client import get_collection_stats
-        stats = get_collection_stats()
+        stats = VectorStoreService().get_stats()
         chunk_count = stats.get("count", "?")
     except Exception:
         chunk_count = "?"
     try:
-        from src.graph_store.retriever import get_graph
-        g = get_graph()
-        entity_count = g.graph.number_of_nodes()
+        entity_count = GraphService().get_entity_count()
     except Exception:
         entity_count = "?"
     bar = (
@@ -275,18 +268,13 @@ def _do_handle_command(line: str, state: dict) -> str | None:
         confirm = _get_user_input("这将清空现有数据库，确定继续？(y/n) ")
         if confirm.lower() != "y":
             return "已取消"
-        reset_vector_store()
-        embeddings = get_embedding_model()
-        vs = get_vector_store(embeddings)
-        vs.delete_collection()
-        reset_vector_store()
+        VectorStoreService().reset()
         count = run_ingestion(DATA_DIR, echo_fn=echo)
         return f"重建完成，导入 {count} 个片段"
 
     if cmd == "/stats":
-        from src.vector_store.chroma_client import get_collection_stats
         from src.ingestion.tracker import list_all_files
-        stats = get_collection_stats()
+        stats = VectorStoreService().get_stats()
         lines = ["=" * 40, "知识库统计", "=" * 40]
         lines.append(f"  向量总数:        {stats['count']}")
         lines.append(f"  来源文件数:      {stats['source_count']}")

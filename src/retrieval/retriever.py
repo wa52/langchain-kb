@@ -1,4 +1,7 @@
+import os
+import pickle
 import time
+from pathlib import Path
 
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
@@ -9,6 +12,7 @@ from src.vector_store.chroma_client import get_vector_store
 from src.vector_store.embedding import get_embedding_model
 
 _bm25_retriever = None
+_BM25_PERSIST_PATH = Path("./chroma_db/bm25_index.pkl")
 
 
 def set_bm25_retriever(r):
@@ -34,8 +38,36 @@ def get_retriever(k: int | None = None):
     return vector_retriever
 
 
+def _load_bm25_from_disk() -> bool:
+    global _bm25_retriever
+    if not _BM25_PERSIST_PATH.exists():
+        return False
+    try:
+        with open(_BM25_PERSIST_PATH, "rb") as f:
+            data = pickle.load(f)
+        texts: list[str] = data["texts"]
+        metadatas: list[dict] = data["metadatas"]
+        _bm25_retriever = BM25Retriever.from_texts(texts, metadatas=metadatas)
+        _bm25_retriever.k = TOP_K
+        return True
+    except Exception:
+        _bm25_retriever = None
+        return False
+
+
+def _save_bm25_to_disk(texts: list[str], metadatas: list[dict]):
+    _BM25_PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_BM25_PERSIST_PATH, "wb") as f:
+        pickle.dump({"texts": texts, "metadatas": metadatas}, f)
+
+
 def rebuild_bm25(store, echo_fn: callable = print):
     global _bm25_retriever
+
+    if _load_bm25_from_disk():
+        echo_fn(f"  -> BM25 索引已从磁盘加载 ({_BM25_PERSIST_PATH})")
+        return
+
     try:
         all_texts = []
         all_metadatas = []
@@ -68,6 +100,7 @@ def rebuild_bm25(store, echo_fn: callable = print):
             texts, metadatas=[doc.metadata for doc in docs]
         )
         _bm25_retriever.k = TOP_K
+        _save_bm25_to_disk(texts, [doc.metadata for doc in docs])
         echo_fn(f"  -> BM25 索引构建完成 ({len(docs)} 篇, {time.time()-t0:.1f}s)")
     except Exception as e:
         echo_fn(f"  [BM25] 索引更新失败: {e}")

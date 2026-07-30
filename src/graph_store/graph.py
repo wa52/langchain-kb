@@ -239,14 +239,8 @@ def build_graph_store():
     kg.echo_fn(f"  [2/2] Building knowledge graph from {len(docs)} documents ...")
     llm = None
     if cfg.ENABLE_GRAPH_LLM_EXTRACTION:
-        from langchain_openai import ChatOpenAI
-        from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
-        llm = ChatOpenAI(
-            model=LLM_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_API_BASE,
-            temperature=0,
-        )
+        from src.llm import get_llm
+        llm = get_llm(temperature=0)
     kg.build_from_chunks(docs, llm=llm)
     kg.save()
     return kg

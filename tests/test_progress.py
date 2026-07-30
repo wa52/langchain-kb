@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 from langchain_core.documents import Document
 from src.vector_store.chroma_client import add_documents_with_progress
@@ -13,10 +13,16 @@ def _make_chunks(n: int) -> list[Document]:
 
 class TestAddDocumentsWithProgress:
 
+    def _mock_store(self):
+        store = MagicMock()
+        store.add_documents = MagicMock()
+        return store
+
     def test_echo_fn_called_per_batch(self):
         mock = MagicMock()
         chunks = _make_chunks(70)
-        add_documents_with_progress(chunks, batch_size=32, echo_fn=mock)
+        with patch("src.vector_store.chroma_client.get_vector_store", return_value=self._mock_store()):
+            add_documents_with_progress(chunks, batch_size=32, echo_fn=mock)
         assert mock.call_count >= 3
         all_text = ""
         for call_arg in mock.call_args_list:
@@ -28,13 +34,15 @@ class TestAddDocumentsWithProgress:
 
     def test_empty_chunks_no_calls(self):
         mock = MagicMock()
-        add_documents_with_progress([], echo_fn=mock)
+        with patch("src.vector_store.chroma_client.get_vector_store", return_value=self._mock_store()):
+            add_documents_with_progress([], echo_fn=mock)
         mock.assert_not_called()
 
     def test_progress_increases(self):
         mock = MagicMock()
         chunks = _make_chunks(64)
-        add_documents_with_progress(chunks, batch_size=32, echo_fn=mock)
+        with patch("src.vector_store.chroma_client.get_vector_store", return_value=self._mock_store()):
+            add_documents_with_progress(chunks, batch_size=32, echo_fn=mock)
         percentages = []
         import re
         for call_arg in mock.call_args_list:
@@ -52,10 +60,10 @@ class TestRebuildBm25:
 
     def test_echo_fn_replaces_print(self):
         mock_store = MagicMock()
-        mock_store._collection.get.return_value = {
-            "documents": ["text1", "text2"],
-            "metadatas": [{"source": "a.md"}, {"source": "b.md"}],
-        }
+        mock_store._collection.get.side_effect = [
+            {"documents": ["text1", "text2"], "metadatas": [{"source": "a.md"}, {"source": "b.md"}]},
+            {"documents": [], "metadatas": []},
+        ]
         mock = MagicMock()
         try:
             rebuild_bm25(mock_store, echo_fn=mock)
@@ -64,7 +72,8 @@ class TestRebuildBm25:
         # echo_fn should have been called at least once (error or success)
         assert mock.call_count >= 1
 
-    def test_rebuild_over_999_docs_with_pagination(self):
+    @patch("src.retrieval.retriever._load_bm25_from_disk", return_value=False)
+    def test_rebuild_over_999_docs_with_pagination(self, mock_load):
         n = 1500
         texts = [f"chunk {i} content" for i in range(n)]
         metadatas = [{"source": f"{i}.md"} for i in range(n)]
@@ -87,7 +96,8 @@ class TestRebuildBm25:
         success_texts = "".join(str(a) for args in mock.call_args_list for a in args.args)
         assert "BM25" in success_texts or "完成" in success_texts
 
-    def test_rebuild_empty_collection(self):
+    @patch("src.retrieval.retriever._load_bm25_from_disk", return_value=False)
+    def test_rebuild_empty_collection(self, mock_load):
         mock_store = MagicMock()
         mock_store._collection.get.side_effect = [
             {"documents": [], "metadatas": []},

@@ -1,9 +1,7 @@
 import json
 import re
 
-from langchain_openai import ChatOpenAI
-
-from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE, GRAPH_LLM_BATCH_SIZE
+from config import GRAPH_LLM_BATCH_SIZE
 
 ENTITY_TYPE_WHITELIST = {
     "Framework", "Library", "Concept", "API", "Tool", "Language", "Person", "Technology"
@@ -60,12 +58,8 @@ def extract_entities_llm_batch(
     llm=None,
 ) -> tuple[list[dict], list[dict]]:
     if llm is None:
-        llm = ChatOpenAI(
-            model=LLM_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_API_BASE,
-            temperature=0,
-        )
+        from src.llm import get_llm
+        llm = get_llm(temperature=0)
     all_entities: dict[tuple[str, str], dict] = {}
     all_relations = []
     seen_relations: set[tuple[str, str, str]] = set()

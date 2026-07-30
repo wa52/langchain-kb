@@ -89,12 +89,9 @@ def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callab
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
+        from src.llm import get_llm
         kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = None
-        if ENABLE_GRAPH_LLM_EXTRACTION:
-            from langchain_openai import ChatOpenAI
-            from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
-            llm = ChatOpenAI(model=LLM_MODEL, api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_BASE, temperature=0)
+        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
         kg.add_chunks(chunks, llm=llm)
         kg.save()
         set_graph(kg)
@@ -135,12 +132,9 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
+        from src.llm import get_llm
         kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = None
-        if ENABLE_GRAPH_LLM_EXTRACTION:
-            from langchain_openai import ChatOpenAI
-            from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
-            llm = ChatOpenAI(model=LLM_MODEL, api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_BASE, temperature=0)
+        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
         kg.add_chunks(chunks, llm=llm)
         kg.save()
         set_graph(kg)
@@ -213,12 +207,9 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
+        from src.llm import get_llm
         kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = None
-        if ENABLE_GRAPH_LLM_EXTRACTION:
-            from langchain_openai import ChatOpenAI
-            from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
-            llm = ChatOpenAI(model=LLM_MODEL, api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_BASE, temperature=0)
+        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
         kg.add_chunks(chunks, llm=llm)
         kg.save()
         set_graph(kg)

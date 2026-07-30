@@ -3,18 +3,12 @@ from langchain.tools import tool
 from config import TOP_K, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, MAX_CONTEXT_TOKENS
 from src.retrieval.grading import grade_document
 from src.retrieval.rewrite import rewrite_question
-
-_llm_for_tools = None
-
-
-def set_tool_llm(llm):
-    global _llm_for_tools
-    _llm_for_tools = llm
+from src.llm import get_llm
 
 
 def _search(query, k):
-    from src.retrieval.retriever import get_retriever
-    retriever = get_retriever(k=k)
+    from src.vector_store.service import VectorStoreService
+    retriever = VectorStoreService().get_retriever(k=k)
     return retriever.invoke(query)
 
 
@@ -69,7 +63,7 @@ def _compress(docs, query, llm):
 @tool
 def retrieve_knowledge(query: str) -> str:
     """搜索知识库中与问题最相关的内容。当你需要从已有的 LangChain 教程文档中查找信息时使用此工具。"""
-    llm = _llm_for_tools
+    llm = get_llm(temperature=0) if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
 
     fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
     raw_docs = _search(query, fetch_k)
@@ -78,8 +72,8 @@ def retrieve_knowledge(query: str) -> str:
 
     if ENABLE_GRAPH:
         try:
-            from src.graph_store.retriever import search_graph
-            graph_result = search_graph(query)
+            from src.graph_store.service import GraphService
+            graph_result = GraphService().search(query)
             if graph_result != "未找到相关的图谱信息。":
                 result += f"\n\n【知识图谱关联】\n{graph_result}"
         except Exception as e:
@@ -91,8 +85,8 @@ def retrieve_knowledge(query: str) -> str:
 @tool
 def retrieve_graph(query: str) -> str:
     """搜索知识图谱中与问题相关的实体和关系。当你想了解某个概念、工具或框架之间的关联关系时使用此工具。"""
-    from src.graph_store.retriever import search_graph
-    return search_graph(query)
+    from src.graph_store.service import GraphService
+    return GraphService().search(query)
 
 
 def _compress_document(text: str, query: str, llm) -> str:

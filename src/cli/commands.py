@@ -5,8 +5,6 @@ from dotenv import find_dotenv, set_key
 
 from config import DATA_DIR, EXTERNAL_DIR, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, EMBEDDING_MODEL, LLM_MODEL, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_HYBRID_SEARCH, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION, MAX_CONTEXT_TOKENS
 from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_single_file_update, run_add_path, run_remove
-from src.vector_store.chroma_client import get_vector_store, reset_vector_store
-from src.vector_store.embedding import get_embedding_model
 
 
 def echo(msg: str = "", end: str = "\n"):
@@ -57,11 +55,8 @@ def rebuild():
     confirm = click.confirm("这将清空现有数据库，确定继续？")
     if not confirm:
         return
-    reset_vector_store()
-    embeddings = get_embedding_model()
-    vs = get_vector_store(embeddings)
-    vs.delete_collection()
-    reset_vector_store()
+    from src.vector_store.service import VectorStoreService
+    VectorStoreService().reset()
     run_ingestion(DATA_DIR, echo_fn=echo)
     echo("==> 索引重建完成")
 
@@ -102,8 +97,8 @@ def remove(name, keep_file):
 @click.argument("query")
 def search(query):
     """检索知识库（不调用 LLM，仅搜索）"""
-    from src.retrieval.retriever import get_retriever
-    retriever = get_retriever()
+    from src.vector_store.service import VectorStoreService
+    retriever = VectorStoreService().get_retriever()
     docs = retriever.invoke(query)
     if not docs:
         echo("未找到相关文档")
@@ -124,8 +119,8 @@ def chat(session, list_only):
     """交互式问答（多轮对话，流式输出）"""
     from src.agent.rag_agent import create_rag_agent, stream_rag_response
     from src.agent.chat_history import save_history, load_history, list_sessions, compress_history
-    from langchain_openai import ChatOpenAI
-    _chat_llm = ChatOpenAI(model=LLM_MODEL, api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_BASE, temperature=0)
+    from src.llm import get_llm
+    _chat_llm = get_llm(temperature=0)
 
     if list_only:
         sessions = list_sessions()
@@ -199,10 +194,10 @@ def chat(session, list_only):
 @cli.command()
 def stats():
     """显示知识库详细信息"""
-    from src.vector_store.chroma_client import get_collection_stats
+    from src.vector_store.service import VectorStoreService
     from src.ingestion.tracker import list_all_files
 
-    stats = get_collection_stats()
+    stats = VectorStoreService().get_stats()
     echo("=" * 40)
     echo("知识库统计")
     echo("=" * 40)
@@ -229,17 +224,17 @@ def stats():
 @click.argument("query")
 def graph_search(query):
     """搜索知识图谱"""
-    from src.graph_store.retriever import search_graph
-    result = search_graph(query)
+    from src.graph_store.service import GraphService
+    result = GraphService().search(query)
     echo(result)
 
 
 @cli.command()
 def build_graph():
     """从文档构建知识图谱"""
-    from src.graph_store.graph import build_graph_store
+    from src.graph_store.service import GraphService
     echo("构建知识图谱...")
-    kg = build_graph_store()
+    kg = GraphService().build_from_disk()
     st = kg.stats()
     echo(f"==> 知识图谱构建完成: {st['entities']} 实体, {st['relations']} 关系")
     echo(f"    实体类型: {st['types']}")
