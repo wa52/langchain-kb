@@ -33,12 +33,13 @@ def create_app() -> FastAPI:
     app.include_router(indexing_router, prefix="/api/v1")
 
     from fastapi_mcp import FastApiMCP
-    FastApiMCP(
+    app.state.mcp = FastApiMCP(
         app,
-        exclude_operations=["health_check", "start_index_task"],
+        include_operations=["search_knowledge", "answer_with_knowledge", "get_index_status"],
         name="LangChain RAG Knowledge Base",
         description="Semantic search, RAG Q&A, and index status for the knowledge base",
-    ).mount_http()
+    )
+    app.state.mcp.mount_http()
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException):

@@ -72,14 +72,17 @@ class TestToolDiscovery:
         assert names == ["answer_with_knowledge", "get_index_status", "search_knowledge"]
 
     async def test_excluded_tools_not_in_list(self, session):
+        forbidden = {"health_check", "start_index_task", "index_document",
+                      "delete_document", "reset_vector_store", "rebuild_all_indexes",
+                      "change_model_config", "execute_script"}
         ac = session["client"]
         sid = session["session_id"]
         headers = {"mcp-session-id": sid, "Accept": "application/json"}
         body = {"jsonrpc": "2.0", "method": "tools/list", "id": 2}
         resp = await ac.post("/mcp", json=body, headers=headers)
         names = {t["name"] for t in resp.json()["result"]["tools"]}
-        assert "health_check" not in names
-        assert "start_index_task" not in names
+        for f in forbidden:
+            assert f not in names, f"Forbidden tool exposed: {f}"
 
     async def test_search_knowledge_has_query_and_top_k_params(self, session):
         ac = session["client"]
@@ -158,6 +161,60 @@ class TestChatToolCall:
         assert "Hello world" in text
         assert "conversation_id" in text
         assert "sess_123" in text
+
+
+class TestOpenAPISchema:
+
+    async def test_operation_ids_match_expected(self, session):
+        from src.api.app import create_app
+        app = create_app()
+        schema = app.openapi()
+        oids = set()
+        for path, methods in schema.get("paths", {}).items():
+            for method, details in methods.items():
+                oids.add(details.get("operationId"))
+        expected = {"health_check", "search_knowledge", "answer_with_knowledge",
+                     "start_index_task", "get_index_status"}
+        assert oids == expected, f"Mismatch: {oids} vs {expected}"
+
+    async def test_mcp_instance_stored_in_app_state(self, session):
+        from src.api.app import create_app
+        app = create_app()
+        assert hasattr(app.state, "mcp")
+        assert app.state.mcp is not None
+
+
+class TestResourceReuse:
+
+    async def test_consecutive_tool_calls_reuse_resources(self, session, rm):
+        ac = session["client"]
+        sid = session["session_id"]
+        headers = {"mcp-session-id": sid, "Accept": "application/json"}
+
+        rm.vector_store.similarity_search_with_relevance_scores.return_value = [
+            (MagicMock(id="c1", page_content="a", metadata={"source": "x.md"}), 0.9)
+        ]
+
+        body = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "id": 10,
+            "params": {"name": "search_knowledge", "arguments": {"query": "a", "top_k": 1}},
+        }
+        resp1 = await ac.post("/mcp", json=body, headers=headers)
+        assert resp1.status_code == 200
+
+        resp2 = await ac.post("/mcp", json=body, headers=headers)
+        assert resp2.status_code == 200
+
+    async def test_rest_still_callable_after_mcp(self, session, rm):
+        from src.api.schemas import HealthResponse
+        ac = session["client"]
+        resp = await ac.get("/api/v1/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["vector_count"] == 42
 
 
 class TestIndexToolCall:
