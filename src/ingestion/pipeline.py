@@ -184,12 +184,13 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
                 target = target_base / f"{stem}_{counter}"
                 counter += 1
             echo_fn(f"  同名目录已存在，重命名为: {target.name}")
+        echo_fn("  正在复制目录到 data/external/ ...")
         shutil.copytree(str(src), str(target))
         copied_paths.append(str(target))
         echo_fn(f"[1/3] Copying directory {src.name} -> {target}")
 
     echo_fn(f"[2/3] Loading and splitting ...")
-    docs = load_path(target)
+    docs = load_path(target, echo_fn=echo_fn)
     if not docs:
         echo_fn("  -> 未找到可处理的文档，已复制到外部目录")
         return 0
@@ -199,7 +200,7 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
     chunks = splitter.split_documents(docs)
     echo_fn(f"  -> {len(chunks)} chunks created")
 
-    echo_fn(f"[2.5/3] Loading embedding model ...")
+    echo_fn(f"[2.5/3] Loading embedding model (首次约需下载 33MB) ...")
     embeddings = get_embedding_model()
 
     echo_fn(f"[3/3] Vectorizing ...")

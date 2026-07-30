@@ -53,13 +53,18 @@ class MarkdownLoader:
         return docs
 
 
-def load_path(path: str | Path) -> list:
+def load_path(path: str | Path, echo_fn: callable = print) -> list:
     path = Path(path)
     if path.is_file():
         return _load_file(path)
     elif path.is_dir():
+        all_files = list(_iter_files(path))
         docs = []
-        for f in _iter_files(path):
+        for i, f in enumerate(all_files):
             docs.extend(_load_file(f))
+            if (i + 1) % 20 == 0 or i == len(all_files) - 1:
+                echo_fn(f"\r  [{i+1}/{len(all_files)}] 已加载 {len(docs)} 个文档", end="")
+        if all_files:
+            echo_fn()
         return docs
     return []

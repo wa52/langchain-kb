@@ -231,7 +231,7 @@ def build_graph_store():
         docs = []
     ext_dir = Path(EXTERNAL_DIR)
     if ext_dir.exists():
-        ext_docs = load_path(ext_dir)
+        ext_docs = load_path(ext_dir, echo_fn=kg.echo_fn)
         docs.extend(ext_docs)
     if not docs:
         kg.echo_fn("  未找到文档")
