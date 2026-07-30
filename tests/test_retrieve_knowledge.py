@@ -17,6 +17,7 @@ from src.vector_store.chroma_client import (
     reset_vector_store,
 )
 from src.agent.tools import retrieve_knowledge
+from src.retrieval.retriever import rebuild_bm25
 
 SAMPLE_DOCS = [
     Document(
@@ -84,3 +85,12 @@ class TestRetrieveKnowledge:
         result = retrieve_knowledge.invoke({"query": "量子计算"})
         assert result != "未找到相关信息。"
         assert "来源:" in result
+
+    @patch("src.retrieval.retriever.ENABLE_HYBRID_SEARCH", True)
+    def test_hybrid_search_uses_ensemble(self):
+        vs = get_vector_store()
+        vs.add_documents(SAMPLE_DOCS)
+        rebuild_bm25(vs)
+        result = retrieve_knowledge.invoke({"query": "RAG"})
+        assert "rag_intro.md" in result
+        assert "RAG" in result or "Retrieval-Augmented" in result

@@ -1,8 +1,6 @@
 from langchain.tools import tool
 
 from config import TOP_K, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, MAX_CONTEXT_TOKENS
-from src.vector_store.chroma_client import get_vector_store
-from src.vector_store.embedding import get_embedding_model
 from src.retrieval.grading import grade_document
 from src.retrieval.rewrite import rewrite_question
 
@@ -14,8 +12,10 @@ def set_tool_llm(llm):
     _llm_for_tools = llm
 
 
-def _search(query, vector_store, k):
-    return vector_store.similarity_search(query, k=k)
+def _search(query, k):
+    from src.retrieval.retriever import get_retriever
+    retriever = get_retriever(k=k)
+    return retriever.invoke(query)
 
 
 def _grade(query, docs, llm):
@@ -34,7 +34,7 @@ def _grade(query, docs, llm):
         new_query = rewrite_question(query, llm)
         if new_query and new_query != query:
             fetch_k = TOP_K * 3
-            raw_docs = _search(new_query, vector_store, fetch_k)
+            raw_docs = _search(new_query, fetch_k)
             try:
                 relevant = [d for d in raw_docs if grade_document(query, d.page_content, llm)]
             except Exception as e:
@@ -69,12 +69,10 @@ def _compress(docs, query, llm):
 @tool
 def retrieve_knowledge(query: str) -> str:
     """搜索知识库中与问题最相关的内容。当你需要从已有的 LangChain 教程文档中查找信息时使用此工具。"""
-    embeddings = get_embedding_model()
-    vector_store = get_vector_store(embeddings)
     llm = _llm_for_tools
 
     fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
-    raw_docs = _search(query, vector_store, fetch_k)
+    raw_docs = _search(query, fetch_k)
     docs = _grade(query, raw_docs, llm) if raw_docs else []
     result = _compress(docs, query, llm) if docs else ""
 

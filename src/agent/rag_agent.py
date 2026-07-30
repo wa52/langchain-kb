@@ -6,7 +6,7 @@ from src.agent.tools import retrieve_knowledge, retrieve_graph, set_tool_llm
 from src.vector_store.embedding import get_embedding_model
 from src.vector_store.chroma_client import get_vector_store
 
-SYSTEM_PROMPT = """你是一个 LangChain 技术助手，基于已有的教程文档回答用户问题。
+SYSTEM_PROMPT = """你是一个 LangChain 技术助手，基于已有的教程文档回答用户问题。你的底层模型是 DeepSeek Chat，不要自称 Claude、GPT 或其他模型。
 
 ## 工作方式
 1. 当用户提问时，用 retrieve_knowledge 工具搜索知识库获取详细内容（包含文档和知识图谱）
