@@ -37,12 +37,30 @@ def get_retriever(k: int | None = None):
 def rebuild_bm25(store, echo_fn: callable = print):
     global _bm25_retriever
     try:
-        all_data = store._collection.get(include=["documents", "metadatas"])
-        if not all_data or not all_data.get("documents"):
+        all_texts = []
+        all_metadatas = []
+        batch_size = 500
+        offset = 0
+        while True:
+            batch = store._collection.get(
+                include=["documents", "metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+            batch_docs = batch.get("documents") if batch else []
+            if not batch_docs:
+                break
+            all_texts.extend(batch_docs)
+            all_metadatas.extend(
+                batch.get("metadatas") or [{}] * len(batch_docs)
+            )
+            offset += batch_size
+
+        if not all_texts:
             return
         docs = [
             Document(page_content=t, metadata=m or {})
-            for t, m in zip(all_data["documents"], all_data["metadatas"] or [{}] * len(all_data["documents"]))
+            for t, m in zip(all_texts, all_metadatas)
         ]
         t0 = time.time()
         texts = [doc.page_content for doc in docs]

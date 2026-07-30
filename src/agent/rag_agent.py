@@ -29,7 +29,6 @@ def create_rag_agent():
     get_vector_store()
 
     if ENABLE_HYBRID_SEARCH:
-        print("  [BM25] Building keyword index...")
         from src.retrieval.retriever import rebuild_bm25
         rebuild_bm25(get_vector_store())
 

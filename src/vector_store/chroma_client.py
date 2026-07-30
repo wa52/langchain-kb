@@ -43,11 +43,18 @@ def get_collection_stats() -> dict:
     count = vs._collection.count()
     if count == 0:
         return {"count": 0, "sources": [], "source_count": 0}
-    all_data = vs._collection.get(include=["metadatas"])
     sources = set()
-    for m in all_data.get("metadatas", []):
-        if m and "source" in m:
-            sources.add(m["source"])
+    batch_size = 500
+    offset = 0
+    while True:
+        batch = vs._collection.get(include=["metadatas"], limit=batch_size, offset=offset)
+        batch_metas = batch.get("metadatas", []) if batch else []
+        if not batch_metas:
+            break
+        for m in batch_metas:
+            if m and "source" in m:
+                sources.add(m["source"])
+        offset += batch_size
     return {"count": count, "sources": sorted(sources), "source_count": len(sources)}
 
 

@@ -64,6 +64,79 @@ class TestRebuildBm25:
         # echo_fn should have been called at least once (error or success)
         assert mock.call_count >= 1
 
+    def test_rebuild_over_999_docs_with_pagination(self):
+        n = 1500
+        texts = [f"chunk {i} content" for i in range(n)]
+        metadatas = [{"source": f"{i}.md"} for i in range(n)]
+
+        def _paginated_get(**kwargs):
+            limit = kwargs.get("limit", 500)
+            offset = kwargs.get("offset", 0)
+            batch_texts = texts[offset:offset + limit]
+            batch_metas = metadatas[offset:offset + limit]
+            return {"documents": batch_texts, "metadatas": batch_metas}
+
+        mock_store = MagicMock()
+        mock_store._collection.get.side_effect = _paginated_get
+        mock = MagicMock()
+        try:
+            rebuild_bm25(mock_store, echo_fn=mock)
+        except Exception:
+            pass
+        assert mock_store._collection.get.call_count >= 3
+        success_texts = "".join(str(a) for args in mock.call_args_list for a in args.args)
+        assert "BM25" in success_texts or "完成" in success_texts
+
+    def test_rebuild_empty_collection(self):
+        mock_store = MagicMock()
+        mock_store._collection.get.side_effect = [
+            {"documents": [], "metadatas": []},
+        ]
+        mock = MagicMock()
+        rebuild_bm25(mock_store, echo_fn=mock)
+        assert mock.call_count == 0
+
+
+class TestChromaCollectionStats:
+
+    def test_stats_over_999_docs(self):
+        n = 1500
+        metadatas = [{"source": f"file{i}.md"} for i in range(n)]
+
+        def _paginated_get(**kwargs):
+            limit = kwargs.get("limit", 500)
+            offset = kwargs.get("offset", 0)
+            batch = metadatas[offset:offset + limit]
+            return {"metadatas": batch}
+
+        mock_col = MagicMock()
+        mock_col.count.return_value = n
+        mock_col.get.side_effect = _paginated_get
+        mock_vs = MagicMock()
+        mock_vs._collection = mock_col
+
+        with patch("src.vector_store.chroma_client.get_vector_store", return_value=mock_vs):
+            from src.vector_store.chroma_client import get_collection_stats
+            stats = get_collection_stats()
+
+        assert stats["count"] == n
+        assert stats["source_count"] == n
+        assert mock_col.get.call_count >= 3
+
+    def test_stats_empty(self):
+        mock_col = MagicMock()
+        mock_col.count.return_value = 0
+        mock_vs = MagicMock()
+        mock_vs._collection = mock_col
+
+        with patch("src.vector_store.chroma_client.get_vector_store", return_value=mock_vs):
+            from src.vector_store.chroma_client import get_collection_stats
+            stats = get_collection_stats()
+
+        assert stats["count"] == 0
+        assert stats["source_count"] == 0
+        mock_col.get.assert_not_called()
+
 
 class TestLoadPathProgress:
 
