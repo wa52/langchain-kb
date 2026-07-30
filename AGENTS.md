@@ -13,7 +13,7 @@ python main.py search <query>  # vector search only
 
 | Entry | Trigger | What loads |
 |-------|---------|------------|
-| `python main.py` (no args) | `run_console()` in `console.py` | embedding model + agent + LLM |
+ | `python main.py` (no args) | `run_console()` in `console.py` | interface appears immediately; agent loads in background |
 | `python main.py <cmd>` | Click CLI in `commands.py` | depends on cmd |
 
 ## Console slash commands (`/help` lists all 14)
@@ -60,7 +60,7 @@ main.py
 ## Tests
 
 ```powershell
-python -m pytest tests/         # 51 tests (~40s)
+python -m pytest tests/         # 65 tests (~30s)
 python -m pytest tests/test_console.py -v
 python -m pytest tests/test_progress.py -v  # echo_fn + progress bar tests
 ```
@@ -79,7 +79,7 @@ def rebuild_bm25(store, echo_fn: callable = print): …
 ```
 
 - **CLI commands** (`commands.py`) pass `echo_fn=echo` (supports `end=""` for `\r` overwrite)
-- **Console** (`console.py`) also passes `echo_fn=echo` (imported from `commands.py`)
+- **Console** (`console.py`) also passes `echo_fn=echo` — console's own `echo()` that first tries `prompt_toolkit.print_formatted_text`, with `\r` detection that writes directly to `sys.stdout` (bypasses pt_print), and falls through to the CLI `echo()` on error.
 - **Tests** pass `echo_fn=mock_fn` to assert progress calls
 
 The `echo()` function signature: `echo(msg: str = "", end: str = "\n")` — wraps `print()` with UnicodeEncodeError fallback.
@@ -107,6 +107,12 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 6. **`handle_command` has no try/except** — exceptions from `/add`/`/remove`/etc. crash the console. Test before deployment.
 
 7. **`echo("助手: ", end="")` (console.py:296)** — only works because `echo()` now accepts `end` param. Before the change it was a latent bug.
+
+8. **Background agent loading** — `console.py` loads `create_rag_agent()` in a daemon thread so the interface appears immediately. The background thread owns the only httpx session (no sharing with main thread), so it avoids the thread-pool conflict from gotcha #3. During loading, `_agent_ready` Event blocks agent-dependent commands with "正在加载" message.
+
+9. **`\r` in console echo** — console's `echo()` detects `\r` in the message and writes directly to `sys.stdout` (bypassing `prompt_toolkit.print_formatted_text`). This prevents OOM from accumulated progress bar lines during long `/add` operations. Fallback path still catches `UnicodeEncodeError` for GBK safety.
+
+10. **tqdm suppression** — `HF_HUB_DISABLE_PROGRESS_BARS=1` set at the start of `create_rag_agent()` to suppress raw progress bar output from `sentence_transformers`/`huggingface_hub` during model loading.
 
 ## Config (.env)
 

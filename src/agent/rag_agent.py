@@ -20,6 +20,11 @@ SYSTEM_PROMPT = """你是一个 LangChain 技术助手，基于已有的教程�
 
 
 def create_rag_agent():
+    import os as _os
+    _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    import logging
+    logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
     get_embedding_model()
     get_vector_store()
 

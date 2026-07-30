@@ -1,7 +1,10 @@
+import sys
+from io import StringIO
 from unittest.mock import patch, MagicMock
 
 import pytest
 
+import src.cli.console as console_mod
 from src.cli.console import handle_command
 
 
@@ -98,3 +101,90 @@ class TestHandleCommand:
             result = handle_command("/stats", state)
             assert "1000" in result
             assert "50" in result
+
+
+class TestLoadingState:
+
+    def test_command_blocked_during_loading(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = False
+            result = handle_command("/stats", state)
+            assert "正在加载" in result
+
+    def test_plain_text_blocked_during_loading(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = False
+            result = handle_command("你好", state)
+            assert "正在加载" in result
+
+    def test_help_works_during_loading(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = False
+            result = handle_command("/help", state)
+            assert "可用命令" in result
+
+    def test_sessions_works_during_loading(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = False
+            with patch("src.cli.console.list_sessions", return_value=[]):
+                result = handle_command("/sessions", state)
+                assert "暂无历史会话" in result
+
+    def test_plain_text_works_after_ready(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = True
+            result = handle_command("你好", state)
+            assert result == ""
+
+    def test_command_works_after_ready(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = True
+            with (
+                patch("src.cli.console.run_add_path", return_value=3),
+            ):
+                result = handle_command("/add test.md", state)
+                assert "成功添加" in result
+
+    def test_plain_text_blocked_after_failure(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = True
+            with patch.object(console_mod, "_agent_result", Exception("no api key")):
+                result = handle_command("你好", state)
+                assert "加载失败" in result
+
+    def test_help_works_after_failure(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = True
+            with patch.object(console_mod, "_agent_result", Exception("no api key")):
+                result = handle_command("/help", state)
+                assert "可用命令" in result
+
+
+class TestEchoCarriageReturn:
+
+    def test_echo_with_cr_bypasses_pt_print(self):
+        buf = StringIO()
+        with patch.object(console_mod, "_HAS_PROMPT_TOOLKIT", True):
+            with patch("sys.stdout", buf):
+                with patch("prompt_toolkit.print_formatted_text") as mock_pt:
+                    console_mod.echo("\r[ 50%] ##########..........  75/500", end="")
+                    mock_pt.assert_not_called()
+                    assert "\r" in buf.getvalue()
+
+    def test_echo_without_cr_uses_pt_print(self):
+        buf = StringIO()
+        with patch.object(console_mod, "_HAS_PROMPT_TOOLKIT", True):
+            with patch("sys.stdout", buf):
+                with patch("prompt_toolkit.print_formatted_text") as mock_pt:
+                    console_mod.echo("hello world")
+                    mock_pt.assert_called_once()
+
+    def test_echo_cr_fallback_no_pt(self):
+        buf = StringIO()
+        with patch.object(console_mod, "_HAS_PROMPT_TOOLKIT", False):
+            with patch("sys.stdout", buf):
+                with patch.object(console_mod, "_cli_echo") as mock_cli:
+                    console_mod.echo("\rprogress")
+                    mock_cli.assert_called_once()
+                    args = mock_cli.call_args[0]
+                    assert "\r" in args[0]

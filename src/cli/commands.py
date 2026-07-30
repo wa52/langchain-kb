@@ -11,10 +11,10 @@ from src.vector_store.embedding import get_embedding_model
 
 def echo(msg: str = "", end: str = "\n"):
     try:
-        print(msg, end=end)
+        print(msg, end=end, flush=True)
     except UnicodeEncodeError:
         safe = str(msg).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-        print(safe, end=end)
+        print(safe, end=end, flush=True)
 
 
 @click.group()
@@ -151,8 +151,10 @@ def chat(session, list_only):
         n_turns = len([m for m in raw_history if m["role"] == "user"])
         echo(f"已恢复会话 ({n_turns} 轮对话)\n")
 
-    echo("LangChain RAG 助手已启动")
-    echo("输入 exit 退出，save 保存并退出，clear 清除历史\n")
+    echo("=" * 40)
+    echo("  LangChain RAG 知识库 — 交互问答")
+    echo("=" * 40)
+    echo("输入问题开始对话，输入 exit 退出\n")
 
     while True:
         query = click.prompt("你", prompt_suffix="> ")
@@ -160,10 +162,12 @@ def chat(session, list_only):
             if raw_history:
                 session_id = save_history(raw_history, session_id)
                 echo(f"会话已保存: {session_id}")
+            echo("再见！")
             break
         if query.lower() == "save":
             session_id = save_history(raw_history, session_id)
             echo(f"会话已保存: {session_id}")
+            echo("再见！")
             break
         if query.lower() == "clear":
             raw_history.clear()

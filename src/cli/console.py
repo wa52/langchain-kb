@@ -1,4 +1,6 @@
 import os
+import sys
+import threading
 
 from config import (
     DATA_DIR, EXTERNAL_DIR,
@@ -12,7 +14,7 @@ from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path, run_remove
 from src.vector_store.chroma_client import get_vector_store, reset_vector_store
 from src.vector_store.embedding import get_embedding_model
-from src.cli.commands import echo
+from src.cli.commands import echo as _cli_echo
 
 try:
     from prompt_toolkit import prompt as pt_prompt
@@ -20,6 +22,33 @@ try:
     _HAS_PROMPT_TOOLKIT = True
 except ImportError:
     _HAS_PROMPT_TOOLKIT = False
+
+_agent_ready = threading.Event()
+_agent_ready.set()
+_agent_result = None
+
+_COMMANDS_NO_AGENT_NEEDED = frozenset({
+    "/help", "/exit", "/clear", "/sessions", "/mode", "/config", "/files",
+})
+
+
+def echo(msg: str = "", end: str = "\n"):
+    if _HAS_PROMPT_TOOLKIT and "\r" in msg:
+        try:
+            sys.stdout.write(msg + end)
+        except UnicodeEncodeError:
+            safe = str(msg).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+            sys.stdout.write(safe + end)
+        sys.stdout.flush()
+        return
+    if _HAS_PROMPT_TOOLKIT:
+        from prompt_toolkit import print_formatted_text as pt_print
+        try:
+            pt_print(msg, end=end)
+            return
+        except Exception:
+            pass
+    _cli_echo(msg, end=end)
 
 
 SLASH_COMMANDS = [
@@ -47,6 +76,29 @@ def _get_user_input(prompt_text: str) -> str:
     if _HAS_PROMPT_TOOLKIT:
         return pt_prompt(prompt_text, completer=SlashCompleter())
     return input(prompt_text)
+
+
+def get_status_bar_loading() -> str:
+    return (
+        "+----------------------------------------------------+\n"
+        "|  LangChain RAG 知识库    Loading... 请稍候         |\n"
+        "+----------------------------------------------------+"
+    )
+
+
+def _load_agent_background():
+    global _agent_result
+    try:
+        agent = create_rag_agent()
+        llm = ChatOpenAI(
+            model=LLM_MODEL, api_key=DEEPSEEK_API_KEY,
+            base_url=DEEPSEEK_API_BASE, temperature=0,
+        )
+        _agent_result = (agent, llm)
+    except Exception as e:
+        _agent_result = e
+    finally:
+        _agent_ready.set()
 
 
 def get_status_bar(state: dict) -> str:
@@ -96,11 +148,23 @@ def _do_handle_command(line: str, state: dict) -> str | None:
     line = line.strip()
     if not line:
         return ""
+
     if not line.startswith("/"):
+        if not _agent_ready.is_set():
+            return "  [提示] 知识库正在加载中，请稍候..."
+        if isinstance(_agent_result, Exception):
+            return "  [错误] 知识库加载失败，请检查网络连接和 .env 配置"
         return ""
+
     parts = line.split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1] if len(parts) > 1 else ""
+
+    if cmd not in _COMMANDS_NO_AGENT_NEEDED:
+        if not _agent_ready.is_set():
+            return "  [提示] 知识库正在加载中，请稍候..."
+        if isinstance(_agent_result, Exception):
+            return "  [错误] 知识库加载失败，请检查网络连接和 .env 配置"
 
     if cmd == "/exit":
         return None
@@ -260,20 +324,36 @@ def _do_handle_command(line: str, state: dict) -> str | None:
 
 def run_console():
     state = {"agent": None, "messages": [], "session_id": None}
-    try:
-        state["agent"] = create_rag_agent()
-        state["_llm"] = ChatOpenAI(
-            model=LLM_MODEL, api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_API_BASE, temperature=0,
-        )
-    except Exception as e:
-        echo(f"初始化失败: {e}")
-        return
 
-    echo(get_status_bar(state))
+    _agent_ready.clear()
+
+    t = threading.Thread(target=_load_agent_background, daemon=True)
+    t.start()
+
+    echo("=" * 46)
+    echo("  LangChain RAG 知识库 — 交互式终端")
+    echo("=" * 46)
+    echo("输入 /help 查看命令，直接输入问题开始对话")
+    echo("")
+    echo(get_status_bar_loading())
     echo("")
 
+    loading_banner_shown = True
+
     while True:
+        if _agent_ready.is_set() and loading_banner_shown:
+            loading_banner_shown = False
+            if isinstance(_agent_result, Exception):
+                echo(f"  [错误] 初始化失败: {_agent_result}")
+                echo("  请检查网络连接和 .env 配置 (DEEPSEEK_API_KEY)")
+            else:
+                agent, llm = _agent_result
+                state["agent"] = agent
+                state["_llm"] = llm
+                echo("")
+                echo(get_status_bar(state))
+                echo("")
+
         try:
             line = _get_user_input("你> ")
         except (EOFError, KeyboardInterrupt):
@@ -281,6 +361,7 @@ def run_console():
             if state["messages"]:
                 sid = save_history(state["messages"], state["session_id"])
                 echo(f"会话已保存: {sid}")
+            echo("再见！")
             break
 
         response = handle_command(line, state)
@@ -289,11 +370,14 @@ def run_console():
             if state["messages"]:
                 sid = save_history(state["messages"], state["session_id"])
                 echo(f"会话已保存: {sid}")
+            echo("再见！")
             break
 
         if response:
             echo(response)
-            if response.startswith("╔") and "RAG" in response:
+            if "正在加载知识库" in response:
+                echo("")
+            elif response.startswith("╔") and "RAG" in response:
                 echo("")
             continue
 
