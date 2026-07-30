@@ -4,7 +4,7 @@
 
 ```powershell
 pip install -r requirements.txt
-python main.py ingest          # 1st: build vector index (1879 chunks from ~81 files)
+python main.py ingest          # 1st: build vector index
 python main.py                 # interactive console with status bar + 14 slash commands
 python main.py search <query>  # vector search only
 ```
@@ -14,13 +14,14 @@ python main.py search <query>  # vector search only
 | Entry | Trigger | What loads |
 |-------|---------|------------|
  | `python main.py` (no args) | `run_console()` in `console.py` | interface appears immediately; agent loads in background |
-| `python main.py <cmd>` | Click CLI in `commands.py` | depends on cmd |
+| `python main.py <cmd>` | Click CLI (14 commands) in `commands.py` | depends on cmd |
 
 ## Console slash commands (`/help` lists all 14)
 
 | Command | Action |
 |---------|--------|
 | `/add <path>` | Copy file/dir to `data/external/`, index, show `[0%→100%]` progress bar |
+| `/remove <name>` | Remove file from knowledge base |
 | `/ingest` | Full re-import from DATA_DIR |
 | `/rebuild` | Drop collection + re-import (asks confirm) |
 | `/mode [llm\|jieba]` | Toggle graph extraction backend (persisted to `.env`) |
@@ -32,7 +33,7 @@ python main.py search <query>  # vector search only
 ```
 main.py
   ├─ src/cli/
-  │    commands.py   — Click CLI (16 commands) + echo() helper
+  │    commands.py   — Click CLI (14 commands) + echo() helper
   │    console.py    — interactive console loop, slash commands, streaming chat
   ├─ src/ingestion/
   │    loader.py     — .md/.txt/.pdf loader, MarkdownLoader(echo_fn=print)
@@ -104,9 +105,9 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 
 5. **`EnsembleRetriever` from `langchain_classic`** — not `langchain.retrievers`. Imported in `retriever.py:4`. BM25 index rebuilt after every data change.
 
-6. **`handle_command` has no try/except** — exceptions from `/add`/`/remove`/etc. crash the console. Test before deployment.
+6. **`handle_command` wraps inner logic** — exceptions from `/add`/`/remove`/etc. are caught by an outer wrapper in `handle_command()` (`console.py:138-144`) that prints traceback and returns an error string. The inner `_do_handle_command()` has no per-command try/except.
 
-7. **`echo("助手: ", end="")` (console.py:296)** — only works because `echo()` now accepts `end` param. Before the change it was a latent bug.
+7. **`echo("助手: ", end="")` (console.py:386)** — only works because `echo()` now accepts `end` param. Before the change it was a latent bug.
 
 8. **Background agent loading** — `console.py` loads `create_rag_agent()` in a daemon thread so the interface appears immediately. The background thread owns the only httpx session (no sharing with main thread), so it avoids the thread-pool conflict from gotcha #3. During loading, `_agent_ready` Event blocks agent-dependent commands with "正在加载" message.
 
@@ -119,14 +120,21 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 | Key | Default | Description |
 |-----|---------|-------------|
 | `DATA_DIR` | `C:\Users\SJ\Desktop\md\langchain_data` | Source document directory |
+| `EXTERNAL_DIR` | `./data/external` | External files copied via `/add` |
+| `CHROMA_PERSIST_DIR` | `./chroma_db` | Vector store persistence |
 | `EMBEDDING_MODEL` | `bge-small-zh` | `bge-m3`, `bge-small-zh`, `bge-base-zh`, or `openai` |
 | `LLM_MODEL` | `deepseek-chat` | Model name for ChatOpenAI |
 | `DEEPSEEK_API_KEY` | (set in .env) | DeepSeek / OpenAI-compatible API key |
+| `DEEPSEEK_API_BASE` | `https://api.deepseek.com` | API base URL |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `500` / `80` | Document chunking |
+| `TOP_K` | `5` | Retrieval count |
+| `ENABLE_GRAPH` | `true` | Enable knowledge graph |
 | `ENABLE_GRAPH_LLM_EXTRACTION` | `false` | Use DeepSeek (instead of jieba) for graph extraction |
 | `ENABLE_CONTEXT_COMPRESSION` | `true` | Compress chat history via LLM summary (keeps last 10 rounds) |
 | `ENABLE_HYBRID_SEARCH` | `true` | BM25 + vector ensemble retrieval |
 | `ENABLE_GRADING` / `ENABLE_REWRITE` | `true` / `true` | Relevance grading / query rewrite |
-| `EMBED_SERVER_ENABLED` | (not yet) | Planned: embedding server to avoid per-command model load |
+| `GRAPH_LLM_BATCH_SIZE` | `10` | Batch size for LLM extraction |
+| `MAX_CONTEXT_TOKENS` | `1000` | Max tokens per retrieved doc |
 
 ## Change model
 
@@ -137,3 +145,27 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 ## Dependencies
 
 Key: `deepagents`, `langchain`, `langchain-chroma`, `langchain-huggingface`, `langchain-openai`, `prompt_toolkit`, `chromadb`, `sentence-transformers`, `click`, `python-dotenv`, `jieba`, `networkx`, `rank-bm25`, `pymupdf`.
+
+## knowledge-service MCP
+
+OpenCode 通过 `knowledge-service` MCP 连接本地知识库 API（端口 8000，Streamable HTTP 传输）。
+
+### 使用规则
+
+1. **涉及内部文档、项目经验、错误记录、架构规范时，优先调用 knowledge-service**。这是获取项目自有知识的第一手段。
+2. **需要原始证据时使用 `search_knowledge`** — 返回文档片段、来源路径和相关性分数。适合查证事实、寻找关键段落、追溯信息来源。
+3. **需要直接答案时使用 `answer_with_knowledge`** — RAG 增强的对话式回答，附带引用来源。适合总结、解释概念、多轮问答。
+4. **查询索引任务时使用 `get_index_status`** — 检查异步索引任务的进度和结果。
+5. **不得伪造知识库未返回的来源** — 如果知识库没有相关信息，必须如实说明，不得编造引用或来源。
+6. **查询无结果时必须明确说明** — 不要在无依据的情况下推断或杜撰答案。
+
+### 启用方式
+
+```powershell
+# 终端 1：启动 API 服务
+python main.py api
+
+# 终端 2：验证 MCP 连接
+opencode mcp list
+# → ✓ knowledge-service connected
+```
