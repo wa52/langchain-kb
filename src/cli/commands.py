@@ -95,7 +95,7 @@ def list_files():
 @click.option("--keep-file", is_flag=True, help="保留文件，仅从向量库删除")
 def remove(name, keep_file):
     """从知识库移除某个文件"""
-    run_remove(name, EXTERNAL_DIR, echo_fn=echo)
+    run_remove(name, EXTERNAL_DIR, keep_file=keep_file, echo_fn=echo)
 
 
 @cli.command()

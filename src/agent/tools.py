@@ -22,18 +22,24 @@ def _grade(query, docs, llm):
     if not (ENABLE_GRADING and llm):
         return docs[:TOP_K]
     relevant = []
-    for doc in docs:
-        if grade_document(query, doc.page_content, llm):
-            relevant.append(doc)
+    try:
+        for doc in docs:
+            if grade_document(query, doc.page_content, llm):
+                relevant.append(doc)
+    except Exception as e:
+        print(f"  [评分] 评分异常: {e}，返回原始结果")
+        return docs[:TOP_K]
     if not relevant and ENABLE_REWRITE:
         print("  [评分] 全部不相关，尝试改写查询...")
         new_query = rewrite_question(query, llm)
         if new_query and new_query != query:
-            embeddings = get_embedding_model()
-            vector_store = get_vector_store(embeddings)
             fetch_k = TOP_K * 3
             raw_docs = _search(new_query, vector_store, fetch_k)
-            relevant = [d for d in raw_docs if grade_document(query, d.page_content, llm)]
+            try:
+                relevant = [d for d in raw_docs if grade_document(query, d.page_content, llm)]
+            except Exception as e:
+                print(f"  [评分] 重试评分异常: {e}")
+                relevant = []
     return relevant[:TOP_K] if relevant else docs[:TOP_K]
 
 
@@ -78,8 +84,8 @@ def retrieve_knowledge(query: str) -> str:
             graph_result = search_graph(query)
             if graph_result != "未找到相关的图谱信息。":
                 result += f"\n\n【知识图谱关联】\n{graph_result}"
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  [图谱] 检索失败: {e}")
 
     return result if result else "未找到相关信息。"
 

@@ -2,16 +2,18 @@ import json
 import time
 from pathlib import Path
 from collections import Counter
+from typing import Callable, Optional
 
 import networkx as nx
 
-from config import GRAPH_PERSIST_DIR, ENABLE_GRAPH_LLM_EXTRACTION, GRAPH_LLM_BATCH_SIZE
+import config as cfg
 from src.graph_store.extraction import extract_entities, extract_relations
 
 
 class KnowledgeGraph:
-    def __init__(self):
-        self.path = Path(GRAPH_PERSIST_DIR) / "knowledge_graph.json"
+    def __init__(self, echo_fn: Callable = print):
+        self.echo_fn = echo_fn
+        self.path = Path(cfg.GRAPH_PERSIST_DIR) / "knowledge_graph.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
             self._load()
@@ -38,49 +40,55 @@ class KnowledgeGraph:
         else:
             self.graph.add_edge(source, target, relations=[relation], strength=strength)
 
-    def build_from_chunks(self, chunks: list, progress_callback=None, llm=None):
+    def build_from_chunks(self, chunks: list, llm=None, echo_fn: Optional[Callable] = None):
+        echo_fn = echo_fn or self.echo_fn
         t0 = time.time()
-        self.clear()
-        texts = [c.page_content for c in chunks]
-        total = len(texts)
-
-        if ENABLE_GRAPH_LLM_EXTRACTION:
-            print(f"  [LLM模式] 共 {total} chunks, 批量{GRAPH_LLM_BATCH_SIZE}/批 ...")
-            from src.graph_store.extraction_llm import extract_entities_llm_batch
-            entities, rels = extract_entities_llm_batch(texts, llm=llm)
-            # prevent import shadow
-            all_entity_names: set[str] = set()
-            for e in entities:
-                name = e["name"]
-                all_entity_names.add(name)
-                self.add_entity(name, e["type"])
-                self._entity_count[name] = e.get("count", 1)
-            for r in rels:
-                if r["source"] in all_entity_names and r["target"] in all_entity_names:
-                    self.add_relation(r["source"], r["target"], r["relation"], "strong")
-            if progress_callback:
-                progress_callback(total, total)
+        if self.graph.number_of_nodes() > 0:
+            _saved = (self.graph.copy(), self._entity_count.copy(), {k: set(v) for k, v in self._entity_sources.items()})
         else:
-            all_entities: dict[str, str] = {}
-            for i, text in enumerate(texts):
-                source = chunks[i].metadata.get("source", "unknown") if hasattr(chunks[i], "metadata") else "unknown"
-                entities = extract_entities(text)
+            _saved = None
+        self.clear()
+        try:
+            texts = [c.page_content for c in chunks]
+            total = len(texts)
+
+            if cfg.ENABLE_GRAPH_LLM_EXTRACTION:
+                echo_fn(f"  [LLM模式] 共 {total} chunks, 批量{cfg.GRAPH_LLM_BATCH_SIZE}/批 ...")
+                from src.graph_store.extraction_llm import extract_entities_llm_batch
+                entities, rels = extract_entities_llm_batch(texts, llm=llm)
+                all_entity_names: set[str] = set()
                 for e in entities:
                     name = e["name"]
-                    if name not in all_entities:
-                        all_entities[name] = e["type"]
-                    self.add_entity(name, e["type"], source)
-                if progress_callback and ((i + 1) % 50 == 0 or i == total - 1):
-                    progress_callback(i + 1, total)
-            rels = extract_relations(texts)
-            for r in rels:
-                if r["source"] in all_entities and r["target"] in all_entities:
-                    self.add_relation(r["source"], r["target"], r["relation"], r["strength"])
+                    all_entity_names.add(name)
+                    self.add_entity(name, e["type"])
+                for r in rels:
+                    if r["source"] in all_entity_names and r["target"] in all_entity_names:
+                        self.add_relation(r["source"], r["target"], r["relation"], "strong")
+            else:
+                all_entities: dict[str, str] = {}
+                for i, text in enumerate(texts):
+                    source = chunks[i].metadata.get("source", "unknown") if hasattr(chunks[i], "metadata") else "unknown"
+                    entities = extract_entities(text)
+                    for e in entities:
+                        name = e["name"]
+                        if name not in all_entities:
+                            all_entities[name] = e["type"]
+                        self.add_entity(name, e["type"], source)
+                    if (i + 1) % 50 == 0 or i == total - 1:
+                        echo_fn(f"\r  [{i+1}/{total}] 实体抽取中...", end="")
+                rels = extract_relations(texts)
+                for r in rels:
+                    if r["source"] in all_entities and r["target"] in all_entities:
+                        self.add_relation(r["source"], r["target"], r["relation"], r["strength"])
 
-        elapsed = time.time() - t0
-        nc = self.graph.number_of_nodes()
-        ec = self.graph.number_of_edges()
-        print(f"  -> 知识图谱构建完成 ({nc} 实体, {ec} 关系, {elapsed:.1f}s)")
+            elapsed = time.time() - t0
+            nc = self.graph.number_of_nodes()
+            ec = self.graph.number_of_edges()
+            echo_fn(f"  -> 知识图谱构建完成 ({nc} 实体, {ec} 关系, {elapsed:.1f}s)")
+        except Exception:
+            if _saved is not None:
+                self.graph, self._entity_count, self._entity_sources = _saved
+            raise
 
     def search(self, query: str, max_nodes: int = 30) -> str:
         query_lower = query.lower()
@@ -160,9 +168,13 @@ class KnowledgeGraph:
         self.graph = nx.DiGraph()
         self._entity_count = Counter()
         self._entity_sources = {}
-        data = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            self.echo_fn("  [警告] 知识图谱文件损坏，使用空图谱")
+            return
         for n in data.get("nodes", []):
-            self.graph.add_node(n["id"], type=n["type"])
+            self.graph.add_node(n["id"], type=n.get("type", "Unknown"))
             self._entity_count[n["id"]] = n.get("count", 1)
             self._entity_sources[n["id"]] = set(n.get("sources", []))
         for e in data.get("edges", []):
@@ -172,21 +184,19 @@ class KnowledgeGraph:
                 strength=e.get("strength", "weak"),
             )
 
-    def add_chunks(self, chunks: list, llm=None):
+    def add_chunks(self, chunks: list, llm=None, echo_fn: Optional[Callable] = None):
+        echo_fn = echo_fn or self.echo_fn
         texts = [c.page_content for c in chunks]
         total = len(texts)
         if total == 0:
             return
 
-        if ENABLE_GRAPH_LLM_EXTRACTION:
+        if cfg.ENABLE_GRAPH_LLM_EXTRACTION:
             from src.graph_store.extraction_llm import extract_entities_llm_batch
-            print(f"  [LLM模式-增量] {total} chunks ...")
+            echo_fn(f"  [LLM模式-增量] {total} chunks ...")
             entities, rels = extract_entities_llm_batch(texts, llm=llm)
             for e in entities:
-                name = e["name"]
-                if not self.graph.has_node(name):
-                    self.graph.add_node(name, type=e["type"])
-                    self._entity_count[name] = e.get("count", 1)
+                self.add_entity(e["name"], e["type"])
             for r in rels:
                 if self.graph.has_node(r["source"]) and self.graph.has_node(r["target"]):
                     self.add_relation(r["source"], r["target"], r["relation"], "strong")
@@ -200,7 +210,7 @@ class KnowledgeGraph:
             for r in rels:
                 if self.graph.has_node(r["source"]) and self.graph.has_node(r["target"]):
                     self.add_relation(r["source"], r["target"], r["relation"], r["strength"])
-        print(f"  -> 增量合并完成 (当前共 {self.graph.number_of_nodes()} 实体, {self.graph.number_of_edges()} 关系)")
+        echo_fn(f"  -> 增量合并完成 (当前共 {self.graph.number_of_nodes()} 实体, {self.graph.number_of_edges()} 关系)")
 
     def clear(self):
         self.graph.clear()
@@ -214,8 +224,8 @@ def build_graph_store():
     kg = KnowledgeGraph()
     texts_dir = Path(DATA_DIR)
     if texts_dir.exists():
-        print(f"  [1/2] Loading documents from {texts_dir} ...")
-        loader = MarkdownLoader(texts_dir)
+        kg.echo_fn(f"  [1/2] Loading documents from {texts_dir} ...")
+        loader = MarkdownLoader(texts_dir, echo_fn=kg.echo_fn)
         docs = loader.load_all()
     else:
         docs = []
@@ -224,11 +234,11 @@ def build_graph_store():
         ext_docs = load_path(ext_dir)
         docs.extend(ext_docs)
     if not docs:
-        print("  未找到文档")
+        kg.echo_fn("  未找到文档")
         return kg
-    print(f"  [2/2] Building knowledge graph from {len(docs)} documents ...")
+    kg.echo_fn(f"  [2/2] Building knowledge graph from {len(docs)} documents ...")
     llm = None
-    if ENABLE_GRAPH_LLM_EXTRACTION:
+    if cfg.ENABLE_GRAPH_LLM_EXTRACTION:
         from langchain_openai import ChatOpenAI
         from config import LLM_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_API_BASE
         llm = ChatOpenAI(

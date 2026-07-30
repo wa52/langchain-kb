@@ -6,6 +6,9 @@ REWRITE_PROMPT = (
 
 
 def rewrite_question(question: str, llm) -> str:
-    prompt = REWRITE_PROMPT.format(question=question)
-    response = llm.invoke(prompt)
-    return response.content.strip()
+    try:
+        prompt = REWRITE_PROMPT.format(question=question)
+        response = llm.invoke(prompt)
+        return response.content.strip()
+    except Exception:
+        return question

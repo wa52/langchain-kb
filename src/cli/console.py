@@ -84,11 +84,20 @@ def get_status_bar(state: dict) -> str:
 
 
 def handle_command(line: str, state: dict) -> str | None:
+    try:
+        return _do_handle_command(line, state)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"  [错误] 命令执行失败: {e}"
+
+
+def _do_handle_command(line: str, state: dict) -> str | None:
     line = line.strip()
     if not line:
         return ""
     if not line.startswith("/"):
-        return None
+        return ""
     parts = line.split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1] if len(parts) > 1 else ""
@@ -199,7 +208,7 @@ def handle_command(line: str, state: dict) -> str | None:
         return f"成功导入 {count} 个文档片段"
 
     if cmd == "/rebuild":
-        confirm = input("这将清空现有数据库，确定继续？(y/n) ")
+        confirm = _get_user_input("这将清空现有数据库，确定继续？(y/n) ")
         if confirm.lower() != "y":
             return "已取消"
         reset_vector_store()
@@ -207,7 +216,7 @@ def handle_command(line: str, state: dict) -> str | None:
         vs = get_vector_store(embeddings)
         vs.delete_collection()
         reset_vector_store()
-        count = run_ingestion(DATA_DIR)
+        count = run_ingestion(DATA_DIR, echo_fn=echo)
         return f"重建完成，导入 {count} 个片段"
 
     if cmd == "/stats":
@@ -280,9 +289,6 @@ def run_console():
             if state["messages"]:
                 sid = save_history(state["messages"], state["session_id"])
                 echo(f"会话已保存: {sid}")
-            break
-
-        if response == "__EXIT__":
             break
 
         if response:

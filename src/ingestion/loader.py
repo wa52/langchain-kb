@@ -24,7 +24,7 @@ def _iter_files(data_dir: Path):
             yield path
 
 
-def _load_file(path: Path) -> list:
+def _load_file(path: Path, base_dir: Path | None = None) -> list:
     suffix = path.suffix.lower()
     if suffix in _TEXT_EXTS:
         docs = TextLoader(str(path), encoding="utf-8").load()

@@ -8,7 +8,10 @@ GRADING_PROMPT = (
 
 
 def grade_document(question: str, document: str, llm) -> bool:
-    prompt = GRADING_PROMPT.format(question=question, document=document[:1000])
-    response = llm.invoke(prompt)
-    result = response.content.strip()
-    return "相关" in result
+    try:
+        prompt = GRADING_PROMPT.format(question=question, document=document[:1000])
+        response = llm.invoke(prompt)
+        result = response.content.strip()
+        return "相关" in result
+    except Exception:
+        return True

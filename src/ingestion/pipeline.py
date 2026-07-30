@@ -35,7 +35,9 @@ def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_ove
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
         from src.graph_store.graph import build_graph_store
-        build_graph_store()
+        from src.graph_store.retriever import set_graph
+        kg = build_graph_store()
+        set_graph(kg)
 
     update_tracker("internal", data_dir)
     return len(chunks)
@@ -50,12 +52,24 @@ def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callab
 
     echo_fn(f"检测到 {len(changed)} 个文件变更，{len(unchanged)} 个文件未变更")
 
-    all_docs = []
-    for dir_path, _ in data_dirs:
-        loader = MarkdownLoader(dir_path, echo_fn=echo_fn)
-        all_docs.extend(loader.load_all())
+    # 删除旧 chunks
+    for p in changed:
+        source_name = Path(p).name
+        echo_fn(f"  删除旧数据: {source_name}")
+        delete_by_source(source_name)
 
-    changed_docs = [d for d in all_docs if Path(d.metadata["source"]).name in [Path(p).name for p in changed]]
+    all_docs = []
+    source_map: dict[str, str] = {}
+    for dir_path, source_type in data_dirs:
+        loader = MarkdownLoader(dir_path, echo_fn=echo_fn)
+        for d in loader.load_all():
+            source_key = d.metadata.get("source", "")
+            if source_key:
+                all_docs.append(d)
+                source_map.setdefault(source_key, source_type)
+
+    changed_names = {Path(p).name for p in changed}
+    changed_docs = [d for d in all_docs if Path(d.metadata.get("source", "")).name in changed_names]
 
     if not changed_docs:
         echo_fn("没有需要更新的文档")
@@ -75,7 +89,7 @@ def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callab
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
-        kg = KnowledgeGraph()
+        kg = KnowledgeGraph(echo_fn=echo_fn)
         llm = None
         if ENABLE_GRAPH_LLM_EXTRACTION:
             from langchain_openai import ChatOpenAI
@@ -98,11 +112,14 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
         echo_fn(f"文件不存在: {filepath}")
         return 0
 
-    from src.ingestion.loader import TextLoader
-    loader = TextLoader(str(path), encoding="utf-8")
-    docs = loader.load()
-    for doc in docs:
-        doc.metadata["source"] = path.name
+    # 先删旧 chunks，再加新 chunks
+    delete_by_source(path.name)
+    echo_fn(f"  删除旧数据: {path.name}")
+
+    docs = load_path(path)
+    if not docs:
+        echo_fn("  -> 未加载到文档")
+        return 0
 
     splitter = create_splitter()
     chunks = splitter.split_documents(docs)
@@ -112,11 +129,13 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
     get_vector_store(embeddings)
     add_documents_with_progress(chunks, echo_fn=echo_fn)
 
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+
     from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
-        kg = KnowledgeGraph()
+        kg = KnowledgeGraph(echo_fn=echo_fn)
         llm = None
         if ENABLE_GRAPH_LLM_EXTRACTION:
             from langchain_openai import ChatOpenAI
@@ -126,6 +145,7 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
         kg.save()
         set_graph(kg)
 
+    update_tracker("external", path.parent, [str(path)])
     echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return len(chunks)
 
@@ -192,7 +212,7 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
-        kg = KnowledgeGraph()
+        kg = KnowledgeGraph(echo_fn=echo_fn)
         llm = None
         if ENABLE_GRAPH_LLM_EXTRACTION:
             from langchain_openai import ChatOpenAI
@@ -207,20 +227,22 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
     return len(chunks)
 
 
-def run_remove(source_name: str, external_dir: str = "./data/external", echo_fn: callable = print):
+def run_remove(source_name: str, external_dir: str = "./data/external", keep_file: bool = False, echo_fn: callable = print):
     delete_by_source(source_name)
 
-    target_base = Path(external_dir)
-    for f in target_base.rglob("*"):
-        if f.name == source_name or f.name == source_name:
-            if f.is_file():
-                f.unlink()
-                echo_fn(f"  删除文件: {f}")
-            elif f.is_dir():
-                shutil.rmtree(str(f))
-                echo_fn(f"  删除目录: {f}")
+    if not keep_file:
+        target_base = Path(external_dir)
+        for f in target_base.rglob("*"):
+            if f.name == source_name:
+                if f.is_file():
+                    f.unlink()
+                    echo_fn(f"  删除文件: {f}")
+                elif f.is_dir():
+                    shutil.rmtree(str(f))
+                    echo_fn(f"  删除目录: {f}")
 
-    remove_from_tracker(source_name)
+    remove_from_tracker(source_name, source_type="external")
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
     echo_fn(f"  -> 已从知识库移除: {source_name}")
 
 

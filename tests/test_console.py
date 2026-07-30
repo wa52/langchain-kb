@@ -12,9 +12,9 @@ def state():
 
 class TestHandleCommand:
 
-    def test_plain_text_returns_none(self, state):
+    def test_plain_text_returns_empty(self, state):
         result = handle_command("什么是 RAG", state)
-        assert result is None
+        assert result == ""
 
     def test_empty_line(self, state):
         result = handle_command("", state)

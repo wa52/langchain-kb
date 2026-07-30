@@ -12,7 +12,7 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 TOP_K = int(os.getenv("TOP_K", "5"))
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-4784601beba84a18b8e56775ce63247c")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
 
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")

@@ -57,7 +57,6 @@ def _fallback_batch(texts: list[str]):
 
 def extract_entities_llm_batch(
     texts: list[str],
-    sources: list[str] | None = None,
     llm=None,
 ) -> tuple[list[dict], list[dict]]:
     if llm is None:

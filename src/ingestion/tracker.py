@@ -77,10 +77,11 @@ def update_tracker(source_type: str, base_dir: str | Path, filepaths: list[str] 
     _save_tracker(tracker)
 
 
-def remove_from_tracker(source_name: str):
+def remove_from_tracker(source_name: str, source_type: str | None = None):
     tracker = _load_tracker()
-    for source_type in ("internal", "external"):
-        registry = tracker.get(source_type, {})
+    types = [source_type] if source_type else ("internal", "external")
+    for st in types:
+        registry = tracker.get(st, {})
         to_delete = [k for k in registry if Path(k).name == source_name or k == source_name]
         for k in to_delete:
             del registry[k]
