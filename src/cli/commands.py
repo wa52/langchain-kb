@@ -127,10 +127,11 @@ def chat(session, list_only):
         if not sessions:
             echo("暂无历史会话")
             return
-        echo(f"{'会话ID':<25} {'时间':<20} {'大小':<10}")
-        echo("-" * 55)
+        echo(f"{'会话ID':<25} {'时间':<16} {'轮':<3} {'标题':<24}")
+        echo("-" * 70)
         for s in sessions:
-            echo(f"{s['id']:<25} {s['created']:<20} {s['size']:<10}")
+            title = s.get("title", "空会话")
+            echo(f"{s['id']:<25} {s['created']:<16} {s['turns']:<3} {title:<24}")
         return
 
     agent = create_rag_agent()

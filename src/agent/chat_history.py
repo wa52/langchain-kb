@@ -54,13 +54,39 @@ def compress_history(messages: list[dict], llm, keep_rounds: int = 10) -> list[d
     return [{"role": "system", "content": f"[历史摘要] {summary}"}] + recent_part
 
 
+_MAX_TITLE_LEN = 24
+
+
+def _session_title(messages: list[dict]) -> str:
+    if not messages:
+        return "空会话"
+    for msg in messages:
+        if msg.get("role") == "user":
+            content = msg.get("content") or ""
+            title = content.strip().split("\n")[0].strip()
+            if not title:
+                return "空会话"
+            if len(title) > _MAX_TITLE_LEN:
+                truncated = title[:_MAX_TITLE_LEN - 1]
+                title = truncated + "…"
+            return title
+    return "空会话"
+
+
 def list_sessions() -> list[dict]:
     _ensure_dir()
     sessions = []
     for p in sorted(HISTORY_DIR.glob("*.json"), reverse=True):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                messages = json.load(f)
+        except Exception:
+            messages = []
         sessions.append({
             "id": p.stem,
             "created": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
             "size": p.stat().st_size,
+            "title": _session_title(messages),
+            "turns": len([m for m in messages if isinstance(m, dict) and m.get("role") == "user"]),
         })
     return sessions

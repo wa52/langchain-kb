@@ -208,15 +208,11 @@ def _do_handle_command(line: str, state: dict) -> str | None:
         sessions = list_sessions()
         if not sessions:
             return "暂无历史会话"
-        lines = [f"{'会话ID':<25} {'时间':<20} {'消息数':<8}"]
-        lines.append("-" * 55)
+        lines = [f"{'会话ID':<25} {'时间':<16} {'轮':<3} {'标题':<24}"]
+        lines.append("-" * 70)
         for s in sessions:
-            try:
-                msgs = load_history(s["id"])
-                n = len([m for m in msgs if m["role"] == "user"]) if msgs else 0
-            except Exception:
-                n = "?"
-            lines.append(f"{s['id']:<25} {s['created']:<20} {str(n):<8}")
+            title = s.get("title", "空会话")
+            lines.append(f"{s['id']:<25} {s['created']:<16} {s['turns']:<3} {title:<24}")
         return "\n".join(lines)
 
     if cmd == "/resume":
