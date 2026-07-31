@@ -1,0 +1,370 @@
+import json
+import re
+from pathlib import Path
+from unittest.mock import patch, MagicMock, ANY
+
+import pytest
+from typer.testing import CliRunner
+
+from src.cli.knowledge import app
+
+runner = CliRunner()
+SNAP_DIR = Path(__file__).parent / "snapshots"
+_ANSI = re.compile(r"\x1b\[")
+
+
+def _doc(content, source="docs/rag.md", chunk_id="abc123", section="基础"):
+    d = MagicMock()
+    d.page_content = content
+    d.metadata = {"source": source, "chunk_id": chunk_id, "section": section}
+    d.id = chunk_id
+    return d
+
+
+def assert_snapshot(name: str, content: str):
+    path = SNAP_DIR / f"{name}.snap"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(content, encoding="utf-8")
+        pytest.skip(f"snapshot written: {name}")
+    assert path.read_text(encoding="utf-8") == content
+
+
+class TestHelp:
+
+    def test_help_shows_all_commands(self):
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        for cmd in ["serve", "index", "search", "chat", "status", "doctor"]:
+            assert cmd in result.output
+
+    def test_serve_help(self):
+        result = runner.invoke(app, ["serve", "--help"])
+        assert result.exit_code == 0
+        assert "--port" in result.output
+
+    def test_index_help(self):
+        result = runner.invoke(app, ["index", "--help"])
+        assert result.exit_code == 0
+        assert "--incremental" in result.output
+        assert "--force" in result.output
+
+    def test_search_help(self):
+        result = runner.invoke(app, ["search", "--help"])
+        assert result.exit_code == 0
+        assert "--top-k" in result.output
+        assert "--plain" in result.output
+
+    def test_doctor_help(self):
+        result = runner.invoke(app, ["doctor", "--help"])
+        assert result.exit_code == 0
+        assert "--verbose" in result.output
+
+
+class TestServe:
+
+    def test_serve_shows_addresses(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+        ):
+            result = runner.invoke(app, ["serve", "--host", "0.0.0.0", "--port", "9000"])
+        assert result.exit_code == 0
+        assert "0.0.0.0:9000" in result.output
+        assert "/docs" in result.output
+        assert "/mcp" in result.output
+
+    def test_serve_json(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+        ):
+            result = runner.invoke(app, ["serve", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        assert "mcp" in parsed["data"]
+
+    def test_serve_failure_shows_reason(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run", side_effect=OSError("address in use")),
+        ):
+            result = runner.invoke(app, ["serve"])
+        assert result.exit_code == 75
+        assert "address in use" in result.output
+
+
+class TestIndex:
+
+    def test_index_dir_uses_run_add_path(self):
+        with (
+            patch("src.ingestion.pipeline.run_add_path", return_value=7) as mock_add,
+            patch("src.ingestion.pipeline.run_single_file_update") as mock_single,
+        ):
+            result = runner.invoke(app, ["index", "./docs"])
+        assert result.exit_code == 0
+        mock_add.assert_called_once()
+        mock_single.assert_not_called()
+        assert "处理 7 个" in result.output
+
+    def test_index_file_uses_single_file_update(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("src.ingestion.pipeline.run_single_file_update", return_value=3) as mock_single,
+            patch("src.ingestion.pipeline.run_add_path") as mock_add,
+        ):
+            result = runner.invoke(app, ["index", "docs/rag.md"])
+        assert result.exit_code == 0
+        mock_single.assert_called_once()
+        mock_add.assert_not_called()
+
+    def test_index_missing_path_exit_3(self):
+        result = runner.invoke(app, ["index", "./does/not/exist.md"])
+        assert result.exit_code == 3
+
+    def test_index_incremental(self):
+        with (
+            patch("src.ingestion.tracker.get_changed_files",
+                  return_value=(["a.md"], ["b.md", "c.md"])),
+            patch("src.ingestion.pipeline.run_incremental_update", return_value=5) as mock_upd,
+        ):
+            result = runner.invoke(app, ["index", "./docs", "--incremental"])
+        assert result.exit_code == 0
+        mock_upd.assert_called_once()
+        assert "处理 1 个" in result.output
+        assert "跳过 2 个" in result.output
+
+    def test_index_force_file_deletes_source(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("src.vector_store.chroma_client.delete_by_source") as mock_del,
+            patch("src.ingestion.pipeline.run_single_file_update", return_value=2),
+        ):
+            result = runner.invoke(app, ["index", "docs/rag.md", "--force"])
+        assert result.exit_code == 0
+        mock_del.assert_called_once_with("rag.md")
+
+    def test_index_json_no_extra_text(self):
+        with patch("src.ingestion.pipeline.run_add_path", return_value=10):
+            result = runner.invoke(app, ["index", "./docs", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        assert parsed["data"]["processed"] == 10
+        assert parsed["data"]["failed"] == 0
+        assert _ANSI.search(result.output) is None
+
+    def test_index_failure_exit_1(self):
+        with patch("src.ingestion.pipeline.run_add_path", side_effect=RuntimeError("boom")):
+            result = runner.invoke(app, ["index", "./docs"])
+        assert result.exit_code == 1
+        assert "boom" in result.output
+
+
+class TestSearch:
+
+    def test_search_plain_output(self):
+        with patch("src.vector_store.chroma_client.get_vector_store") as mock_vs:
+            mock_vs.return_value.similarity_search_with_relevance_scores.return_value = [
+                (_doc("RAG 原理说明"), 0.92),
+            ]
+            result = runner.invoke(app, ["search", "RAG", "--plain"])
+        assert result.exit_code == 0
+        assert "docs/rag.md" in result.output
+        assert "0.92" in result.output
+        assert _ANSI.search(result.output) is None
+
+    def test_search_table_output(self):
+        with patch("src.vector_store.chroma_client.get_vector_store") as mock_vs:
+            mock_vs.return_value.similarity_search_with_relevance_scores.return_value = [
+                (_doc("RAG 原理说明"), 0.92),
+            ]
+            result = runner.invoke(app, ["search", "RAG"])
+        assert result.exit_code == 0
+        assert "docs/rag.md" in result.output
+        assert "RAG 原理说明" in result.output
+
+    def test_search_json(self):
+        with patch("src.vector_store.chroma_client.get_vector_store") as mock_vs:
+            mock_vs.return_value.similarity_search_with_relevance_scores.return_value = [
+                (_doc("RAG 原理说明"), 0.92),
+            ]
+            result = runner.invoke(app, ["search", "RAG", "--json"])
+        assert result.exit_code == 0
+        assert_snapshot("search_json", result.output)
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        assert parsed["data"][0]["source"] == "docs/rag.md"
+        assert parsed["data"][0]["score"] == 0.92
+        assert _ANSI.search(result.output) is None
+
+    def test_search_empty_returns_ok(self):
+        with patch("src.vector_store.chroma_client.get_vector_store") as mock_vs:
+            mock_vs.return_value.similarity_search_with_relevance_scores.return_value = []
+            result = runner.invoke(app, ["search", "nothing"])
+        assert result.exit_code == 0
+
+    def test_search_top_k_passed(self):
+        with patch("src.vector_store.chroma_client.get_vector_store") as mock_vs:
+            mock_vs.return_value.similarity_search_with_relevance_scores.return_value = []
+            runner.invoke(app, ["search", "q", "--top-k", "3"])
+        mock_vs.return_value.similarity_search_with_relevance_scores.assert_called_once_with(
+            "q", k=3
+        )
+
+
+class TestChat:
+
+    def test_chat_shows_answer_and_sources(self):
+        with patch("src.api.services.chat.chat_with_rag",
+                   return_value=("答案是 X [来源: docs/rag.md]", "session_1", 123.4)):
+            result = runner.invoke(app, ["chat", "什么是RAG?"])
+        assert result.exit_code == 0
+        assert "答案是 X" in result.output
+        assert "docs/rag.md" in result.output
+
+    def test_chat_json(self):
+        with patch("src.api.services.chat.chat_with_rag",
+                   return_value=("答案是 X [来源: docs/rag.md]", "session_1", 123.4)):
+            result = runner.invoke(app, ["chat", "什么是RAG?", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        assert parsed["data"]["answer"] == "答案是 X"
+        assert parsed["data"]["sources"] == ["docs/rag.md"]
+        assert parsed["data"]["session_id"] == "session_1"
+        assert _ANSI.search(result.output) is None
+
+    def test_chat_session_passed(self):
+        with patch("src.api.services.chat.chat_with_rag",
+                   return_value=("ans", "session_1", 1.0)) as mock_chat:
+            runner.invoke(app, ["chat", "q", "--session", "session_1"])
+        mock_chat.assert_called_once_with("q", "session_1")
+
+    def test_chat_failure_exit_1(self):
+        with patch("src.api.services.chat.chat_with_rag", side_effect=RuntimeError("api down")):
+            result = runner.invoke(app, ["chat", "q"])
+        assert result.exit_code == 1
+        assert "api down" in result.output
+
+
+class TestStatus:
+
+    def test_status_table(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "向量库" in result.output
+        assert "10" in result.output
+
+    def test_status_json(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.EMBEDDING_MODEL", "bge-small-zh"),
+            patch("config.LLM_MODEL", "deepseek-chat"),
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0
+        assert_snapshot("status_json", result.output)
+        parsed = json.loads(result.output)
+        assert parsed["data"]["vector_store"]["chunks"] == 10
+        assert _ANSI.search(result.output) is None
+
+
+class TestDoctor:
+
+    def test_doctor_all_pass(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("config.DEEPSEEK_API_KEY", "sk-test"),
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.cli.knowledge._port_open", return_value=True),
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 5, "sources": [], "source_count": 1}
+            result = runner.invoke(app, ["doctor"])
+        assert result.exit_code == 0
+        assert "✔" in result.output or "OK" in result.output
+
+    def test_doctor_missing_api_key_exit_78(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("config.DEEPSEEK_API_KEY", ""),
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.cli.knowledge._port_open", return_value=True),
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 5, "sources": [], "source_count": 1}
+            result = runner.invoke(app, ["doctor"])
+        assert result.exit_code == 78
+        assert "DEEPSEEK_API_KEY" in result.output or "API Key" in result.output
+
+    def test_doctor_json(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("config.DEEPSEEK_API_KEY", "sk-test"),
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.cli.knowledge._port_open", return_value=True),
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 5, "sources": [], "source_count": 1}
+            result = runner.invoke(app, ["doctor", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        assert "checks" in parsed["data"]
+        assert _ANSI.search(result.output) is None
+
+
+class TestOutputDiscipline:
+
+    def test_no_ansi_when_not_tty(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": [], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status"])
+        assert _ANSI.search(result.output) is None
+
+    def test_no_color_env(self):
+        import os
+        with (
+            patch.dict(os.environ, {"NO_COLOR": "1"}),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+        ):
+            mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": [], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status"])
+        assert _ANSI.search(result.output) is None
+
+    def test_unknown_command_exit_2(self):
+        result = runner.invoke(app, ["nonexistent"])
+        assert result.exit_code == 2
+
+    def test_missing_argument_exit_2(self):
+        result = runner.invoke(app, ["search"])
+        assert result.exit_code == 2

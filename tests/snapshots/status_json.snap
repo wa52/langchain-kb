@@ -1,0 +1,1 @@
+{"status": "ok", "data": {"embedding": {"name": "bge-small-zh", "status": "ok"}, "vector_store": {"chunks": 10, "sources": 1, "status": "ok"}, "llm": {"name": "deepseek-chat", "status": "ok"}, "bm25": "ok", "mcp": "stopped"}}
