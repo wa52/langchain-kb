@@ -82,3 +82,42 @@ class TestCwdIndependence:
             assert Path(value).is_absolute()
             assert str(tmp_path) not in value
         assert config.KNOWLEDGE_HOME == Path(config.__file__).resolve().parent
+
+
+class TestDataDirDefault:
+
+    def test_data_dir_defaults_to_knowledge_home_data_docs(
+            self, fresh_config, tmp_path, monkeypatch):
+        monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
+        monkeypatch.delenv("DATA_DIR", raising=False)
+        importlib.reload(config)
+        assert config.DATA_DIR == tmp_path / "data" / "docs"
+
+    def test_data_dir_explicit_absolute_respected(
+            self, fresh_config, tmp_path, monkeypatch):
+        monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
+        monkeypatch.setenv("DATA_DIR", "D:/real/docs")
+        importlib.reload(config)
+        assert config.DATA_DIR == Path("D:/real/docs")
+
+
+class TestEnsureDataDirs:
+
+    def _fresh_home(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
+        monkeypatch.delenv("DATA_DIR", raising=False)
+
+    def test_creates_directory_skeleton(self, fresh_config, tmp_path, monkeypatch):
+        self._fresh_home(monkeypatch, tmp_path)
+        importlib.reload(config)
+        config.ensure_data_dirs()
+        assert (tmp_path / "chroma_db").is_dir()
+        assert (tmp_path / "data" / "external").is_dir()
+        assert (tmp_path / "data" / "docs").is_dir()
+
+    def test_idempotent(self, fresh_config, tmp_path, monkeypatch):
+        self._fresh_home(monkeypatch, tmp_path)
+        importlib.reload(config)
+        config.ensure_data_dirs()
+        config.ensure_data_dirs()
+        assert (tmp_path / "data" / "docs").is_dir()

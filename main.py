@@ -6,6 +6,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 
 from src.cli.commands import cli
 from src.cli.console import run_console
+from config import ensure_data_dirs
 
 
 def run_api():
@@ -15,6 +16,7 @@ def run_api():
 
 
 if __name__ == "__main__":
+    ensure_data_dirs()
     if len(sys.argv) >= 2 and sys.argv[1] == "api":
         sys.argv.pop(1)
         run_api()

@@ -129,7 +129,7 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `DATA_DIR` | `C:\Users\SJ\Desktop\md\langchain_data` | Source document directory |
+| `DATA_DIR` | `./data/docs` | Source document directory (auto-created) |
 | `EXTERNAL_DIR` | `./data/external` | External files copied via `/add` |
 | `CHROMA_PERSIST_DIR` | `./chroma_db` | Vector store persistence |
 | `EMBEDDING_MODEL` | `bge-small-zh` | `bge-m3`, `bge-small-zh`, `bge-base-zh`, or `openai` |

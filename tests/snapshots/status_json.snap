@@ -1,1 +1,1 @@
-{"status": "ok", "data": {"knowledge_home": "C:/knowledge-home", "embedding": {"name": "bge-small-zh", "status": "ok"}, "vector_store": {"chunks": 10, "sources": 1, "status": "ok"}, "llm": {"name": "deepseek-chat", "status": "ok"}, "bm25": "ok", "mcp": "stopped"}}
+{"status": "ok", "data": {"knowledge_home": "C:/knowledge-home", "data_dir": "C:\\knowledge-home\\data\\docs", "embedding": {"name": "bge-small-zh", "status": "ok"}, "vector_store": {"chunks": 10, "sources": 1, "status": "ok"}, "llm": {"name": "deepseek-chat", "status": "ok"}, "bm25": "ok", "mcp": "stopped"}}

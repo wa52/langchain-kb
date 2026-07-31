@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,3 +77,9 @@ class TestLandingPage:
         resp = client.get("/")
         html = resp.text
         assert "knowledge search" in html
+
+    def test_create_app_ensures_data_dirs(self):
+        with patch("config.ensure_data_dirs") as mock:
+            from src.api.app import create_app
+            create_app()
+        mock.assert_called_once()

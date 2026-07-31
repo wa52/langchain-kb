@@ -145,6 +145,8 @@ def main(
     if no_color:
         color = "never"
     _COLOR_MODE = color
+    from config import ensure_data_dirs
+    ensure_data_dirs()
     if ctx.invoked_subcommand is None:
         _print_concise_help()
 
@@ -455,7 +457,7 @@ def chat(
 @app.command()
 def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     """查看系统状态"""
-    from config import EMBEDDING_MODEL, KNOWLEDGE_HOME, LLM_MODEL
+    from config import DATA_DIR, EMBEDDING_MODEL, KNOWLEDGE_HOME, LLM_MODEL
     from src.llm import get_llm
     from src.retrieval.retriever import _BM25_PERSIST_PATH
     from src.vector_store.embedding import get_embedding_model
@@ -485,10 +487,12 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     bm25 = "ok" if _BM25_PERSIST_PATH.exists() else "missing"
     mcp = "running" if _port_open(8000) else "stopped"
     home_status = "ok" if Path(KNOWLEDGE_HOME).exists() else "error"
+    docs_status = "ok" if Path(DATA_DIR).exists() else "error"
 
     if as_json:
         _emit_json({"status": "ok", "data": {
             "knowledge_home": str(KNOWLEDGE_HOME),
+            "data_dir": str(DATA_DIR),
             "embedding": embedding,
             "vector_store": vector_store,
             "llm": llm,
@@ -503,6 +507,7 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     table.add_column("状态")
     table.add_column("详情")
     table.add_row("数据目录", _dot(home_status), str(KNOWLEDGE_HOME))
+    table.add_row("源文档目录", _dot(docs_status), str(DATA_DIR))
     table.add_row("Embedding", _dot(embedding["status"]), embedding["name"])
     table.add_row("向量库", _dot(vector_store["status"]),
                   f"{vector_store['chunks']} chunks · {vector_store['sources']} 来源")
@@ -524,7 +529,7 @@ def doctor(
     """健康检查"""
     import platform
 
-    from config import DEEPSEEK_API_KEY, KNOWLEDGE_HOME
+    from config import DATA_DIR, DEEPSEEK_API_KEY, KNOWLEDGE_HOME
     from src.vector_store.embedding import get_embedding_model
     from src.vector_store.service import VectorStoreService
 
@@ -538,6 +543,9 @@ def doctor(
     add("数据目录", Path(KNOWLEDGE_HOME).exists(),
         detail=str(KNOWLEDGE_HOME),
         fix="设置 KNOWLEDGE_HOME 指向已存在的目录")
+    add("源文档目录", Path(DATA_DIR).exists(),
+        detail=str(DATA_DIR),
+        fix="把文档放入该目录或运行: knowledge index <path>")
     add("配置文件 (.env)", (Path(KNOWLEDGE_HOME) / ".env").exists(),
         fix="创建 .env 文件", critical=True)
     add("DEEPSEEK_API_KEY", bool(DEEPSEEK_API_KEY),

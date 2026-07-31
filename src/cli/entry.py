@@ -16,6 +16,8 @@ def run_cli():
 def main():
     sys.stdout = _wrap_utf8(sys.stdout)
     sys.stderr = _wrap_utf8(sys.stderr)
+    from config import ensure_data_dirs
+    ensure_data_dirs()
     run_cli()
 
 

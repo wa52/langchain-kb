@@ -277,6 +277,7 @@ class TestStatus:
             patch("config.EMBEDDING_MODEL", "bge-small-zh"),
             patch("config.LLM_MODEL", "deepseek-chat"),
             patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+            patch("config.DATA_DIR", Path("C:/knowledge-home/data/docs")),
         ):
             mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": ["a"], "source_count": 1}
             mock_bm25.exists.return_value = True
@@ -658,3 +659,73 @@ class TestKnowledgeHomeVisibility:
         assert result.exit_code == 0
         assert "web" in result.output
         assert "cli" in result.output
+
+
+class TestAutomaticSetup:
+
+    def test_status_json_includes_data_dir(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+            patch("config.DATA_DIR", Path("C:/knowledge-home/data/docs")),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["data"]["data_dir"] == str(Path("C:/knowledge-home/data/docs"))
+
+    def test_status_table_shows_data_dir(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+            patch("config.DATA_DIR", Path("C:/knowledge-home/data/docs")),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert str(Path("C:/knowledge-home/data/docs")) in result.output
+
+    def test_doctor_json_includes_data_dir_check(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("config.DEEPSEEK_API_KEY", "sk-test"),
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.cli.knowledge._port_open", return_value=True),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 5, "sources": [], "source_count": 1}
+            result = runner.invoke(app, ["doctor", "--json"])
+        assert result.exit_code == 0
+        names = [c["name"] for c in json.loads(result.output)["data"]["checks"]]
+        assert "源文档目录" in names
+
+    def test_callback_ensures_data_dirs(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.ensure_data_dirs") as mock_ensure,
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 0, "sources": [], "source_count": 0}
+            mock_bm25.exists.return_value = False
+            result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0
+        mock_ensure.assert_called()

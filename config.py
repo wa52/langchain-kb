@@ -22,9 +22,7 @@ load_dotenv(KNOWLEDGE_HOME / ".env")
 PRODUCT_NAME = os.getenv("PRODUCT_NAME", "个人知识库")
 PRODUCT_NAME_EN = os.getenv("PRODUCT_NAME_EN", "Personal Knowledge Base")
 
-DATA_DIR = Path(os.getenv("DATA_DIR", r"C:\Users\SJ\Desktop\md\langchain_data"))
-if not DATA_DIR.is_absolute():
-    DATA_DIR = KNOWLEDGE_HOME / DATA_DIR
+DATA_DIR = Path(_resolve_dir("DATA_DIR", "./data/docs"))
 CHROMA_PERSIST_DIR = _resolve_dir("CHROMA_PERSIST_DIR", "./chroma_db")
 EXTERNAL_DIR = _resolve_dir("EXTERNAL_DIR", "./data/external")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-small-zh")
@@ -48,3 +46,9 @@ ENABLE_GRAPH_LLM_EXTRACTION = os.getenv("ENABLE_GRAPH_LLM_EXTRACTION", "false").
 GRAPH_LLM_BATCH_SIZE = int(os.getenv("GRAPH_LLM_BATCH_SIZE", "10"))
 GRAPH_PERSIST_DIR = _resolve_dir("GRAPH_PERSIST_DIR", "./data")
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
+
+
+def ensure_data_dirs():
+    """Create the knowledge-base directory skeleton if missing (idempotent)."""
+    for d in (DATA_DIR, Path(EXTERNAL_DIR), Path(CHROMA_PERSIST_DIR)):
+        d.mkdir(parents=True, exist_ok=True)

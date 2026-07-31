@@ -21,6 +21,25 @@ class TestEntryModule:
         assert "serve" in out
         assert "search" in out
 
+    def test_main_ensures_data_dirs_then_runs(self):
+        import subprocess
+        import sys as _sys
+        code = (
+            "import sys\n"
+            "from unittest.mock import patch\n"
+            "from src.cli import entry\n"
+            "sys.argv = ['knowledge', 'status']\n"
+            "with patch('src.cli.entry.run_cli') as m_run, \\\n"
+            "        patch('config.ensure_data_dirs') as m_ensure:\n"
+            "    entry.main()\n"
+            "    m_ensure.assert_called_once()\n"
+            "    m_run.assert_called_once()\n"
+            "print('OK')\n"
+        )
+        proc = subprocess.run([_sys.executable, "-c", code], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        assert "OK" in proc.stdout
+
 
 class TestPackaging:
 

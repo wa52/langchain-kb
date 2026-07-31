@@ -43,7 +43,9 @@ knowledge web
 
 `KNOWLEDGE_HOME` 必须作为 **环境变量** 设置，它决定了 `.env` 从哪个目录读取——因此不能写在 `.env` 里。其余路径（如 `CHROMA_PERSIST_DIR`、`EXTERNAL_DIR`、`DATA_DIR`）可以在 `.env` 中配置，相对路径都会基于 `KNOWLEDGE_HOME` 解析。
 
-> 注意：源文档目录 `DATA_DIR` 的默认值是一台机器的绝对路径。迁移到新机器后，请在 `.env` 中把它配置为该机器上的源文档位置，否则检索仍指向旧路径。
+首次运行会自动创建目录骨架：`chroma_db/`、`data/docs/`（源文档目录）、`data/external/`（外置数据）。
+
+> 源文档目录 `DATA_DIR` 默认是 `<KNOWLEDGE_HOME>/data/docs`，随知识库一起迁移，通常无需配置。只有当你的文档放在别处时，才在 `.env` 中设置 `DATA_DIR` 指向它。
 
 从任意目录运行都会读取同一份 `KNOWLEDGE_HOME` 下的 `.env` 和数据，不会写入当前 shell 所在目录。
 
@@ -52,7 +54,7 @@ knowledge web
 1. 复制整个知识库目录（含 `chroma_db/`、`data/`）到目标电脑，例如通过 GitHub、U 盘或同步盘。
 2. 在目标电脑安装命令：`pip install -e <项目路径>`。
 3. 设置 `KNOWLEDGE_HOME` 指向复制过来的目录。
-4. 在 `.env` 中把 `DATA_DIR`（源文档）指向该机器上的文档位置，并按需配置其余路径。
+4. 零配置即可使用：目录骨架会自动创建。若源文档放在别处，再在 `.env` 中设置 `DATA_DIR`。
 
 ## 远程访问
 

@@ -18,6 +18,9 @@ logging.basicConfig(
 
 
 def create_app() -> FastAPI:
+    from config import ensure_data_dirs
+    ensure_data_dirs()
+
     app = FastAPI(
         title=f"{PRODUCT_NAME} API",
         version="1.0.0",
