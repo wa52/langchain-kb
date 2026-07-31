@@ -17,6 +17,10 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "api":
         sys.argv.pop(1)
         run_api()
+    elif len(sys.argv) >= 2 and sys.argv[1] == "kb":
+        sys.argv.pop(1)
+        from src.cli.kb import kb
+        kb()
     elif len(sys.argv) == 1:
         run_console()
     else:
