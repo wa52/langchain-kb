@@ -15,6 +15,15 @@ def state():
 
 class TestHandleCommand:
 
+    @pytest.fixture(autouse=True)
+    def _ready_agent(self):
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ev,
+            patch.object(console_mod, "_agent_result", (MagicMock(), MagicMock())),
+        ):
+            mock_ev.is_set.return_value = True
+            yield
+
     def test_plain_text_returns_empty(self, state):
         result = handle_command("什么是 RAG", state)
         assert result == ""
@@ -131,13 +140,19 @@ class TestLoadingState:
                 assert "暂无历史会话" in result
 
     def test_plain_text_works_after_ready(self, state):
-        with patch.object(console_mod, "_agent_ready") as mock_ready:
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ready,
+            patch.object(console_mod, "_agent_result", (MagicMock(), MagicMock())),
+        ):
             mock_ready.is_set.return_value = True
             result = handle_command("你好", state)
             assert result == ""
 
     def test_command_works_after_ready(self, state):
-        with patch.object(console_mod, "_agent_ready") as mock_ready:
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ready,
+            patch.object(console_mod, "_agent_result", (MagicMock(), MagicMock())),
+        ):
             mock_ready.is_set.return_value = True
             with (
                 patch("src.cli.console.run_add_path", return_value=3),

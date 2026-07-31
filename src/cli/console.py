@@ -23,7 +23,6 @@ except ImportError:
     _HAS_PROMPT_TOOLKIT = False
 
 _agent_ready = threading.Event()
-_agent_ready.set()
 _agent_result = None
 
 _COMMANDS_NO_AGENT_NEEDED = frozenset({
@@ -143,7 +142,7 @@ def _do_handle_command(line: str, state: dict) -> str | None:
         return ""
 
     if not line.startswith("/"):
-        if not _agent_ready.is_set():
+        if not _agent_ready.is_set() or _agent_result is None:
             return "  [提示] 知识库正在加载中，请稍候..."
         if isinstance(_agent_result, Exception):
             return "  [错误] 知识库加载失败，请检查网络连接和 .env 配置"
@@ -154,7 +153,7 @@ def _do_handle_command(line: str, state: dict) -> str | None:
     arg = parts[1] if len(parts) > 1 else ""
 
     if cmd not in _COMMANDS_NO_AGENT_NEEDED:
-        if not _agent_ready.is_set():
+        if not _agent_ready.is_set() or _agent_result is None:
             return "  [提示] 知识库正在加载中，请稍候..."
         if isinstance(_agent_result, Exception):
             return "  [错误] 知识库加载失败，请检查网络连接和 .env 配置"
@@ -329,7 +328,7 @@ def run_console():
     loading_banner_shown = True
 
     while True:
-        if _agent_ready.is_set() and loading_banner_shown:
+        if _agent_ready.is_set() and _agent_result is not None and loading_banner_shown:
             loading_banner_shown = False
             if isinstance(_agent_result, Exception):
                 echo(f"  [错误] 初始化失败: {_agent_result}")
