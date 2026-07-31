@@ -83,3 +83,41 @@ class TestLandingPage:
             from src.api.app import create_app
             create_app()
         mock.assert_called_once()
+
+
+class TestWorkspaceApp:
+
+    def test_root_is_workspace_with_three_sections(self, client):
+        resp = client.get("/")
+        html = resp.text
+        for section_id in ["chat-view", "search-view", "index-view"]:
+            assert f'id="{section_id}"' in html
+
+    def test_root_chat_hits_api(self, client):
+        resp = client.get("/")
+        assert '"/api/v1/chat"' in resp.text
+
+    def test_root_search_hits_api(self, client):
+        resp = client.get("/")
+        assert '"/api/v1/retrieval/search"' in resp.text
+
+    def test_root_index_hits_api(self, client):
+        resp = client.get("/")
+        assert '"/api/v1/documents/index"' in resp.text
+        assert '"/api/v1/index/tasks/"' in resp.text
+
+    def test_root_has_viewport_meta(self, client):
+        resp = client.get("/")
+        assert '<meta name="viewport"' in resp.text
+
+    def test_root_respects_reduced_motion(self, client):
+        resp = client.get("/")
+        assert "prefers-reduced-motion" in resp.text
+
+    def test_root_has_focus_visible_ring(self, client):
+        resp = client.get("/")
+        assert ":focus-visible" in resp.text
+
+    def test_root_has_loading_feedback(self, client):
+        resp = client.get("/")
+        assert "aria-busy" in resp.text

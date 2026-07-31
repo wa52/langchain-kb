@@ -105,7 +105,8 @@ class TestEnsureDataDirs:
 
     def _fresh_home(self, monkeypatch, tmp_path):
         monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
-        monkeypatch.delenv("DATA_DIR", raising=False)
+        for key in ["DATA_DIR", "CHROMA_PERSIST_DIR", "EXTERNAL_DIR", "GRAPH_PERSIST_DIR"]:
+            monkeypatch.delenv(key, raising=False)
 
     def test_creates_directory_skeleton(self, fresh_config, tmp_path, monkeypatch):
         self._fresh_home(monkeypatch, tmp_path)

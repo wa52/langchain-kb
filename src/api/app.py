@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from config import PRODUCT_NAME, PRODUCT_NAME_EN
-from src.api.landing import landing_html
+from src.api.web import web_app_html
 from src.api.schemas import ErrorResponse
 from src.resources import app_lifespan
 
@@ -39,7 +39,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     async def landing_page():
-        return landing_html()
+        return web_app_html()
 
     from fastapi_mcp import FastApiMCP
     app.state.mcp = FastApiMCP(

@@ -125,6 +125,8 @@ ASCII only (`#` / `.`), 20 chars wide, `\r` overwrite same line. Safe in GBK ter
 
 10. **tqdm suppression** — `HF_HUB_DISABLE_PROGRESS_BARS=1` set at the start of `create_rag_agent()` to suppress raw progress bar output from `sentence_transformers`/`huggingface_hub` during model loading.
 
+11. **ChromaDB + non-ASCII path** — chromadb's Rust bindings fail to open a persist dir whose path contains non-ASCII (Chinese) characters: `InternalError: os error 123`. Keep `CHROMA_PERSIST_DIR` on an ASCII-only path (e.g. `C:\Users\<user>\.knowledge\chroma_db`). This repo's own folder name contains Chinese, so the default `./chroma_db` resolves under a Chinese path and is unusable — set `CHROMA_PERSIST_DIR` in `.env`.
+
 ## Config (.env)
 
 | Key | Default | Description |
