@@ -9,6 +9,16 @@ python main.py                 # interactive console with status bar + 14 slash 
 python main.py search <query>  # vector search only
 ```
 
+Global command (usable from any directory, after `pip install -e .`):
+
+```powershell
+knowledge web        # start Web UI + API + MCP (--open opens browser)
+knowledge cli        # interactive console
+knowledge search "q" # vector search
+```
+
+Data locations are anchored to `KNOWLEDGE_HOME` (defaults to project root) — see `docs/global-usage.md`. Relative `CHROMA_PERSIST_DIR`/`EXTERNAL_DIR`/`GRAPH_PERSIST_DIR`/`DATA_DIR` resolve against it, so commands work from any cwd.
+
 ## Entrypoints
 
 | Entry | Trigger | What loads |

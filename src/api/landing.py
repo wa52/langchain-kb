@@ -53,9 +53,11 @@ def landing_html() -> str:
       <a class="btn" href="/mcp">MCP 服务</a>
       <a class="btn" href="/api/v1/health">健康检查</a>
     </div>
-    <h2>快速开始</h2>
-    <pre><code>python main.py knowledge serve</code></pre>
-    <p class="muted">启动后访问本页即可使用上述入口。</p>
+    <h2>命令行入口</h2>
+    <pre><code>knowledge web        # 启动本 Web 服务
+knowledge cli        # 进入交互式问答
+knowledge search "问题"  # 检索知识</code></pre>
+    <p class="muted">安装全局命令：pip install -e &lt;项目路径&gt;，之后可在任意目录运行。</p>
   </div>
 </body>
 </html>

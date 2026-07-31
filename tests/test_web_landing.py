@@ -62,3 +62,18 @@ class TestLandingPage:
     def test_root_excluded_from_openapi(self, client):
         schema = client.app.openapi()
         assert "/" not in schema.get("paths", {})
+
+    def test_root_shows_global_web_command(self, client):
+        resp = client.get("/")
+        html = resp.text
+        assert "knowledge web" in html
+
+    def test_root_shows_global_cli_command(self, client):
+        resp = client.get("/")
+        html = resp.text
+        assert "knowledge cli" in html
+
+    def test_root_shows_search_command(self, client):
+        resp = client.get("/")
+        html = resp.text
+        assert "knowledge search" in html

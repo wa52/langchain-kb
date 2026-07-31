@@ -276,6 +276,7 @@ class TestStatus:
             patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
             patch("config.EMBEDDING_MODEL", "bge-small-zh"),
             patch("config.LLM_MODEL", "deepseek-chat"),
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
         ):
             mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": ["a"], "source_count": 1}
             mock_bm25.exists.return_value = True
@@ -530,3 +531,130 @@ class TestHelpDiscovery:
         assert result.exit_code == 0
         assert "示例" in result.output
         assert "index ./docs" in result.output
+
+
+class TestWebCommand:
+
+    def test_web_json_output(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+        ):
+            result = runner.invoke(app, ["web", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "ok"
+        for key in ["url", "web", "swagger", "mcp"]:
+            assert key in parsed["data"]
+
+    def test_web_no_open_by_default(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(app, ["web"])
+        assert result.exit_code == 0
+        mock_open.assert_not_called()
+
+    def test_web_open_calls_browser(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(app, ["web", "--open"])
+        assert result.exit_code == 0
+        mock_open.assert_called_once_with("http://127.0.0.1:8000/")
+
+    def test_web_open_skipped_in_json(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(app, ["web", "--open", "--json"])
+        assert result.exit_code == 0
+        mock_open.assert_not_called()
+
+    def test_web_port_busy_exit_75(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run", side_effect=OSError("address in use")),
+        ):
+            result = runner.invoke(app, ["web", "--json"])
+        assert result.exit_code == 75
+
+
+class TestCliCommand:
+
+    def test_cli_runs_console(self):
+        with patch("src.cli.console.run_console") as mock_console:
+            result = runner.invoke(app, ["cli"])
+        assert result.exit_code == 0
+        mock_console.assert_called_once()
+
+
+class TestKnowledgeHomeVisibility:
+
+    def test_status_json_includes_knowledge_home(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["data"]["knowledge_home"] == "C:/knowledge-home"
+
+    def test_status_table_shows_knowledge_home(self):
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 10, "sources": ["a"], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "C:/knowledge-home" in result.output
+
+    def test_doctor_json_includes_knowledge_home_check(self):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("config.DEEPSEEK_API_KEY", "sk-test"),
+            patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.cli.knowledge._port_open", return_value=True),
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 5, "sources": [], "source_count": 1}
+            result = runner.invoke(app, ["doctor", "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        names = [c["name"] for c in parsed["data"]["checks"]]
+        assert "数据目录" in names
+
+    def test_no_args_help_lists_web_and_cli(self):
+        result = runner.invoke(app, [])
+        assert result.exit_code == 0
+        assert "knowledge web" in result.output
+        assert "knowledge cli" in result.output
+
+    def test_full_help_lists_web_and_cli(self):
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "web" in result.output
+        assert "cli" in result.output

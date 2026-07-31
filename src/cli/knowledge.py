@@ -25,9 +25,10 @@ app = typer.Typer(
     help=f"{PRODUCT_NAME}命令行工具",
     epilog=(
         "示例:\n"
-        "  knowledge index ./docs\n"
+        "  knowledge web\n"
+        "  knowledge cli\n"
         '  knowledge search "什么是RAG?"\n'
-        "  knowledge serve --port 8000"
+        "  knowledge index ./docs"
     ),
 )
 
@@ -104,12 +105,14 @@ def _exit(code: int):
 
 
 _COMMANDS = [
-    ("serve", "启动 API + MCP 服务"),
-    ("index", "索引文件或目录到向量库"),
+    ("web", "启动 Web 服务（首页 + API + MCP）"),
+    ("cli", "进入交互式问答控制台"),
     ("search", "检索知识片段"),
     ("chat", "基于知识库回答"),
+    ("index", "索引文件或目录到向量库"),
     ("status", "查看系统状态"),
     ("doctor", "健康检查"),
+    ("serve", "启动 API + MCP 服务"),
 ]
 
 
@@ -119,9 +122,10 @@ def _print_concise_help():
     typer.echo("用法: knowledge [命令] [选项]")
     typer.echo()
     typer.echo("示例:")
-    typer.echo("  knowledge index ./docs")
+    typer.echo("  knowledge web")
+    typer.echo("  knowledge cli")
     typer.echo('  knowledge search "什么是RAG?"')
-    typer.echo("  knowledge serve --port 8000")
+    typer.echo("  knowledge index ./docs")
     typer.echo()
     typer.echo("常用命令:")
     for name, desc in _COMMANDS:
@@ -202,13 +206,25 @@ class _PipelineEcho:
 
 
 @app.command()
-def serve(
+def web(
     host: str = typer.Option("127.0.0.1", help="监听地址"),
     port: int = typer.Option(8000, help="监听端口"),
     reload: bool = typer.Option(False, help="开发模式自动重载"),
+    open_browser: bool = typer.Option(False, "--open", help="启动后打开浏览器"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
-    """启动 API + MCP 服务"""
+    """启动 Web 服务（Web 首页 + API 文档 + MCP）"""
+    _serve(host, port, reload, as_json, open_browser=open_browser)
+
+
+@app.command()
+def cli():
+    """进入交互式问答控制台"""
+    from src.cli.console import run_console
+    run_console()
+
+
+def _serve(host, port, reload, as_json, open_browser=False):
     import uvicorn
 
     from src.api.app import create_app
@@ -232,6 +248,9 @@ def serve(
         _data_console().print(panel)
     try:
         app_obj = create_app()
+        if open_browser and not as_json:
+            import webbrowser
+            webbrowser.open(f"{url}/")
         uvicorn.run(app_obj, host=host, port=port, reload=reload, log_level="info")
     except OSError as e:
         _fail(
@@ -239,10 +258,21 @@ def serve(
             f"端口 {port} 被占用: {e}",
             "PORT_BUSY", "port_busy", recoverable=True,
             suggestions=[
-                f"换一个端口: knowledge serve --port {port + 1}",
+                f"换一个端口: knowledge web --port {port + 1}",
                 f"检查占用进程: netstat -ano | findstr :{port}",
             ],
         )
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="监听地址"),
+    port: int = typer.Option(8000, help="监听端口"),
+    reload: bool = typer.Option(False, help="开发模式自动重载"),
+    as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """启动 API + MCP 服务"""
+    _serve(host, port, reload, as_json)
 
 
 @app.command()
@@ -425,7 +455,7 @@ def chat(
 @app.command()
 def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     """查看系统状态"""
-    from config import EMBEDDING_MODEL, LLM_MODEL
+    from config import EMBEDDING_MODEL, KNOWLEDGE_HOME, LLM_MODEL
     from src.llm import get_llm
     from src.retrieval.retriever import _BM25_PERSIST_PATH
     from src.vector_store.embedding import get_embedding_model
@@ -454,9 +484,11 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
 
     bm25 = "ok" if _BM25_PERSIST_PATH.exists() else "missing"
     mcp = "running" if _port_open(8000) else "stopped"
+    home_status = "ok" if Path(KNOWLEDGE_HOME).exists() else "error"
 
     if as_json:
         _emit_json({"status": "ok", "data": {
+            "knowledge_home": str(KNOWLEDGE_HOME),
             "embedding": embedding,
             "vector_store": vector_store,
             "llm": llm,
@@ -470,6 +502,7 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     table.add_column("组件", style="bold")
     table.add_column("状态")
     table.add_column("详情")
+    table.add_row("数据目录", _dot(home_status), str(KNOWLEDGE_HOME))
     table.add_row("Embedding", _dot(embedding["status"]), embedding["name"])
     table.add_row("向量库", _dot(vector_store["status"]),
                   f"{vector_store['chunks']} chunks · {vector_store['sources']} 来源")
@@ -491,7 +524,7 @@ def doctor(
     """健康检查"""
     import platform
 
-    from config import DEEPSEEK_API_KEY
+    from config import DEEPSEEK_API_KEY, KNOWLEDGE_HOME
     from src.vector_store.embedding import get_embedding_model
     from src.vector_store.service import VectorStoreService
 
@@ -502,7 +535,10 @@ def doctor(
                        "fix": fix, "critical": critical})
 
     add("Python", True, detail=platform.python_version())
-    add("配置文件 (.env)", Path(".env").exists(),
+    add("数据目录", Path(KNOWLEDGE_HOME).exists(),
+        detail=str(KNOWLEDGE_HOME),
+        fix="设置 KNOWLEDGE_HOME 指向已存在的目录")
+    add("配置文件 (.env)", (Path(KNOWLEDGE_HOME) / ".env").exists(),
         fix="创建 .env 文件", critical=True)
     add("DEEPSEEK_API_KEY", bool(DEEPSEEK_API_KEY),
         fix="在 .env 中设置 DEEPSEEK_API_KEY", critical=True)
