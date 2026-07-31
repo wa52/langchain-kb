@@ -96,6 +96,20 @@ def _load_agent_background():
         _agent_ready.set()
 
 
+def _sync_agent_state(state: dict) -> bool:
+    """Sync state['agent'] from module-level _agent_result if needed.
+    Returns True if agent is usable after the call."""
+    if state.get("agent") is not None:
+        return True
+    if _agent_ready.is_set() and _agent_result is not None:
+        if not isinstance(_agent_result, Exception):
+            agent, llm = _agent_result
+            state["agent"] = agent
+            state["_llm"] = llm
+            return True
+    return False
+
+
 def get_status_bar(state: dict) -> str:
     mode = "LLM" if ENABLE_GRAPH_LLM_EXTRACTION else "jieba"
     session_id = state.get("session_id")
@@ -333,10 +347,7 @@ def run_console():
             if isinstance(_agent_result, Exception):
                 echo(f"  [错误] 初始化失败: {_agent_result}")
                 echo("  请检查网络连接和 .env 配置 (DEEPSEEK_API_KEY)")
-            else:
-                agent, llm = _agent_result
-                state["agent"] = agent
-                state["_llm"] = llm
+            elif _sync_agent_state(state):
                 echo("")
                 echo(get_status_bar(state))
                 echo("")
@@ -369,6 +380,9 @@ def run_console():
             continue
 
         # Plain text — chat mode
+        if not _sync_agent_state(state):
+            echo("  [提示] 知识库正在加载中，请稍候...")
+            continue
         msgs = state["messages"] + [{"role": "user", "content": line.strip()}]
         echo("助手: ", end="")
         answer_parts = []

@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import src.cli.console as console_mod
-from src.cli.console import handle_command
+from src.cli.console import handle_command, _sync_agent_state
 
 
 @pytest.fixture
@@ -203,3 +203,56 @@ class TestEchoCarriageReturn:
                     mock_cli.assert_called_once()
                     args = mock_cli.call_args[0]
                     assert "\r" in args[0]
+
+
+class TestSyncAgentState:
+
+    def test_skip_when_state_already_has_agent(self, state):
+        state["agent"] = MagicMock()
+        state["_llm"] = MagicMock()
+        assert _sync_agent_state(state) is True
+        assert state["agent"] is not None
+        assert state["_llm"] is not None
+
+    def test_returns_true_and_syncs_when_global_ready(self, state):
+        mock_agent = MagicMock()
+        mock_llm = MagicMock()
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ready,
+            patch.object(console_mod, "_agent_result", (mock_agent, mock_llm)),
+        ):
+            mock_ready.is_set.return_value = True
+            assert _sync_agent_state(state) is True
+            assert state["agent"] is mock_agent
+            assert state["_llm"] is mock_llm
+
+    def test_returns_false_when_not_ready(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = False
+            assert _sync_agent_state(state) is False
+            assert state["agent"] is None
+
+    def test_returns_false_when_result_is_exception(self, state):
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ready,
+            patch.object(console_mod, "_agent_result", Exception("fail")),
+        ):
+            mock_ready.is_set.return_value = True
+            assert _sync_agent_state(state) is False
+            assert state["agent"] is None
+
+    def test_race_condition_state_agent_lags_behind_global(self, state):
+        """Regression: _agent_result ready but state["agent"] not synced yet.
+        handle_command returns "" (chat path), then _sync_agent_state rescues."""
+        mock_agent = MagicMock()
+        mock_llm = MagicMock()
+        with (
+            patch.object(console_mod, "_agent_ready") as mock_ready,
+            patch.object(console_mod, "_agent_result", (mock_agent, mock_llm)),
+        ):
+            mock_ready.is_set.return_value = True
+            state["agent"] = None
+            result = handle_command("hello", state)
+            assert result == ""
+            assert _sync_agent_state(state) is True
+            assert state["agent"] is mock_agent
