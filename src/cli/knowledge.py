@@ -6,6 +6,7 @@ import re
 import socket
 import sys
 from pathlib import Path
+from typing import Literal
 
 import typer
 from rich.console import Console
@@ -16,7 +17,19 @@ from rich.table import Table
 
 from config import PRODUCT_NAME
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="知识库命令行工具")
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=False,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=f"{PRODUCT_NAME}命令行工具",
+    epilog=(
+        "示例:\n"
+        "  knowledge index ./docs\n"
+        '  knowledge search "什么是RAG?"\n'
+        "  knowledge serve --port 8000"
+    ),
+)
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -24,25 +37,112 @@ EXIT_NOT_FOUND = 3
 EXIT_TRANSIENT = 75
 EXIT_CONFIG = 78
 
+_COLOR_MODE = "auto"
+
 _SOURCE_RE = re.compile(r"\[来源:\s*([^\]]+)\]")
 _STAGE_RE = re.compile(r"^\[([\d.]+/\d+)\]\s*(.*)$")
 _PCT_RE = re.compile(r"^\[\s*(\d+)%\]")
 
 
+def _resolve_color(stream) -> bool:
+    """Apply the color evaluation order: FORCE_COLOR > --color > NO_COLOR
+    > TERM=dumb > TTY detection."""
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    if _COLOR_MODE == "always":
+        return True
+    if _COLOR_MODE == "never":
+        return False
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("TERM") == "dumb":
+        return False
+    return stream.isatty()
+
+
+def _console(file):
+    if _resolve_color(file):
+        return Console(highlight=False, file=file, color_system="standard", no_color=False)
+    return Console(highlight=False, file=file, no_color=True)
+
+
 def _data_console() -> Console:
-    return Console(highlight=False, file=sys.stdout)
+    return _console(sys.stdout)
 
 
 def _err_console() -> Console:
-    return Console(highlight=False, file=sys.stderr)
+    return _console(sys.stderr)
 
 
 def _emit_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False))
 
 
+def _json_error(code, message, type_, recoverable, suggestions=()):
+    print(json.dumps({
+        "status": "error",
+        "error": {
+            "code": code,
+            "type": type_,
+            "message": message,
+            "recoverable": recoverable,
+            "suggestions": list(suggestions),
+        },
+    }, ensure_ascii=False), file=sys.stderr)
+
+
+def _fail(as_json, exit_code, message, code, type_, recoverable, suggestions=()):
+    if as_json:
+        _json_error(code, message, type_, recoverable, suggestions)
+    else:
+        _err_console().print(f"[red]{message}[/red]")
+    _exit(exit_code)
+
+
 def _exit(code: int):
     raise typer.Exit(code)
+
+
+_COMMANDS = [
+    ("serve", "启动 API + MCP 服务"),
+    ("index", "索引文件或目录到向量库"),
+    ("search", "检索知识片段"),
+    ("chat", "基于知识库回答"),
+    ("status", "查看系统状态"),
+    ("doctor", "健康检查"),
+]
+
+
+def _print_concise_help():
+    typer.echo(f"{PRODUCT_NAME}命令行工具")
+    typer.echo()
+    typer.echo("用法: knowledge [命令] [选项]")
+    typer.echo()
+    typer.echo("示例:")
+    typer.echo("  knowledge index ./docs")
+    typer.echo('  knowledge search "什么是RAG?"')
+    typer.echo("  knowledge serve --port 8000")
+    typer.echo()
+    typer.echo("常用命令:")
+    for name, desc in _COMMANDS:
+        typer.echo(f"  {name:<8}{desc}")
+    typer.echo()
+    typer.echo("使用 knowledge --help 查看完整帮助")
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    color: Literal["always", "auto", "never"] = typer.Option(
+        "auto", "--color", help="颜色输出: always / auto / never"),
+    no_color: bool = typer.Option(False, "--no-color", help="禁用颜色（等价于 --color=never）"),
+):
+    global _COLOR_MODE
+    if no_color:
+        color = "never"
+    _COLOR_MODE = color
+    if ctx.invoked_subcommand is None:
+        _print_concise_help()
 
 
 def _port_open(port: int = 8000, host: str = "127.0.0.1") -> bool:
@@ -134,14 +234,15 @@ def serve(
         app_obj = create_app()
         uvicorn.run(app_obj, host=host, port=port, reload=reload, log_level="info")
     except OSError as e:
-        if as_json:
-            _err_console().print(json.dumps({
-                "status": "error",
-                "error": {"code": "PORT_BUSY", "message": f"端口 {port} 被占用: {e}"},
-            }, ensure_ascii=False))
-        else:
-            _err_console().print(f"[red]启动失败:[/red] {e}")
-        _exit(EXIT_TRANSIENT)
+        _fail(
+            as_json, EXIT_TRANSIENT,
+            f"端口 {port} 被占用: {e}",
+            "PORT_BUSY", "port_busy", recoverable=True,
+            suggestions=[
+                f"换一个端口: knowledge serve --port {port + 1}",
+                f"检查占用进程: netstat -ano | findstr :{port}",
+            ],
+        )
 
 
 @app.command()
@@ -161,12 +262,15 @@ def index(
 
     target = Path(path)
     if not target.exists():
-        if as_json:
-            _emit_json({"status": "error", "error": {
-                "code": "NOT_FOUND", "message": f"路径不存在: {path}"}})
-        else:
-            _err_console().print(f"[red]路径不存在:[/red] {path}")
-        _exit(EXIT_NOT_FOUND)
+        _fail(
+            as_json, EXIT_NOT_FOUND,
+            f"路径不存在: {path}",
+            "NOT_FOUND", "path_not_found", recoverable=False,
+            suggestions=[
+                "检查路径拼写后重试: knowledge index <path>",
+                "使用绝对路径或相对路径",
+            ],
+        )
 
     echo = _PipelineEcho(_err_console(), enabled=not as_json)
     processed = 0
@@ -196,12 +300,15 @@ def index(
 
     if error is not None:
         failed = 1
-        if as_json:
-            _emit_json({"status": "error", "error": {
-                "code": "INDEX_FAILED", "message": str(error)}})
-        else:
-            _err_console().print(f"[red]索引失败:[/red] {error}")
-        _exit(EXIT_ERROR)
+        _fail(
+            as_json, EXIT_ERROR,
+            f"索引失败: {error}",
+            "INDEX_FAILED", "index_failed", recoverable=True,
+            suggestions=[
+                f"修复问题后重试: knowledge index {path}",
+                f"跳过未变更文件: knowledge index {path} --incremental",
+            ],
+        )
 
     if as_json:
         _emit_json({"status": "ok", "data": {
@@ -226,12 +333,15 @@ def search(
         vs = get_vector_store()
         pairs = vs.similarity_search_with_relevance_scores(query, k=top_k)
     except Exception as e:
-        if as_json:
-            _emit_json({"status": "error", "error": {
-                "code": "SEARCH_FAILED", "message": str(e)}})
-        else:
-            _err_console().print(f"[red]检索失败:[/red] {e}")
-        _exit(EXIT_ERROR)
+        _fail(
+            as_json, EXIT_ERROR,
+            f"检索失败: {e}",
+            "SEARCH_FAILED", "search_failed", recoverable=True,
+            suggestions=[
+                "检查向量库状态: knowledge doctor",
+                "确认已索引数据: knowledge index <path>",
+            ],
+        )
 
     results = []
     for doc, score in pairs:
@@ -285,12 +395,15 @@ def chat(
     try:
         answer, session_id, elapsed_ms = chat_with_rag(question, session)
     except Exception as e:
-        if as_json:
-            _emit_json({"status": "error", "error": {
-                "code": "CHAT_FAILED", "message": str(e)}})
-        else:
-            _err_console().print(f"[red]回答失败:[/red] {e}")
-        _exit(EXIT_ERROR)
+        _fail(
+            as_json, EXIT_ERROR,
+            f"回答失败: {e}",
+            "CHAT_FAILED", "chat_failed", recoverable=True,
+            suggestions=[
+                "检查 DEEPSEEK_API_KEY 配置: knowledge doctor",
+                "稍后重试",
+            ],
+        )
 
     sources = list(dict.fromkeys(m.strip() for m in _SOURCE_RE.findall(answer)))
     clean = _SOURCE_RE.sub("", answer).strip()
@@ -450,6 +563,24 @@ def doctor(
         if any(c["critical"] for c in failed):
             _exit(EXIT_CONFIG)
         _exit(EXIT_ERROR)
+
+
+@app.command("help")
+def help_command(
+    ctx: typer.Context,
+    topic: str = typer.Argument(None, help="子命令名称"),
+):
+    """显示命令帮助"""
+    import click
+    if topic is None:
+        typer.echo(ctx.parent.get_help())
+        return
+    cmd = ctx.parent.command.commands.get(topic)
+    if cmd is None:
+        _err_console().print(f"[red]未知命令:[/red] {topic}")
+        raise typer.Exit(code=2)
+    sub_ctx = click.Context(cmd, info_name=topic, parent=ctx.parent)
+    typer.echo(cmd.get_help(sub_ctx))
 
 
 if __name__ == "__main__":

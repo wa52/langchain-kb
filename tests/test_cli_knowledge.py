@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 from unittest.mock import patch, MagicMock, ANY
@@ -368,3 +369,164 @@ class TestOutputDiscipline:
     def test_missing_argument_exit_2(self):
         result = runner.invoke(app, ["search"])
         assert result.exit_code == 2
+
+
+class TestJsonErrorContract:
+
+    def _assert_error(self, result, type_, exit_code, recoverable, stdout_empty=True):
+        assert result.exit_code == exit_code
+        if stdout_empty:
+            assert result.stdout == ""
+        parsed = json.loads(result.stderr)
+        assert parsed["status"] == "error"
+        err = parsed["error"]
+        assert err["type"] == type_
+        assert isinstance(err["message"], str) and err["message"]
+        assert err["recoverable"] is recoverable
+        assert isinstance(err["suggestions"], list)
+        assert all(isinstance(s, str) and s for s in err["suggestions"])
+        assert _ANSI.search(result.stderr) is None
+
+    def test_index_json_missing_path(self):
+        self._assert_error(
+            runner.invoke(app, ["index", "./does/not/exist.md", "--json"]),
+            type_="path_not_found", exit_code=3, recoverable=False)
+
+    def test_index_json_pipeline_failure(self):
+        with patch("src.ingestion.pipeline.run_add_path",
+                   side_effect=RuntimeError("boom")):
+            self._assert_error(
+                runner.invoke(app, ["index", "./docs", "--json"]),
+                type_="index_failed", exit_code=1, recoverable=True)
+
+    def test_serve_json_port_busy(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run", side_effect=OSError("address in use")),
+        ):
+            self._assert_error(
+                runner.invoke(app, ["serve", "--json"]),
+                type_="port_busy", exit_code=75, recoverable=True, stdout_empty=False)
+
+    def test_search_json_failure(self):
+        with patch("src.vector_store.chroma_client.get_vector_store",
+                   side_effect=RuntimeError("vector store down")):
+            self._assert_error(
+                runner.invoke(app, ["search", "q", "--json"]),
+                type_="search_failed", exit_code=1, recoverable=True)
+
+    def test_chat_json_failure(self):
+        with patch("src.api.services.chat.chat_with_rag",
+                   side_effect=RuntimeError("api down")):
+            self._assert_error(
+                runner.invoke(app, ["chat", "q", "--json"]),
+                type_="chat_failed", exit_code=1, recoverable=True)
+
+
+class TestColorMode:
+
+    def _invoke_status(self, monkeypatch, args=None, env=None):
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.delenv("FORCE_COLOR", raising=False)
+        for k, v in (env or {}).items():
+            monkeypatch.setenv(k, v)
+        with (
+            patch("src.vector_store.service.VectorStoreService") as mock_vs,
+            patch("src.vector_store.embedding.get_embedding_model"),
+            patch("src.llm.get_llm"),
+            patch("src.cli.knowledge._port_open", return_value=False),
+            patch("src.retrieval.retriever._BM25_PERSIST_PATH") as mock_bm25,
+        ):
+            mock_vs.return_value.get_stats.return_value = {
+                "count": 10, "sources": [], "source_count": 1}
+            mock_bm25.exists.return_value = True
+            return runner.invoke(app, (args or []) + ["status"])
+
+    def test_color_auto_off_when_not_tty(self, monkeypatch):
+        result = self._invoke_status(monkeypatch)
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is None
+
+    def test_color_always_forces_ansi(self, monkeypatch):
+        result = self._invoke_status(monkeypatch, ["--color", "always"])
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is not None
+
+    def test_color_never_disables(self, monkeypatch):
+        result = self._invoke_status(monkeypatch, ["--color", "never"])
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is None
+
+    def test_no_color_alias_disables(self, monkeypatch):
+        result = self._invoke_status(monkeypatch, ["--no-color"])
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is None
+
+    def test_color_always_beats_no_color_env(self, monkeypatch):
+        result = self._invoke_status(
+            monkeypatch, ["--color", "always"], env={"NO_COLOR": "1"})
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is not None
+
+    def test_term_dumb_disables_in_auto(self, monkeypatch):
+        result = self._invoke_status(monkeypatch, env={"TERM": "dumb"})
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is None
+
+    def test_force_color_enables(self, monkeypatch):
+        result = self._invoke_status(monkeypatch, env={"FORCE_COLOR": "1"})
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is not None
+
+    def test_force_color_wins_over_color_never(self, monkeypatch):
+        result = self._invoke_status(
+            monkeypatch, ["--color", "never"], env={"FORCE_COLOR": "1"})
+        assert result.exit_code == 0
+        assert _ANSI.search(result.output) is not None
+
+    def test_invalid_color_value_is_usage_error(self):
+        result = runner.invoke(app, ["--color", "bogus", "status"])
+        assert result.exit_code == 2
+        assert "--color" in result.output
+
+
+class TestHelpDiscovery:
+
+    def test_no_args_shows_concise_help(self):
+        result = runner.invoke(app, [])
+        assert result.exit_code == 0
+        assert "示例" in result.output
+        assert "--help" in result.output
+        assert "index" in result.output
+        assert "search" in result.output
+
+    def test_short_help_flag(self):
+        result = runner.invoke(app, ["-h"])
+        assert result.exit_code == 0
+        assert "serve" in result.output
+
+    def test_subcommand_short_help_flag(self):
+        result = runner.invoke(app, ["search", "-h"])
+        assert result.exit_code == 0
+        assert "--top-k" in result.output
+
+    def test_help_subcommand_lists_commands(self):
+        result = runner.invoke(app, ["help"])
+        assert result.exit_code == 0
+        for cmd in ["serve", "index", "search", "chat", "status", "doctor"]:
+            assert cmd in result.output
+
+    def test_help_subcommand_topic(self):
+        result = runner.invoke(app, ["help", "serve"])
+        assert result.exit_code == 0
+        assert "--port" in result.output
+
+    def test_help_subcommand_unknown_exit_2(self):
+        result = runner.invoke(app, ["help", "nope"])
+        assert result.exit_code == 2
+
+    def test_full_help_has_examples(self):
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "示例" in result.output
+        assert "index ./docs" in result.output
