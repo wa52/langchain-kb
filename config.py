@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+PRODUCT_NAME = os.getenv("PRODUCT_NAME", "个人知识库")
+PRODUCT_NAME_EN = os.getenv("PRODUCT_NAME_EN", "Personal Knowledge Base")
+
 DATA_DIR = Path(os.getenv("DATA_DIR", r"C:\Users\SJ\Desktop\md\langchain_data"))
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 EXTERNAL_DIR = os.getenv("EXTERNAL_DIR", "./data/external")

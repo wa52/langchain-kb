@@ -3,7 +3,7 @@ import os
 import click
 from dotenv import find_dotenv, set_key
 
-from config import DATA_DIR, EXTERNAL_DIR, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, EMBEDDING_MODEL, LLM_MODEL, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_HYBRID_SEARCH, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION, MAX_CONTEXT_TOKENS
+from config import DATA_DIR, EXTERNAL_DIR, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, EMBEDDING_MODEL, LLM_MODEL, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_HYBRID_SEARCH, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION, MAX_CONTEXT_TOKENS, PRODUCT_NAME
 from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_single_file_update, run_add_path, run_remove
 
 
@@ -148,7 +148,7 @@ def chat(session, list_only):
         echo(f"已恢复会话 ({n_turns} 轮对话)\n")
 
     echo("=" * 40)
-    echo("  LangChain RAG 知识库 — 交互问答")
+    echo(f"  {PRODUCT_NAME} — 交互问答")
     echo("=" * 40)
     echo("输入问题开始对话，输入 exit 退出\n")
 

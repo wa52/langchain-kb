@@ -15,7 +15,7 @@ class HealthResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2000, examples=["什么是 LangChain?"])
+    query: str = Field(min_length=1, max_length=2000, examples=["什么是知识库？"])
     top_k: int = Field(default=5, ge=1, le=50)
 
 
@@ -32,7 +32,7 @@ class SearchResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=4000, examples=["什么是 LangChain?"])
+    query: str = Field(min_length=1, max_length=4000, examples=["什么是知识库？"])
     session_id: str | None = Field(
         default=None, description="会话 ID，用于延续历史对话"
     )

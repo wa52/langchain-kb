@@ -6,6 +6,7 @@ from config import (
     DATA_DIR, EXTERNAL_DIR,
     ENABLE_GRADING, ENABLE_REWRITE, ENABLE_HYBRID_SEARCH,
     ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION,
+    PRODUCT_NAME,
 )
 from src.agent.chat_history import save_history, load_history, list_sessions, compress_history
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
@@ -79,7 +80,7 @@ def _get_user_input(prompt_text: str) -> str:
 def get_status_bar_loading() -> str:
     return (
         "+----------------------------------------------------+\n"
-        "|  LangChain RAG 知识库    Loading... 请稍候         |\n"
+        f"|  {PRODUCT_NAME}    Loading... 请稍候                     |\n"
         "+----------------------------------------------------+"
     )
 
@@ -134,7 +135,7 @@ def get_status_bar(state: dict) -> str:
         entity_count = "?"
     bar = (
         "╔══════════════════════════════════════════════════════════╗\n"
-        f"║  LangChain RAG 知识库    {file_count} 文件 · {chunk_count} 块 · {entity_count} 实体 · {mode} 模式  ║\n"
+        f"║  {PRODUCT_NAME}    {file_count} 文件 · {chunk_count} 块 · {entity_count} 实体 · {mode} 模式  ║\n"
         f"║  {session_info:<53}║\n"
         "╚══════════════════════════════════════════════════════════╝"
     )
@@ -328,7 +329,7 @@ def run_console():
     t.start()
 
     echo("=" * 46)
-    echo("  LangChain RAG 知识库 — 交互式终端")
+    echo(f"  {PRODUCT_NAME} — 交互式终端")
     echo("=" * 46)
     echo("输入 /help 查看命令，直接输入问题开始对话")
     echo("")
@@ -371,7 +372,7 @@ def run_console():
             echo(response)
             if "正在加载知识库" in response:
                 echo("")
-            elif response.startswith("╔") and "RAG" in response:
+            elif response.startswith("╔"):
                 echo("")
             continue
 

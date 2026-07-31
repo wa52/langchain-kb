@@ -62,7 +62,7 @@ def _compress(docs, query, llm):
 
 @tool
 def retrieve_knowledge(query: str) -> str:
-    """搜索知识库中与问题最相关的内容。当你需要从已有的 LangChain 教程文档中查找信息时使用此工具。"""
+    """搜索知识库中与问题最相关的内容。当你需要从已有的知识库文档中查找信息时使用此工具。"""
     llm = get_llm(temperature=0) if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
 
     fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
@@ -84,7 +84,7 @@ def retrieve_knowledge(query: str) -> str:
 
 @tool
 def retrieve_graph(query: str) -> str:
-    """搜索知识图谱中与问题相关的实体和关系。当你想了解某个概念、工具或框架之间的关联关系时使用此工具。"""
+    """搜索知识图谱中与问题相关的实体和关系。当你想了解某个概念或实体之间的关联关系时使用此工具。"""
     from src.graph_store.service import GraphService
     return GraphService().search(query)
 

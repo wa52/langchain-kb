@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from langchain_chroma import Chroma
 
-from config import CHROMA_PERSIST_DIR, GRAPH_PERSIST_DIR, TOP_K, ENABLE_HYBRID_SEARCH
+from config import CHROMA_PERSIST_DIR, GRAPH_PERSIST_DIR, TOP_K, ENABLE_HYBRID_SEARCH, PRODUCT_NAME_EN
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class ResourceManager:
 @asynccontextmanager
 async def app_lifespan(app):
     logger.info("=" * 50)
-    logger.info("  LangChain RAG Knowledge Base API starting...")
+    logger.info(f"  {PRODUCT_NAME_EN} API starting...")
     logger.info("=" * 50)
     rm = ResourceManager.get_instance()
     rm.startup(echo_fn=logger.info)

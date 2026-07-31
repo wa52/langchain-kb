@@ -14,6 +14,8 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TextColumn
 from rich.table import Table
 
+from config import PRODUCT_NAME
+
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="知识库命令行工具")
 
 EXIT_OK = 0
@@ -115,15 +117,16 @@ def serve(
     if as_json:
         _emit_json({"status": "ok", "data": {
             "url": url,
+            "web": f"{url}/",
             "swagger": f"{url}/docs",
             "mcp": f"{url}/mcp",
         }})
     else:
         panel = Panel(
-            f"[bold]API:[/bold] {url}\n"
-            f"[bold]Swagger:[/bold] {url}/docs\n"
+            f"[bold]Web:[/bold] {url}/\n"
+            f"[bold]API 文档:[/bold] {url}/docs\n"
             f"[bold]MCP:[/bold] {url}/mcp",
-            title="知识库服务",
+            title=f"{PRODUCT_NAME}服务",
             border_style="cyan",
         )
         _data_console().print(panel)

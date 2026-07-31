@@ -1,8 +1,10 @@
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from config import PRODUCT_NAME, PRODUCT_NAME_EN
+from src.api.landing import landing_html
 from src.api.schemas import ErrorResponse
 from src.resources import app_lifespan
 
@@ -17,7 +19,7 @@ logging.basicConfig(
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="LangChain RAG Knowledge Base API",
+        title=f"{PRODUCT_NAME} API",
         version="1.0.0",
         lifespan=app_lifespan,
     )
@@ -32,12 +34,16 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(indexing_router, prefix="/api/v1")
 
+    @app.get("/", include_in_schema=False, response_class=HTMLResponse)
+    async def landing_page():
+        return landing_html()
+
     from fastapi_mcp import FastApiMCP
     app.state.mcp = FastApiMCP(
         app,
         include_operations=["search_knowledge", "answer_with_knowledge", "get_index_status"],
-        name="LangChain RAG Knowledge Base",
-        description="Semantic search, RAG Q&A, and index status for the knowledge base",
+        name=PRODUCT_NAME,
+        description=f"Semantic search, RAG Q&A, and index status for the {PRODUCT_NAME_EN}",
     )
     app.state.mcp.mount_http()
 
