@@ -93,6 +93,26 @@ def remove_from_tracker(source_name: str, source_type: str | None = None):
     _save_tracker(tracker)
 
 
+def is_already_indexed(filepaths: list[str], source_type: str = "external") -> bool:
+    """Return True if every file already has a matching content hash recorded in
+    the tracker (i.e. it was ingested before). Used to skip duplicate ingests."""
+    if not filepaths:
+        return False
+    tracker = _load_tracker()
+    registry = tracker.get(source_type, {})
+    for fp in filepaths:
+        key = Path(fp).name
+        current = get_file_hash(fp)
+        stored = None
+        for k, h in registry.items():
+            if Path(k).name == key and h == current:
+                stored = h
+                break
+        if stored is None:
+            return False
+    return True
+
+
 def list_all_files() -> list[dict]:
     tracker = _load_tracker()
     result = []

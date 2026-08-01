@@ -153,6 +153,8 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
 
 
 def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: callable = print):
+    from src.ingestion.loader import _iter_files
+    from src.ingestion.tracker import is_already_indexed
     src = Path(path)
     if not src.exists():
         echo_fn(f"路径不存在: {path}")
@@ -165,6 +167,9 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
 
     if src.is_file():
         target = target_base / src.name
+        if is_already_indexed([str(src)]):
+            echo_fn(f"  -> {src.name} 已添加过，跳过")
+            return 0
         if target.exists():
             stem = target.stem
             suffix = target.suffix
@@ -179,6 +184,9 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
 
     elif src.is_dir():
         target = target_base / src.name
+        if is_already_indexed([str(p) for p in _iter_files(src)]):
+            echo_fn(f"  -> 目录 {src.name} 已添加过，跳过")
+            return 0
         if target.exists():
             stem = target.stem
             counter = 1
@@ -188,7 +196,7 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
             echo_fn(f"  同名目录已存在，重命名为: {target.name}")
         echo_fn("  正在复制目录到 data/external/ ...")
         shutil.copytree(str(src), str(target), ignore=_ignore_images)
-        copied_paths.append(str(target))
+        copied_paths = [str(p) for p in _iter_files(target)]
         echo_fn(f"[1/3] Copying directory {src.name} -> {target}")
 
     echo_fn(f"[2/3] Loading and splitting ...")
