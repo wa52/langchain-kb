@@ -1,0 +1,74 @@
+"""Stage 4: algorithm selection for a detection task.
+
+Rule-based mapping from detection task to recommended algorithm families,
+optionally enriched with capability-4 (算法实现) knowledge retrieval.
+"""
+
+TASK_ALGORITHM_RULES = {
+    "测量": {
+        "algorithms": ["边缘检测", "卡尺工具", "亚像素拟合"],
+        "reason": "高精度尺寸测量需边缘定位 + 卡尺 + 亚像素插值",
+    },
+    "定位": {
+        "algorithms": ["模板匹配", "特征匹配", "形状匹配"],
+        "reason": "稳定对位需基于灰度/形状/特征模板匹配",
+    },
+    "缺陷": {
+        "algorithms": ["Blob分析", "图像分割", "异常检测"],
+        "reason": "区域特征分析（连通域、形态学），可选深度学习异常检测",
+    },
+    "OCR": {
+        "algorithms": ["OCR模型", "条码/二维码识别"],
+        "reason": "字符识别需 OCR 引擎或数据码解码",
+    },
+}
+
+_TASK_KEYWORDS = {
+    "测量": ["测量", "尺寸", "长度", "宽度", "角度", "measure"],
+    "定位": ["定位", "对位", "位置", "position", "匹配"],
+    "缺陷": ["缺陷", "检测", "划痕", "瑕疵", "inspection", "defect", "scratch"],
+    "OCR": ["OCR", "字符", "条码", "二维码", "识别", "data code"],
+}
+
+
+def _resolve_task(task: str) -> str:
+    """Map a free-text task onto a known rule category."""
+    low = (task or "").lower()
+    for cat, kws in _TASK_KEYWORDS.items():
+        if any(k.lower() in low for k in kws):
+            return cat
+    if not task:
+        return "缺陷"  # default most common
+    return task
+
+
+def select_algorithm(task: str, scene: str = "", llm=None) -> dict:
+    """Recommend algorithms for a detection task.
+
+    Returns: {task, algorithms[], reason, knowledge_refs[]}
+    knowledge_refs filled from capability-4 retrieval when llm/scene allow.
+    """
+    category = _resolve_task(task)
+    rule = TASK_ALGORITHM_RULES.get(category, {
+        "algorithms": ["图像预处理", "分割", "目标分析"],
+        "reason": "通用视觉处理流程",
+    })
+
+    result = {
+        "task": task,
+        "category": category,
+        "algorithms": list(rule["algorithms"]),
+        "reason": rule["reason"],
+        "knowledge_refs": [],
+    }
+
+    # Enrich with capability-4 knowledge when not in test mode (llm provided)
+    if llm is not None:
+        try:
+            from src.agent.solution_generator import _search_capability
+            refs = _search_capability(4, f"{task} {category} 算法", k=3)
+            result["knowledge_refs"] = refs
+        except Exception:
+            pass
+
+    return result

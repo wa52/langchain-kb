@@ -112,6 +112,7 @@ _COMMANDS = [
     ("index", "索引文件或目录到向量库"),
     ("map", "查看能力模型与知识覆盖"),
     ("project", "按能力阶段引导工业视觉项目"),
+    ("design", "根据需求生成初版工业视觉方案"),
     ("status", "查看系统状态"),
     ("doctor", "健康检查"),
     ("serve", "启动 API + MCP 服务"),
@@ -682,6 +683,186 @@ def project_command(
 
     console = _data_console()
     console.print(Markdown(text))
+
+
+@app.command("design")
+def design_command(
+    project_desc: str = typer.Argument(..., help="项目描述，如 'PCB 表面缺陷检测'"),
+    llm_check: bool = typer.Option(False, "--llm-check", help="生成后执行方案质量/风险/完整性检查"),
+    as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """根据项目需求生成初版工业视觉方案（输出到 data/projects/）"""
+    import time as _t
+    from config import KNOWLEDGE_HOME, LLM_MODEL
+    from src.llm import get_llm
+    from src.agent.requirement_analyzer import analyze_requirement
+    from src.agent.algorithm_selector import select_algorithm
+    from src.agent.solution_generator import generate_solution
+    from src.agent.project_report import write_report, log_llm_call, write_check_report
+
+    llm = get_llm(temperature=0)
+    project_dir = Path(KNOWLEDGE_HOME) / "data" / "projects" / _safe_name(project_desc)
+    logs = []
+
+    def _log(stage, prompt, response, seconds, success=True, error=""):
+        logs.append({
+            "project_name": _safe_name(project_desc),
+            "stage": stage,
+            "prompt_summary": prompt,
+            "model": LLM_MODEL,
+            "response_summary": response,
+            "execution_time_s": seconds,
+            "success": success,
+            "error": error,
+        })
+
+    try:
+        # 1) 需求解析（1 次 LLM）
+        t0 = _t.time()
+        requirement = analyze_requirement(project_desc, llm)
+        _log("requirement_analyze", f"解析需求: {project_desc[:50]}",
+             f"product={requirement['product']}, task={requirement['task']}",
+             _t.time() - t0)
+
+        # 2) 算法推荐（规则表 + cap4 补充）
+        t0 = _t.time()
+        algorithm = select_algorithm(requirement["task"], requirement.get("scene", ""), llm=None)
+        _log("algorithm_select", f"任务: {requirement['task']}",
+             f"算法: {','.join(algorithm['algorithms'])}", _t.time() - t0)
+
+        # 3) 方案生成（1 次 LLM）
+        t0 = _t.time()
+        solution = generate_solution(requirement, algorithm, llm)
+        _log("solution_generate", f"生成方案: {project_desc[:50]}",
+             "10 节方案", _t.time() - t0)
+
+        # 4) 组装各文档
+        sections = _assemble_sections(requirement, algorithm, solution)
+        written = write_report(project_dir, sections)
+
+        # 5) 可选 LLM 检查
+        check_text = ""
+        if llm_check:
+            t0 = _t.time()
+            check_text = _run_llm_check(project_desc, sections, llm)
+            write_check_report(project_dir, check_text)
+            _log("llm_check", f"方案检查: {project_desc[:50]}", "check_report", _t.time() - t0)
+
+        for rec in logs:
+            log_llm_call(project_dir, rec)
+
+    except Exception as e:
+        if as_json:
+            _fail(as_json, EXIT_ERROR, f"方案生成失败: {e}",
+                  "DESIGN_FAILED", "design_failed", recoverable=True,
+                  suggestions=["检查 DEEPSEEK_API_KEY: knowledge doctor"])
+        raise
+
+    if as_json:
+        _emit_json({"status": "ok", "data": {
+            "project": project_desc,
+            "output_dir": str(project_dir),
+            "files": written,
+            "requirement": requirement,
+            "algorithm": algorithm,
+            "llm_checks": bool(check_text),
+            "llm_calls": len(logs),
+        }})
+        return
+
+    console = _data_console()
+    console.print(f"[bold green]方案已生成: {project_dir}[/bold green]")
+    for f in written:
+        console.print(f"  {f}")
+    if check_text:
+        console.print("  含 check_report.md")
+    console.print(f"\nLLM 调用次数: {len(logs)}")
+
+
+def _safe_name(name: str) -> str:
+    import re as _re
+    return _re.sub(r'[\\/:*?"<>|]', "_", name).strip() or "project"
+
+
+def _assemble_sections(requirement: dict, algorithm: dict, solution: dict) -> dict:
+    """Assemble the 5 output markdown documents from the generated solution."""
+    req_lines = [
+        "# 需求分析",
+        "",
+        f"**产品**: {requirement.get('product', '')}",
+        f"**检测任务**: {requirement.get('task', '')}",
+        f"**检测目标**: {requirement.get('target', '')}",
+        f"**精度要求**: {requirement.get('precision', '')}",
+        f"**速度要求**: {requirement.get('speed', '')}",
+        f"**环境约束**: {requirement.get('environment', '')}",
+    ]
+    if requirement.get("unknown"):
+        req_lines += ["", "**未明确项**:"] + [f"- {u}" for u in requirement["unknown"]]
+
+    sol_body = "\n\n".join(
+        f"## {s['title']}\n\n{s['content']}" for s in solution["sections"]
+    )
+
+    alg_lines = [
+        "# 算法方案",
+        "",
+        f"**任务**: {algorithm.get('task', '')}",
+        f"**推荐算法**: {', '.join(algorithm.get('algorithms', []))}",
+        f"**选择理由**: {algorithm.get('reason', '')}",
+    ]
+    if algorithm.get("knowledge_refs"):
+        alg_lines += ["", "**知识参考**:"] + [
+            f"- [{r['source']}] {r['content'][:150]}" for r in algorithm["knowledge_refs"]
+        ]
+
+    risk_lines = [
+        "# 风险分析",
+        "",
+        "（由方案生成结果中的'风险分析'章节提炼）",
+        "",
+        _section_content(solution, "risk"),
+    ]
+
+    q_lines = [
+        "# 待确认问题",
+        "",
+        "以下问题需与客户/现场确认后才能细化方案：",
+        "",
+    ]
+    if requirement.get("unknown"):
+        q_lines += [f"- [ ] {u}" for u in requirement["unknown"]]
+    q_lines += ["", "（来自方案'待确认问题'章节）", "", _section_content(solution, "questions")]
+
+    return {
+        "requirement": "\n".join(req_lines),
+        "solution": f"# 项目方案: {requirement.get('product', '')}\n\n{sol_body}",
+        "algorithm": "\n".join(alg_lines),
+        "risk": "\n".join(risk_lines),
+        "questions": "\n".join(q_lines),
+    }
+
+
+def _section_content(solution: dict, key: str) -> str:
+    for s in solution.get("sections", []):
+        if s.get("key") == key:
+            return s.get("content", "")
+    return ""
+
+
+def _run_llm_check(project_desc: str, sections: dict, llm) -> str:
+    """Optional quality/risk/completeness check (1 LLM call)."""
+    body = sections.get("solution", "")[:3000]
+    prompt = (
+        "你是一名工业视觉方案评审专家。请对以下项目方案进行三方面检查，输出中文报告：\n"
+        "1. 方案质量（成像/算法是否合理、有无明显错误）\n"
+        "2. 风险遗漏（是否有未考虑的风险）\n"
+        "3. 完整性（是否缺少关键环节）\n\n"
+        f"项目: {project_desc}\n\n方案摘要:\n{body}"
+    )
+    try:
+        return llm.invoke(prompt).content.strip()
+    except Exception as e:
+        return f"检查失败: {e}"
 
 
 @app.command("map")
