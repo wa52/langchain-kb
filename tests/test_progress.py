@@ -2,6 +2,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
+import pytest
+
 from langchain_core.documents import Document
 from src.vector_store.chroma_client import add_documents_with_progress
 from src.retrieval.retriever import rebuild_bm25
@@ -57,6 +59,14 @@ class TestAddDocumentsWithProgress:
 
 
 class TestRebuildBm25:
+
+    @pytest.fixture(autouse=True)
+    def _cleanup_bm25_global(self):
+        from src.retrieval import retriever as retriever_mod
+        saved = retriever_mod._bm25_retriever
+        retriever_mod._bm25_retriever = None
+        yield
+        retriever_mod._bm25_retriever = saved
 
     def test_echo_fn_replaces_print(self):
         mock_store = MagicMock()

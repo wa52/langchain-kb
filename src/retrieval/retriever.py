@@ -7,12 +7,12 @@ from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 
-from config import TOP_K, ENABLE_HYBRID_SEARCH
+from config import TOP_K, CHROMA_PERSIST_DIR, ENABLE_HYBRID_SEARCH
 from src.vector_store.chroma_client import get_vector_store
 from src.vector_store.embedding import get_embedding_model
 
 _bm25_retriever = None
-_BM25_PERSIST_PATH = Path("./chroma_db/bm25_index.pkl")
+_BM25_PERSIST_PATH = Path(CHROMA_PERSIST_DIR) / "bm25_index.pkl"
 
 
 def set_bm25_retriever(r):
@@ -38,7 +38,7 @@ def get_retriever(k: int | None = None):
     return vector_retriever
 
 
-def _load_bm25_from_disk() -> bool:
+def _load_bm25_from_disk(expected_count: int | None = None) -> bool:
     global _bm25_retriever
     if not _BM25_PERSIST_PATH.exists():
         return False
@@ -46,6 +46,9 @@ def _load_bm25_from_disk() -> bool:
         with open(_BM25_PERSIST_PATH, "rb") as f:
             data = pickle.load(f)
         texts: list[str] = data["texts"]
+        if expected_count is not None and len(texts) != expected_count:
+            _bm25_retriever = None
+            return False
         metadatas: list[dict] = data["metadatas"]
         _bm25_retriever = BM25Retriever.from_texts(texts, metadatas=metadatas)
         _bm25_retriever.k = TOP_K
@@ -64,7 +67,12 @@ def _save_bm25_to_disk(texts: list[str], metadatas: list[dict]):
 def rebuild_bm25(store, echo_fn: callable = print):
     global _bm25_retriever
 
-    if _load_bm25_from_disk():
+    try:
+        expected_count = store._collection.count()
+    except Exception:
+        expected_count = None
+
+    if _load_bm25_from_disk(expected_count=expected_count):
         echo_fn(f"  -> BM25 索引已从磁盘加载 ({_BM25_PERSIST_PATH})")
         return
 
