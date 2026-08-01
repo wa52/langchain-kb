@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] `.env`: `HF_ENDPOINT=https://hf-mirror.com` → `https://huggingface.co` (touch only this key, never secrets)
-- [ ] Pre-warm cache: `huggingface-cli download BAAI/bge-small-zh-v1.5` succeeds; `~/.cache/huggingface/hub` contains `models--BAAI--bge-small-zh-v1.5`
-- [ ] `knowledge web` starts; `/api/v1/health` returns ready
+- [x] `.env`: `HF_ENDPOINT=https://hf-mirror.com` → `https://huggingface.co` (touch only this key, never secrets)
+- [x] Pre-warm cache: `hf download BAAI/bge-small-zh-v1.5` succeeds; `~/.cache/huggingface/hub` contains `models--BAAI--bge-small-zh-v1.5`
+- [x] `knowledge web` starts; `/api/v1/health` returns ready (smoke-tested with `HF_HUB_OFFLINE=1`: 200, vector_count 109991)
 - [ ] `knowledge cli` agent loads without download error; a typed query enters chat
-- [ ] `AGENTS.md` HF gotcha updated: hf-mirror 308 → official endpoint; recommend `HF_ENDPOINT=https://huggingface.co` when a proxy can reach it; pre-warm with `huggingface-cli download BAAI/bge-small-zh-v1.5`
-- [ ] `python -m pytest tests/` green (no regression; model-loading tests may run ~15s)
+- [x] `AGENTS.md` HF gotcha updated: hf-mirror 308 → official endpoint; recommend `HF_ENDPOINT=https://huggingface.co` when a proxy can reach it; pre-warm with `hf download BAAI/bge-small-zh-v1.5`
+- [x] `python -m pytest tests/` green (314 passed; no regression; model-loading tests may run ~15s)
