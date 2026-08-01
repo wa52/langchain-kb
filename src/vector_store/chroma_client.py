@@ -64,6 +64,8 @@ def add_documents_with_progress(chunks: list, batch_size: int = 32, echo_fn: cal
     if total == 0:
         return
 
+    _inject_capability_metadata(chunks)
+
     bar_width = 20
     t0 = time.time()
 
@@ -82,3 +84,26 @@ def add_documents_with_progress(chunks: list, batch_size: int = 32, echo_fn: cal
     echo_fn()
     total_elapsed = time.time() - t0
     echo_fn(f"  -> 完成! {total} 个向量, {total_elapsed:.1f}s, {total/total_elapsed:.0f} ch/s")
+
+
+def _inject_capability_metadata(chunks: list):
+    """Attach capability metadata to chunks that don't already have it.
+
+    Maps each chunk onto the industrial vision AI capability model via
+    source/content rules (no LLM). Skips chunks already carrying the fields.
+    """
+    from src.capability.mapper import classify_chunk
+    for c in chunks:
+        meta = getattr(c, "metadata", None) or {}
+        if "capability_domain" in meta:
+            continue
+        source = meta.get("source", "")
+        text = getattr(c, "page_content", "") or ""
+        try:
+            tags = classify_chunk(source, text)
+        except Exception:
+            continue
+        for k, v in tags.items():
+            if k != "source":
+                meta[k] = v
+        c.metadata = meta

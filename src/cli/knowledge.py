@@ -110,6 +110,7 @@ _COMMANDS = [
     ("search", "检索知识片段"),
     ("chat", "基于知识库回答"),
     ("index", "索引文件或目录到向量库"),
+    ("map", "查看能力模型与知识覆盖"),
     ("status", "查看系统状态"),
     ("doctor", "健康检查"),
     ("serve", "启动 API + MCP 服务"),
@@ -628,6 +629,161 @@ def doctor(
         if any(c["critical"] for c in failed):
             _exit(EXIT_CONFIG)
         _exit(EXIT_ERROR)
+
+
+@app.command("map")
+def map_command(
+    capability: str = typer.Option(None, help="查看指定能力域（如 4 算法实现）下的知识"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="对向量库中缺少能力标签的 chunks 补打标签"),
+    as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """查看工业视觉 AI 能力模型与知识覆盖"""
+    from collections import Counter
+    from src.capability.model import CAPABILITY_DOMAINS, DOMAIN_BY_ID
+    from src.vector_store.chroma_client import get_vector_store
+
+    vs = get_vector_store()
+
+    if rebuild:
+        _map_rebuild(vs, echo_fn=lambda m: _err_console().print(m))
+
+    # 统计每个能力域覆盖的 chunks
+    counts = Counter()
+    scene_counts = Counter()
+    tech_counts = Counter()
+    source_by_domain: dict[int, set] = {d["id"]: set() for d in CAPABILITY_DOMAINS}
+    offset = 0
+    while True:
+        batch = vs._collection.get(include=["metadatas"], limit=500, offset=offset)
+        metas = batch.get("metadatas") or []
+        if not metas:
+            break
+        for m in metas:
+            m = m or {}
+            doms = (m.get("capability_domain") or "").split(",")
+            for d in doms:
+                if d.isdigit():
+                    counts[int(d)] += 1
+                    source_by_domain.setdefault(int(d), set()).add(m.get("source", ""))
+            sc = m.get("scene")
+            if sc:
+                scene_counts[sc] += 1
+            tech = m.get("technology")
+            if tech:
+                tech_counts[tech] += 1
+        offset += 500
+
+    if capability:
+        _map_show_domain(int(capability), counts, source_by_domain, as_json)
+        return
+
+    if as_json:
+        _emit_json({
+            "status": "ok",
+            "data": {
+                "domains": [
+                    {"id": d["id"], "name": d["name"], "chunks": counts.get(d["id"], 0),
+                     "sources": len(source_by_domain.get(d["id"], set()))}
+                    for d in CAPABILITY_DOMAINS
+                ],
+                "scenes": dict(scene_counts),
+                "technologies": dict(tech_counts),
+                "total_chunks": sum(counts.values()),
+            },
+        })
+        return
+
+    console = _data_console()
+    console.print("[bold]工业视觉 AI 工程师能力模型[/bold]")
+    console.print("（知识按 AI 能力组织，来源仅为辅助维度）\n")
+    table = Table(title="能力域知识覆盖", header_style="bold cyan")
+    table.add_column("ID", justify="right")
+    table.add_column("能力域")
+    table.add_column("chunks", justify="right")
+    table.add_column("来源数", justify="right")
+    for d in CAPABILITY_DOMAINS:
+        table.add_row(
+            str(d["id"]), d["name"],
+            str(counts.get(d["id"], 0)),
+            str(len(source_by_domain.get(d["id"], set()))),
+        )
+    console.print(table)
+
+    if scene_counts:
+        console.print("\n[bold]场景分布[/bold]")
+        for sc, n in scene_counts.most_common(12):
+            console.print(f"  {sc}: {n}")
+    if tech_counts:
+        console.print("\n[bold]技术分布[/bold]")
+        for t, n in tech_counts.most_common(10):
+            console.print(f"  {t}: {n}")
+
+
+def _map_show_domain(dom_id: int, counts, source_by_domain, as_json: bool):
+    from src.capability.model import DOMAIN_BY_ID
+    domain = DOMAIN_BY_ID.get(dom_id)
+    if domain is None:
+        _fail(as_json, EXIT_ERROR, f"未知能力域: {dom_id}（有效 1-7）",
+              "MAP_BAD_DOMAIN", "bad_domain", recoverable=False)
+    sources = sorted(source_by_domain.get(dom_id, set()))
+    if as_json:
+        _emit_json({"status": "ok", "data": {
+            "id": dom_id, "name": domain["name"],
+            "items": domain["items"], "chunks": counts.get(dom_id, 0),
+            "sources": sources,
+        }})
+        return
+    console = _data_console()
+    console.print(f"[bold]能力域 {dom_id}: {domain['name']}[/bold]")
+    for it in domain["items"]:
+        console.print(f"  {it}")
+    console.print(f"\n覆盖 chunks: [bold]{counts.get(dom_id, 0)}[/bold] · 来源: {len(sources)}")
+    if sources:
+        console.print("\n[bold]相关来源:[/bold]")
+        for s in sources[:30]:
+            console.print(f"  {s}")
+        if len(sources) > 30:
+            console.print(f"  ... 共 {len(sources)} 个来源")
+
+
+def _map_rebuild(vs, echo_fn=print):
+    """Backfill capability metadata on chunks that lack it (rule-based, no LLM)."""
+    from src.capability.mapper import classify_chunk
+
+    missing_ids = []
+    missing_sources = []
+    missing_texts = []
+    offset = 0
+    while True:
+        batch = vs._collection.get(
+            include=["metadatas", "documents"], limit=500, offset=offset)
+        metas = batch.get("metadatas") or []
+        docs = batch.get("documents") or []
+        ids = batch.get("ids") or []
+        if not ids:
+            break
+        for cid, m, d in zip(ids, metas, docs):
+            m = m or {}
+            if "capability_domain" not in m:
+                missing_ids.append(cid)
+                missing_sources.append(m.get("source", ""))
+                missing_texts.append(d or "")
+        offset += 500
+
+    echo_fn(f"  -> 缺少能力标签的 chunks: {len(missing_ids)}")
+    if not missing_ids:
+        return
+
+    batch = 500
+    for i in range(0, len(missing_ids), batch):
+        id_slice = missing_ids[i:i + batch]
+        meta_slice = []
+        for src, txt in zip(missing_sources[i:i + batch], missing_texts[i:i + batch]):
+            tags = classify_chunk(src, txt)
+            tags.pop("source", None)
+            meta_slice.append(tags)
+        vs._collection.update(ids=id_slice, metadatas=meta_slice)
+    echo_fn(f"  -> 已为 {len(missing_ids)} 个 chunks 补打能力标签")
 
 
 @app.command("help")
