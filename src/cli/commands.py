@@ -63,8 +63,7 @@ def rebuild():
 
 @cli.command()
 @click.argument("path")
-@click.option("--type", "file_type", default=None, help="File type (md/txt)")
-def add(path, file_type):
+def add(path):
     """添加外部文件或目录到知识库（自动复制到 data/external/）"""
     count = run_add_path(path, EXTERNAL_DIR, echo_fn=echo)
     echo(f"==> 成功添加 {count} 个文档片段")

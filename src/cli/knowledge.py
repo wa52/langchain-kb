@@ -147,8 +147,24 @@ def main(
     _COLOR_MODE = color
     from config import ensure_data_dirs
     ensure_data_dirs()
+    _ensure_llm_api_key_if_needed(ctx.invoked_subcommand)
     if ctx.invoked_subcommand is None:
         _print_concise_help()
+
+
+_LLM_COMMANDS = frozenset({"web", "cli", "serve", "chat"})
+
+
+def _ensure_llm_api_key_if_needed(subcommand: str | None):
+    """On first run, prompt for a DeepSeek API key when an LLM-backed command
+    is invoked and no key is configured. Non-interactive environments skip."""
+    if subcommand not in _LLM_COMMANDS:
+        return
+    from config import DEEPSEEK_API_KEY
+    if DEEPSEEK_API_KEY:
+        return
+    from src.cli.api_key import ensure_api_key
+    ensure_api_key()
 
 
 def _port_open(port: int = 8000, host: str = "127.0.0.1") -> bool:
@@ -417,11 +433,16 @@ def search(
 
 @app.command()
 def chat(
-    question: str = typer.Argument(..., help="问题"),
+    question: str = typer.Argument(None, help="问题（不带则进入交互式对话）"),
     session: str = typer.Option(None, help="恢复会话 ID"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
-    """基于知识库回答"""
+    """基于知识库回答（不带问题参数时进入交互式多轮对话）"""
+    if question is None:
+        from src.cli.console import run_console
+        run_console()
+        return
+
     from src.api.services.chat import chat_with_rag
 
     try:

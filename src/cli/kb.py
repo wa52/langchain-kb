@@ -217,9 +217,8 @@ def status(as_json):
 
 @kb.command()
 @click.option("--verbose", is_flag=True, help="Show detailed diagnostics")
-@click.option("--fix", is_flag=True, help="Attempt auto-fix for detected issues")
 @click.option("--json", "as_json", is_flag=True, help="JSON output")
-def doctor(verbose, fix, as_json):
+def doctor(verbose, as_json):
     """Diagnose configuration, model, vector store, dependencies"""
     checks = []
 
@@ -268,11 +267,6 @@ def doctor(verbose, fix, as_json):
             add(_name, True)
         except ImportError:
             add(_name, False, fix_hint=f"pip install {pkg}")
-
-    if fix:
-        for c in checks:
-            if not c["passed"] and c.get("fix") and not c["fix"].startswith("pip"):
-                echo_stderr(f"Attempting fix: {c['fix']}")
 
     passed = sum(1 for c in checks if c["passed"])
     total = len(checks)
