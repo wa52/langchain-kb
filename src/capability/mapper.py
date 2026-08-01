@@ -160,6 +160,14 @@ def classify_chunk(source: str, text: str) -> dict:
     domain_str = ",".join(str(d) for d in domains)
     items_str = ",".join(sorted(items)) if items else ""
 
+    # Primary domain: the highest-confidence single domain, used for exact
+    # ($eq) filtering in Chroma where multi-label substrings can't be matched.
+    primary = None
+    if src_res["domains"] and src_res["confidence"] >= 0.85:
+        primary = src_res["domains"][0]
+    elif domains:
+        primary = domains[0]
+
     scene = src_res["scene"] or content_res["scene"]
     technology = src_res["technology"]
 
@@ -168,6 +176,7 @@ def classify_chunk(source: str, text: str) -> dict:
         "technology": technology,
         "scene": scene,
         "capability_domain": domain_str,
+        "capability_domain_primary": str(primary) if primary else "",
         "capability_items": items_str,
         "confidence": round(confidence, 2),
         "mapping_method": method,

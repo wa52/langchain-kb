@@ -14,13 +14,17 @@ class VectorStoreService:
     def __init__(self, echo_fn: callable = print):
         self._echo_fn = echo_fn
 
-    def get_retriever(self, k: int | None = None):
+    def get_retriever(self, k: int | None = None, capability: str | None = None):
         k = k or TOP_K
         embeddings = get_embedding_model()
         vector_store = get_vector_store(embeddings)
+        search_kwargs: dict = {"k": k, "fetch_k": k * 4}
+        if capability:
+            # Filter by capability domain (exact match on the primary domain).
+            search_kwargs["filter"] = {"capability_domain_primary": {"$eq": capability}}
         vector_retriever = vector_store.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": k, "fetch_k": k * 4},
+            search_kwargs=search_kwargs,
         )
         if ENABLE_HYBRID_SEARCH and _bm25_retriever is not None:
             return EnsembleRetriever(

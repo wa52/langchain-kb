@@ -160,3 +160,48 @@ class TestMapCommand:
         data = json.loads(r.output)["data"]
         doms = {d["id"]: d for d in data["domains"]}
         assert doms[4]["chunks"] == 2
+
+
+class TestCapabilityFilteredRetrieval:
+    def test_get_retriever_with_capability(self):
+        from unittest.mock import MagicMock, patch
+        from src.vector_store.service import VectorStoreService
+
+        mock_retriever = MagicMock()
+        with (
+            patch("src.vector_store.service.get_vector_store") as mvs,
+            patch("src.vector_store.service._bm25_retriever", None),
+            patch("src.vector_store.service.ENABLE_HYBRID_SEARCH", False),
+        ):
+            fake_vs = MagicMock()
+            fake_vs.as_retriever.return_value = mock_retriever
+            mvs.return_value = fake_vs
+            VectorStoreService().get_retriever(k=5, capability="4")
+            kwargs = fake_vs.as_retriever.call_args.kwargs
+            assert "filter" in kwargs["search_kwargs"]
+            assert kwargs["search_kwargs"]["filter"] == {
+                "capability_domain_primary": {"$eq": "4"}}
+
+    def test_get_retriever_no_capability(self):
+        from unittest.mock import MagicMock, patch
+        from src.vector_store.service import VectorStoreService
+        with (
+            patch("src.vector_store.service.get_vector_store") as mvs,
+            patch("src.vector_store.service._bm25_retriever", None),
+            patch("src.vector_store.service.ENABLE_HYBRID_SEARCH", False),
+        ):
+            fake_vs = MagicMock()
+            fake_vs.as_retriever.return_value = MagicMock()
+            mvs.return_value = fake_vs
+            VectorStoreService().get_retriever(k=5)
+            kwargs = fake_vs.as_retriever.call_args.kwargs
+            assert "filter" not in kwargs["search_kwargs"]
+
+
+class TestSearchCapability:
+    def test_search_help_has_capability(self):
+        from typer.testing import CliRunner
+        from src.cli.knowledge import app
+        r = CliRunner().invoke(app, ["search", "--help"])
+        assert r.exit_code == 0
+        assert "--capability" in r.output

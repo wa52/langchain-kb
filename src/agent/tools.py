@@ -25,9 +25,9 @@ def _get_rerank_llm():
     return get_llm(temperature=0)
 
 
-def _search(query, k):
+def _search(query, k, capability=None):
     from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever(k=k)
+    retriever = VectorStoreService().get_retriever(k=k, capability=capability)
     return retriever.invoke(query)
 
 
@@ -89,14 +89,14 @@ def _compress(docs, query, llm):
 
 
 @tool
-def retrieve_knowledge(query: str) -> str:
-    """搜索知识库中与问题最相关的内容。当你需要从已有的知识库文档中查找信息时使用此工具。"""
+def retrieve_knowledge(query: str, capability: str | None = None) -> str:
+    """搜索知识库中与问题最相关的内容。capability 可选能力域编号（1-7），用于限定检索范围。当你需要从已有的知识库文档中查找信息时使用此工具。"""
     _t_all = time.time()
     llm = _get_rerank_llm() if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
 
     fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
     _t0 = time.time()
-    raw_docs = _search(query, fetch_k)
+    raw_docs = _search(query, fetch_k, capability=capability)
     _timing("混合检索 (vector+BM25)", _t0)
     _t0 = time.time()
     docs = _grade(query, raw_docs, llm) if raw_docs else []

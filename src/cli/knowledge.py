@@ -372,15 +372,44 @@ def index(
 def search(
     query: str = typer.Argument(..., help="检索查询"),
     top_k: int = typer.Option(5, min=1, max=50, help="返回数量"),
+    capability: str = typer.Option(None, "--capability", help="按能力域过滤（1-7）"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
     plain: bool = typer.Option(False, help="纯文本输出（适合管道）"),
 ):
-    """检索知识片段"""
-    from src.vector_store.chroma_client import get_vector_store
-
+    """检索知识片段（可用 --capability 按能力域过滤）"""
     try:
-        vs = get_vector_store()
-        pairs = vs.similarity_search_with_relevance_scores(query, k=top_k)
+        if capability:
+            from src.vector_store.service import VectorStoreService
+            retriever = VectorStoreService().get_retriever(k=top_k, capability=capability)
+            docs = retriever.invoke(query)
+            results = []
+            for doc in docs:
+                meta = doc.metadata or {}
+                chunk_id = doc.id or meta.get("chunk_id", "")
+                section = meta.get("section") or meta.get("heading") or "-"
+                results.append({
+                    "source": meta.get("source", "unknown"),
+                    "section": section,
+                    "chunk_id": chunk_id,
+                    "score": None,
+                    "content": doc.page_content[:200],
+                })
+        else:
+            from src.vector_store.chroma_client import get_vector_store
+            vs = get_vector_store()
+            pairs = vs.similarity_search_with_relevance_scores(query, k=top_k)
+            results = []
+            for doc, score in pairs:
+                meta = doc.metadata or {}
+                chunk_id = doc.id or meta.get("chunk_id", "")
+                section = meta.get("section") or meta.get("heading") or "-"
+                results.append({
+                    "source": meta.get("source", "unknown"),
+                    "section": section,
+                    "chunk_id": chunk_id,
+                    "score": round(float(score), 4),
+                    "content": doc.page_content[:200],
+                })
     except Exception as e:
         _fail(
             as_json, EXIT_ERROR,
@@ -391,19 +420,6 @@ def search(
                 "确认已索引数据: knowledge index <path>",
             ],
         )
-
-    results = []
-    for doc, score in pairs:
-        meta = doc.metadata or {}
-        chunk_id = doc.id or meta.get("chunk_id", "")
-        section = meta.get("section") or meta.get("heading") or "-"
-        results.append({
-            "source": meta.get("source", "unknown"),
-            "section": section,
-            "chunk_id": chunk_id,
-            "score": round(float(score), 4),
-            "content": doc.page_content[:200],
-        })
 
     if as_json:
         _emit_json({"status": "ok", "data": results})
@@ -764,7 +780,7 @@ def _map_rebuild(vs, echo_fn=print):
             break
         for cid, m, d in zip(ids, metas, docs):
             m = m or {}
-            if "capability_domain" not in m:
+            if "capability_domain" not in m or "capability_domain_primary" not in m:
                 missing_ids.append(cid)
                 missing_sources.append(m.get("source", ""))
                 missing_texts.append(d or "")
