@@ -9,6 +9,14 @@ from src.retrieval.retriever import rebuild_bm25
 from src.vector_store.chroma_client import get_vector_store, reset_vector_store, delete_by_source, add_documents_with_progress
 from src.vector_store.embedding import get_embedding_model
 
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".jp2", ".webp"}
+
+
+def _ignore_images(directory, names):
+    """shutil.copytree ignore filter: drop image files while copying, so the
+    external data dir only holds indexable content."""
+    return [n for n in names if (Path(directory) / n).suffix.lower() in _IMAGE_EXTS]
+
 
 def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_overlap: int | None = None, echo_fn: callable = print):
     chunk_size = chunk_size or CHUNK_SIZE
@@ -179,7 +187,7 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
                 counter += 1
             echo_fn(f"  同名目录已存在，重命名为: {target.name}")
         echo_fn("  正在复制目录到 data/external/ ...")
-        shutil.copytree(str(src), str(target))
+        shutil.copytree(str(src), str(target), ignore=_ignore_images)
         copied_paths.append(str(target))
         echo_fn(f"[1/3] Copying directory {src.name} -> {target}")
 
