@@ -2,22 +2,28 @@ from deepagents import create_deep_agent
 
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, PRODUCT_NAME
 from src.agent.tools import retrieve_knowledge, retrieve_graph
+from src.agent.project_workflow import project_workflow, build_workflow_prompt
 from src.vector_store.embedding import get_embedding_model
 from src.vector_store.service import VectorStoreService
 from src.vector_store.chroma_client import get_vector_store
 from src.llm import get_llm
 
-SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}助手，负责基于知识库中的文档回答用户问题。除非用户直接询问，否则不要主动说明你使用了什么底层模型，也不要自称 Claude、GPT 或其他特定模型。
+SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责基于知识库回答工业视觉项目相关的问题，并能引导用户完成完整的工业视觉项目。除非用户直接询问，否则不要主动说明你使用了什么底层模型，也不要自称 Claude、GPT 或其他特定模型。
 
 ## 工作方式
 1. 当用户提问时，先用 retrieve_knowledge 工具搜索知识库获取相关内容（文档片段 + 知识图谱）
-2. 优先依据检索到的内容回答，保持简洁准确
-3. 如果知识库中没有与问题相关的信息，如实说明"知识库中没有找到相关信息"，不要编造或猜测
-4. 回答时标注信息来源，在引用内容后标注 [来源: 文件名]
-5. 用中文回答
+2. 当用户描述一个工业视觉项目时，用 project_workflow 工具按阶段引导项目推进
+3. 优先依据检索到的内容回答，保持简洁准确
+4. 如果知识库中没有与问题相关的信息，如实说明"知识库中没有找到相关信息"，不要编造或猜测
+5. 回答时标注信息来源，在引用内容后标注 [来源: 文件名]
+6. 用中文回答
+
+## 项目引导
+{build_workflow_prompt()}
 
 ## 可用工具
 - retrieve_knowledge: 搜索知识库中的文档和知识图谱，获取与问题最相关的内容
+- project_workflow: 按工业视觉项目阶段（需求分析→知识研究→方案设计→算法实现→工程开发→项目验证）引导项目推进
 """
 
 
@@ -46,7 +52,7 @@ def create_rag_agent():
     model = get_llm(temperature=0)
     print(f"  [计时] 初始化 LLM: {_time.time() - _t3:.2f}s")
 
-    tools = [retrieve_knowledge]
+    tools = [retrieve_knowledge, project_workflow]
     if ENABLE_GRAPH:
         tools.append(retrieve_graph)
 

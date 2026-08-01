@@ -111,6 +111,7 @@ _COMMANDS = [
     ("chat", "基于知识库回答"),
     ("index", "索引文件或目录到向量库"),
     ("map", "查看能力模型与知识覆盖"),
+    ("project", "按能力阶段引导工业视觉项目"),
     ("status", "查看系统状态"),
     ("doctor", "健康检查"),
     ("serve", "启动 API + MCP 服务"),
@@ -645,6 +646,42 @@ def doctor(
         if any(c["critical"] for c in failed):
             _exit(EXIT_CONFIG)
         _exit(EXIT_ERROR)
+
+
+@app.command("project")
+def project_command(
+    project_desc: str = typer.Argument(..., help="项目描述，如 'PCB 表面缺陷检测'"),
+    stage: str = typer.Option("需求分析", "--stage", help="项目阶段（需求分析/知识研究/方案设计/算法实现/工程开发/项目验证，或 1-6）"),
+    as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """按工业视觉项目阶段引导项目推进"""
+    from src.agent.project_workflow import project_workflow, PROJECT_STAGES
+
+    try:
+        text = project_workflow.func(project_desc=project_desc, stage=stage)
+    except Exception as e:
+        _fail(as_json, EXIT_ERROR, f"引导失败: {e}",
+              "PROJECT_FAILED", "project_failed", recoverable=True,
+              suggestions=["检查向量库状态: knowledge doctor"])
+
+    if as_json:
+        stage_info = None
+        for s in PROJECT_STAGES:
+            if stage in (s["name"], str(s["id"])) or stage in s["name"]:
+                stage_info = s
+                break
+        _emit_json({
+            "status": "ok",
+            "data": {
+                "project": project_desc,
+                "stage": stage_info["name"] if stage_info else stage,
+                "guidance": text,
+            },
+        })
+        return
+
+    console = _data_console()
+    console.print(Markdown(text))
 
 
 @app.command("map")
