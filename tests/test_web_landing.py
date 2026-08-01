@@ -87,24 +87,16 @@ class TestLandingPage:
 
 class TestWorkspaceApp:
 
-    def test_root_is_workspace_with_three_sections(self, client):
+    def test_root_is_chat_focused_single_panel(self, client):
         resp = client.get("/")
         html = resp.text
-        for section_id in ["chat-view", "search-view", "index-view"]:
-            assert f'id="{section_id}"' in html
+        assert 'id="chat-view"' in html
+        assert 'id="search-view"' not in html
+        assert 'id="index-view"' not in html
 
     def test_root_chat_hits_api(self, client):
         resp = client.get("/")
         assert '"/api/v1/chat"' in resp.text
-
-    def test_root_search_hits_api(self, client):
-        resp = client.get("/")
-        assert '"/api/v1/retrieval/search"' in resp.text
-
-    def test_root_index_hits_api(self, client):
-        resp = client.get("/")
-        assert '"/api/v1/documents/index"' in resp.text
-        assert '"/api/v1/index/tasks/"' in resp.text
 
     def test_root_has_viewport_meta(self, client):
         resp = client.get("/")
@@ -121,3 +113,17 @@ class TestWorkspaceApp:
     def test_root_has_loading_feedback(self, client):
         resp = client.get("/")
         assert "aria-busy" in resp.text
+
+    def test_root_chat_auto_scrolls(self, client):
+        resp = client.get("/")
+        html = resp.text
+        assert "scrollChatToBottom" in html
+        assert "overflow-y" in html
+
+    def test_root_has_sessions_ui(self, client):
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="sessions-view"' in html
+        assert 'id="session-list"' in html
+        assert 'id="new-chat-btn"' in html
+        assert '"/api/v1/sessions"' in html

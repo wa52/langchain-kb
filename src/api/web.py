@@ -40,19 +40,71 @@ _TEMPLATE = """<!DOCTYPE html>
   nav { display: flex; gap: 12px; flex-wrap: wrap; }
   nav a { text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
   .layout {
-    display: grid; grid-template-columns: 1fr; gap: 16px;
+    display: grid; grid-template-columns: 280px minmax(0, 1fr);
+    gap: 16px;
     max-width: 1200px; margin: 0 auto; padding: 16px;
+    height: calc(100vh - 110px);
   }
-  @media (min-width: 860px) {
-    .layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .sessions-panel { display: none; }
   }
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 12px; padding: 16px;
+    display: flex; flex-direction: column;
+    min-height: 0;
   }
+  .sessions-panel { overflow: hidden; }
+  .chat-panel { flex: 1; }
   .panel h2 { font-size: 15px; margin-bottom: 12px; }
-  .side { display: grid; grid-template-columns: 1fr; gap: 16px; }
   .row { display: flex; gap: 8px; }
+  #chat-log {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    margin-top: 12px;
+    padding-right: 4px;
+  }
+  #session-list {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    margin-top: 8px;
+    list-style: none;
+  }
+  #session-list li {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  #session-list li:hover { background: var(--bg); }
+  #session-list li.active {
+    background: var(--bg);
+    border-color: var(--primary);
+  }
+  #session-list .s-title {
+    font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #session-list .s-meta {
+    font-size: 12px; color: var(--muted);
+    margin-top: 2px;
+  }
+  #session-list .s-del {
+    float: right;
+    font-size: 12px;
+    color: var(--danger);
+    background: none; border: none;
+    min-height: auto; padding: 0 4px;
+    cursor: pointer;
+    opacity: 0;
+  }
+  #session-list li:hover .s-del { opacity: 1; }
+  .new-chat-btn {
+    width: 100%; margin-top: 8px;
+  }
+  .empty-sessions { color: var(--muted); font-size: 13px; padding: 8px 4px; }
   input[type="text"] {
     flex: 1; min-width: 0; min-height: 44px;
     padding: 0 12px; font-size: 15px;
@@ -75,18 +127,10 @@ _TEMPLATE = """<!DOCTYPE html>
   .msg .body { white-space: pre-wrap; word-break: break-word; }
   .msg.user .body { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
   .citation { font-size: 13px; color: var(--muted); }
-  .result {
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px 12px; margin-bottom: 8px;
-  }
-  .result .src { font-weight: 600; font-size: 14px; }
-  .result .meta { font-size: 12px; color: var(--muted); margin: 2px 0 6px; }
-  .result .content { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
   .status { font-size: 14px; margin-top: 8px; }
   .status.err { color: var(--danger); }
   .status.ok { color: var(--ok); }
   .status.busy { color: var(--muted); }
-  .empty { color: var(--muted); font-size: 14px; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
   footer {
     max-width: 1200px; margin: 0 auto; padding: 8px 16px 24px;
@@ -110,36 +154,21 @@ _TEMPLATE = """<!DOCTYPE html>
   </header>
 
   <main class="layout">
-    <section class="panel" id="chat-view" aria-labelledby="chat-title">
+    <section class="panel sessions-panel" id="sessions-view" aria-labelledby="sessions-title">
+      <h2 id="sessions-title">历史会话</h2>
+      <ul id="session-list" aria-live="polite"></ul>
+      <button type="button" id="new-chat-btn" class="new-chat-btn">＋ 新建对话</button>
+    </section>
+
+    <section class="panel chat-panel" id="chat-view" aria-labelledby="chat-title">
       <h2 id="chat-title">问答</h2>
+      <div class="out" id="chat-log" aria-live="polite" aria-busy="false"></div>
+      <p class="hint" id="chat-hint">基于知识库检索增强生成，可连续追问。</p>
       <form id="chat-form" class="row">
         <input id="chat-input" type="text" placeholder="输入问题…" autocomplete="off" required aria-label="问题">
         <button type="submit">发送</button>
       </form>
-      <div class="out" id="chat-log" aria-live="polite" aria-busy="false"></div>
-      <p class="hint" id="chat-hint">基于知识库检索增强生成，可连续追问。</p>
     </section>
-
-    <aside class="side">
-      <section class="panel" id="search-view" aria-labelledby="search-title">
-        <h2 id="search-title">检索</h2>
-        <form id="search-form" class="row">
-          <input id="search-input" type="text" placeholder="输入检索词…" autocomplete="off" required aria-label="检索词">
-          <button type="submit">检索</button>
-        </form>
-        <div class="out" id="search-results" aria-live="polite" aria-busy="false"></div>
-      </section>
-
-      <section class="panel" id="index-view" aria-labelledby="index-title">
-        <h2 id="index-title">索引</h2>
-        <form id="index-form" class="row">
-          <input id="index-path" type="text" placeholder="文件或目录路径…" autocomplete="off" required aria-label="文件或目录路径">
-          <button type="submit">索引</button>
-        </form>
-        <div class="out" id="index-status" aria-live="polite" aria-busy="false"></div>
-        <p class="hint">输入服务器上的文件或目录路径，提交后自动轮询任务进度。</p>
-      </section>
-    </aside>
   </main>
 
   <footer>
@@ -178,6 +207,129 @@ _TEMPLATE = """<!DOCTYPE html>
 
   function clearOutput(el) { el.innerHTML = ""; }
 
+  async function getJSON(url) {
+    var resp = await fetch(url, { headers: { "Accept": "application/json" } });
+    var data = null;
+    try { data = await resp.json(); } catch (e) { /* ignore */ }
+    if (!resp.ok) {
+      var detail = data && (data.detail || data.error);
+      throw new Error(detail || ("请求失败 (" + resp.status + ")"));
+    }
+    return data;
+  }
+
+  // ---------- 会话列表 ----------
+  var sessionList = document.getElementById("session-list");
+  var newChatBtn = document.getElementById("new-chat-btn");
+  var sessionsView = document.getElementById("sessions-view");
+  var activeSessionId = null;
+
+  function renderSessions(sessions) {
+    sessionList.innerHTML = "";
+    if (!sessions.length) {
+      var li = document.createElement("li");
+      li.className = "empty-sessions";
+      li.textContent = "暂无历史会话";
+      sessionList.appendChild(li);
+      return;
+    }
+    sessions.forEach(function (s) {
+      var li = document.createElement("li");
+      li.dataset.id = s.id;
+      if (s.id === activeSessionId) li.className = "active";
+      var del = document.createElement("button");
+      del.className = "s-del";
+      del.textContent = "✕";
+      del.title = "删除该会话";
+      del.setAttribute("aria-label", "删除会话 " + s.title);
+      del.addEventListener("click", function (e) {
+        e.stopPropagation();
+        deleteSession(s.id);
+      });
+      var title = document.createElement("div");
+      title.className = "s-title";
+      title.textContent = s.title || "空会话";
+      var meta = document.createElement("div");
+      meta.className = "s-meta";
+      meta.textContent = (s.created || "") + " · " + s.turns + " 轮";
+      li.appendChild(del);
+      li.appendChild(title);
+      li.appendChild(meta);
+      li.addEventListener("click", function () { openSession(s.id); });
+      sessionList.appendChild(li);
+    });
+  }
+
+  function loadSessions() {
+    return getJSON("/api/v1/sessions")
+      .then(function (data) { renderSessions(data.sessions || []); })
+      .catch(function (err) {
+        sessionList.innerHTML = "";
+        var li = document.createElement("li");
+        li.className = "empty-sessions";
+        li.textContent = "加载会话失败：" + err.message;
+        sessionList.appendChild(li);
+      });
+  }
+
+  function openSession(id) {
+    getJSON("/api/v1/sessions/" + encodeURIComponent(id))
+      .then(function (data) {
+        activeSessionId = id;
+        sessionId = id;
+        chatHint.hidden = true;
+        clearOutput(chatLog);
+        var messages = data.messages || [];
+        messages.forEach(function (m) {
+          var role = m.role || m.type || "";
+          var content = m.content || "";
+          if (role === "user" || role === "human") {
+            appendChat("user", escapeHtml(content));
+          } else if (role === "assistant" || role === "ai") {
+            appendChat("assistant", escapeHtml(content));
+          } else if (role === "system") {
+            appendChat("status", escapeHtml(content));
+          }
+        });
+        markActiveSession();
+        scrollChatToBottom(false);
+      })
+      .catch(function (err) {
+        appendChat("err", "加载会话失败：" + escapeHtml(err.message));
+      });
+  }
+
+  function newChat() {
+    activeSessionId = null;
+    sessionId = null;
+    chatHint.hidden = false;
+    clearOutput(chatLog);
+    markActiveSession();
+    chatInput.focus();
+  }
+
+  function deleteSession(id) {
+    if (!window.confirm("确定删除该会话？")) return;
+    fetch("/api/v1/sessions/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (resp) {
+        if (!resp.ok && resp.status !== 204) throw new Error("删除失败 (" + resp.status + ")");
+        if (activeSessionId === id) newChat();
+        loadSessions();
+      })
+      .catch(function (err) {
+        window.alert("删除失败：" + err.message);
+      });
+  }
+
+  function markActiveSession() {
+    var items = sessionList.querySelectorAll("li[data-id]");
+    items.forEach(function (li) {
+      li.classList.toggle("active", li.dataset.id === activeSessionId);
+    });
+  }
+
+  newChatBtn.addEventListener("click", newChat);
+
   // ---------- 问答 ----------
   var chatForm = document.getElementById("chat-form");
   var chatInput = document.getElementById("chat-input");
@@ -198,6 +350,7 @@ _TEMPLATE = """<!DOCTYPE html>
     postJSON("/api/v1/chat", { query: q, session_id: sessionId })
       .then(function (data) {
         sessionId = data.conversation_id || null;
+        activeSessionId = sessionId;
         statusEl.remove();
         var answer = (data.answer || "").replace(/\\[来源:[^\\]]*\\]/g, "").trim();
         appendChat("assistant", escapeHtml(answer));
@@ -209,6 +362,7 @@ _TEMPLATE = """<!DOCTYPE html>
         if (typeof data.elapsed_ms === "number") {
           appendChat("status", "耗时 " + data.elapsed_ms.toFixed(0) + " ms");
         }
+        loadSessions();
       })
       .catch(function (err) {
         statusEl.remove();
@@ -216,6 +370,10 @@ _TEMPLATE = """<!DOCTYPE html>
       })
       .finally(function () { setBusy(chatLog, false, chatButton); });
   });
+
+  function scrollChatToBottom(smooth) {
+    chatLog.scrollTo({ top: chatLog.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }
 
   function appendChat(kind, html) {
     var div = document.createElement("div");
@@ -235,121 +393,11 @@ _TEMPLATE = """<!DOCTYPE html>
     if (kind === "citations") body.className = "citation";
     div.appendChild(body);
     chatLog.appendChild(div);
-    chatLog.scrollTop = chatLog.scrollHeight;
+    scrollChatToBottom(false);
     return body;
   }
 
-  // ---------- 检索 ----------
-  var searchForm = document.getElementById("search-form");
-  var searchInput = document.getElementById("search-input");
-  var searchResults = document.getElementById("search-results");
-  var searchButton = searchForm.querySelector("button");
-
-  searchForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var q = searchInput.value.trim();
-    if (!q) return;
-    clearOutput(searchResults);
-    var statusEl = document.createElement("div");
-    statusEl.className = "status busy";
-    statusEl.textContent = "检索中…";
-    searchResults.appendChild(statusEl);
-    setBusy(searchResults, true, searchButton);
-    postJSON("/api/v1/retrieval/search", { query: q, top_k: 5 })
-      .then(function (data) {
-        clearOutput(searchResults);
-        var results = data.results || [];
-        if (!results.length) {
-          var empty = document.createElement("p");
-          empty.className = "empty";
-          empty.textContent = "未找到相关结果，换个关键词试试。";
-          searchResults.appendChild(empty);
-          return;
-        }
-        results.forEach(function (r) {
-          var card = document.createElement("div");
-          card.className = "result";
-          card.innerHTML =
-            '<div class="src">' + escapeHtml(r.source) + "</div>" +
-            '<div class="meta">chunk ' + escapeHtml(r.chunk_id) +
-            " · 分数 " + (typeof r.score === "number" ? r.score.toFixed(4) : escapeHtml(r.score)) + "</div>" +
-            '<div class="content">' + escapeHtml(r.content) + "</div>";
-          searchResults.appendChild(card);
-        });
-      })
-      .catch(function (err) {
-        clearOutput(searchResults);
-        var errEl = document.createElement("p");
-        errEl.className = "status err";
-        errEl.textContent = "检索失败：" + err.message;
-        searchResults.appendChild(errEl);
-      })
-      .finally(function () { setBusy(searchResults, false, searchButton); });
-  });
-
-  // ---------- 索引 ----------
-  var indexForm = document.getElementById("index-form");
-  var indexPath = document.getElementById("index-path");
-  var indexStatus = document.getElementById("index-status");
-  var indexButton = indexForm.querySelector("button");
-  var pollTimer = null;
-
-  indexForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var p = indexPath.value.trim();
-    if (!p) return;
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    clearOutput(indexStatus);
-    var statusEl = document.createElement("div");
-    statusEl.className = "status busy";
-    statusEl.textContent = "提交索引任务…";
-    indexStatus.appendChild(statusEl);
-    setBusy(indexStatus, true, indexButton);
-    postJSON("/api/v1/documents/index", { path: p })
-      .then(function (data) {
-        statusEl.textContent = "任务已创建，等待处理…";
-        pollTask(data.task_id, statusEl);
-      })
-      .catch(function (err) {
-        statusEl.textContent = "索引失败：" + err.message;
-        statusEl.className = "status err";
-        setBusy(indexStatus, false, indexButton);
-      });
-  });
-
-  function pollTask(taskId, statusEl) {
-    pollTimer = setInterval(function () {
-      fetch("/api/v1/index/tasks/" + encodeURIComponent(taskId))
-        .then(function (resp) {
-          if (!resp.ok) throw new Error("查询任务失败 (" + resp.status + ")");
-          return resp.json();
-        })
-        .then(function (task) {
-          var s = task.status;
-          if (s === "done") {
-            statusEl.textContent = "索引完成。";
-            statusEl.className = "status ok";
-            if (task.result) statusEl.textContent += " " + JSON.stringify(task.result);
-            clearInterval(pollTimer); pollTimer = null;
-            setBusy(indexStatus, false, indexButton);
-          } else if (s === "failed") {
-            statusEl.textContent = "索引失败：" + (task.error || "未知错误");
-            statusEl.className = "status err";
-            clearInterval(pollTimer); pollTimer = null;
-            setBusy(indexStatus, false, indexButton);
-          } else {
-            statusEl.textContent = s === "pending" ? "等待处理…" : "索引中…";
-            if (task.progress) statusEl.textContent += "（" + task.progress + "）";
-          }
-        })
-        .catch(function (err) {
-          statusEl.textContent = "查询任务失败：" + err.message;
-          statusEl.className = "status err";
-          clearInterval(pollTimer); pollTimer = null;
-          setBusy(indexStatus, false, indexButton);
-        });
-    }, 1500);
-  }
+  loadSessions();
 })();
 </script>
 </body>

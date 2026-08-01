@@ -23,27 +23,40 @@ SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}助手，负责基于知识库中�
 
 def create_rag_agent():
     import os as _os
+    import time as _time
     _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     import logging
     logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
     logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+
+    _t0 = _time.time()
     get_embedding_model()
+    print(f"  [计时] 加载 embedding 模型: {_time.time() - _t0:.2f}s")
+
+    _t1 = _time.time()
     get_vector_store()
+    print(f"  [计时] 连接向量库: {_time.time() - _t1:.2f}s")
 
     if ENABLE_HYBRID_SEARCH:
+        _t2 = _time.time()
         VectorStoreService().rebuild_bm25()
+        print(f"  [计时] 构建/加载 BM25 索引: {_time.time() - _t2:.2f}s")
 
+    _t3 = _time.time()
     model = get_llm(temperature=0)
+    print(f"  [计时] 初始化 LLM: {_time.time() - _t3:.2f}s")
 
     tools = [retrieve_knowledge]
     if ENABLE_GRAPH:
         tools.append(retrieve_graph)
 
+    _t4 = _time.time()
     agent = create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
     )
+    print(f"  [计时] 构建 Deep Agent: {_time.time() - _t4:.2f}s")
     return agent
 
 

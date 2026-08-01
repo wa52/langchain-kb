@@ -1,8 +1,13 @@
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
-HISTORY_DIR = Path("./data/chat_history")
+from config import KNOWLEDGE_HOME
+
+HISTORY_DIR = Path(
+    os.getenv("CHAT_HISTORY_DIR", str(KNOWLEDGE_HOME / "data" / "chat_history"))
+)
 
 
 def _ensure_dir():
@@ -30,6 +35,15 @@ def load_history(session_id: str) -> list[dict] | None:
         return None
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def delete_history(session_id: str) -> bool:
+    """Delete a saved session file. Returns True if it existed and was removed."""
+    path = HISTORY_DIR / f"{session_id}.json"
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
 
 
 def compress_history(messages: list[dict], llm, keep_rounds: int = 10) -> list[dict]:

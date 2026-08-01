@@ -31,11 +31,13 @@ def create_app() -> FastAPI:
     from src.api.routers.search import router as search_router
     from src.api.routers.chat import router as chat_router
     from src.api.routers.indexing import router as indexing_router
+    from src.api.routers.sessions import router as sessions_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(search_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(indexing_router, prefix="/api/v1")
+    app.include_router(sessions_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     async def landing_page():

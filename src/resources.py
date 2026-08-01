@@ -21,6 +21,7 @@ class ResourceManager:
         self.vector_store: Chroma | None = None
         self.llm: Any = None
         self.graph: Any = None
+        self.agent: Any = None
         self._initialized: bool = False
         self._shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
@@ -37,45 +38,57 @@ class ResourceManager:
         return cls._instance
 
     def startup(self, echo_fn=print):
+        import time
         if self._initialized:
             logger.warning("ResourceManager already initialized, skipping")
             return
 
+        t_start = time.time()
         echo_fn("[ResourceManager] Starting resource manager...")
 
+        def _step(name):
+            t = time.time()
+            echo_fn(f"  [{name}] {t - t_start:.2f}s")
+            return t
+
         echo_fn("  [1/5] Loading embedding model ...")
+        t_step = time.time()
         from src.vector_store.embedding import get_embedding_model
         self.embedding_model = get_embedding_model()
-        echo_fn(f"  [1/5] Embedding model loaded: {type(self.embedding_model).__name__}")
+        echo_fn(f"  [1/5] Embedding model loaded: {type(self.embedding_model).__name__} ({time.time() - t_step:.2f}s)")
 
         echo_fn("  [2/5] Initializing LLM client ...")
+        t_step = time.time()
         from src.llm import get_llm
         self.llm = get_llm(temperature=0)
-        echo_fn(f"  [2/5] LLM client initialized")
+        echo_fn(f"  [2/5] LLM client initialized ({time.time() - t_step:.2f}s)")
 
         echo_fn("  [3/5] Connecting to vector store ...")
+        t_step = time.time()
         self.vector_store = Chroma(
             collection_name="langchain_docs",
             persist_directory=CHROMA_PERSIST_DIR,
             embedding_function=self.embedding_model,
         )
-        echo_fn(f"  [3/5] Vector store connected: {CHROMA_PERSIST_DIR}")
+        echo_fn(f"  [3/5] Vector store connected: {CHROMA_PERSIST_DIR} ({time.time() - t_step:.2f}s)")
 
         echo_fn("  [4/5] Loading knowledge graph ...")
+        t_step = time.time()
         from src.graph_store.graph import KnowledgeGraph
         self.graph = KnowledgeGraph()
         nc = self.graph.graph.number_of_nodes()
         ec = self.graph.graph.number_of_edges()
-        echo_fn(f"  [4/5] Knowledge graph loaded: {nc} entities, {ec} relations")
+        echo_fn(f"  [4/5] Knowledge graph loaded: {nc} entities, {ec} relations ({time.time() - t_step:.2f}s)")
 
         echo_fn("  [5/5] Building BM25 index ...")
+        t_step = time.time()
         self._rebuild_bm25(echo_fn=echo_fn)
-        echo_fn("  [5/5] BM25 index ready")
+        echo_fn(f"  [5/5] BM25 index ready ({time.time() - t_step:.2f}s)")
 
         self._initialize_existing_singletons()
 
         self._initialized = True
-        echo_fn("[ResourceManager] Startup complete")
+        echo_fn(f"[ResourceManager] Startup complete (total {time.time() - t_start:.2f}s)")
 
     def shutdown(self, echo_fn=print):
         echo_fn("[ResourceManager] Shutting down...")
@@ -90,11 +103,27 @@ class ResourceManager:
         self.vector_store = None
         self.llm = None
         self.graph = None
+        self.agent = None
         self._initialized = False
         echo_fn("[ResourceManager] Shutdown complete")
 
     def is_ready(self) -> bool:
         return self._initialized
+
+    def get_agent(self):
+        """Return the cached RAG agent, building it lazily on first call.
+        The agent is stateless (messages are passed per-call), so it is safe
+        to reuse across chat requests."""
+        if self.agent is not None:
+            return self.agent
+        if not self._initialized:
+            raise RuntimeError("ResourceManager not initialized. Call startup() first.")
+        import time as _t
+        t0 = _t.time()
+        from src.agent.rag_agent import create_rag_agent
+        self.agent = create_rag_agent()
+        print(f"  [计时] 首次构建 RAG Agent（缓存复用）: {_t.time() - t0:.2f}s")
+        return self.agent
 
     def get_retriever(self, k: int | None = None):
         if not self._initialized:

@@ -51,6 +51,23 @@ class ChatResponse(BaseModel):
     elapsed_ms: float
 
 
+class SessionSummary(BaseModel):
+    id: str
+    title: str
+    created: str
+    turns: int
+    size: int
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionSummary]
+
+
+class SessionDetailResponse(BaseModel):
+    id: str
+    messages: list[dict]
+
+
 class IndexRequest(BaseModel):
     path: str = Field(
         min_length=1,
