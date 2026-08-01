@@ -174,6 +174,13 @@ class TestLoadingState:
                 result = handle_command("/help", state)
                 assert "可用命令" in result
 
+    def test_empty_input_after_failure_shows_load_failed(self, state):
+        with patch.object(console_mod, "_agent_ready") as mock_ready:
+            mock_ready.is_set.return_value = True
+            with patch.object(console_mod, "_agent_result", Exception("no api key")):
+                result = handle_command("", state)
+                assert "加载失败" in result
+
 
 class TestEchoCarriageReturn:
 

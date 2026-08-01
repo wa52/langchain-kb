@@ -154,6 +154,8 @@ def handle_command(line: str, state: dict) -> str | None:
 def _do_handle_command(line: str, state: dict) -> str | None:
     line = line.strip()
     if not line:
+        if _agent_ready.is_set() and isinstance(_agent_result, Exception):
+            return "  [错误] 知识库加载失败，请检查网络连接和 .env 配置"
         return ""
 
     if not line.startswith("/"):
