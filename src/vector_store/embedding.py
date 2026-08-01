@@ -1,13 +1,21 @@
 from functools import lru_cache
-from huggingface_hub import constants as hf_constants
-
-# Force HF to use mirror and disable symlinks
-import os
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 from langchain_huggingface import HuggingFaceEmbeddings
-from config import EMBEDDING_MODEL
+from config import EMBEDDING_MODEL, EMBEDDING_DEVICE
+
+
+def resolve_embedding_device() -> str:
+    """Pick the embedding device: GPU when available, otherwise CPU."""
+    forced = EMBEDDING_DEVICE
+    if forced in ("cpu", "cuda"):
+        return forced
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
 
 
 @lru_cache(maxsize=1)
@@ -23,6 +31,6 @@ def get_embedding_model():
     model_name = model_map.get(EMBEDDING_MODEL, EMBEDDING_MODEL)
     return HuggingFaceEmbeddings(
         model_name=model_name,
-        model_kwargs={"device": "cpu"},
+        model_kwargs={"device": resolve_embedding_device()},
         encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
     )

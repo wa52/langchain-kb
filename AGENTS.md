@@ -32,7 +32,7 @@ the focused pytest target while changing a subsystem, then run the full suite.
 ## Runtime Constraints
 
 - Python `>=3.10`; dependencies are defined in `requirements.txt` and exposed by `pyproject.toml`.
-- Set `KNOWLEDGE_HOME` as an environment variable before starting a process when using a relocated data directory. It selects the `.env`; relative `DATA_DIR`, `EXTERNAL_DIR`, `CHROMA_PERSIST_DIR`, and `GRAPH_PERSIST_DIR` resolve under it.
+- Set `KNOWLEDGE_HOME` as an environment variable before starting a process when using a relocated data directory. It selects the `.env`; relative `DATA_DIR`, `EXTERNAL_DIR`, `CHROMA_PERSIST_DIR`, `GRAPH_PERSIST_DIR`, `CHAT_HISTORY_DIR` (`data/chat_history`), and `FILE_TRACKER_PATH` (`data/file_tracker.json`) resolve under it. The latter two have env overrides and must not be bare CWD-relative paths.
 - ChromaDB cannot reliably open a persistence path containing non-ASCII characters on Windows. Set `CHROMA_PERSIST_DIR` to an ASCII-only absolute path when the repository path contains Chinese characters.
 - `DEEPSEEK_API_KEY` is required for LLM chat and LLM graph extraction, but most tests mock external services and do not need it.
 - `HF_ENDPOINT` must be set before Hugging Face imports. `hf-mirror.com` now 308-redirects model files to `huggingface.co` and `huggingface_hub` rejects that redirect (`FileMetadataError`), so this repo's `.env` ships `HF_ENDPOINT=https://huggingface.co`. Use that whenever a proxy can reach the official site; pre-warm the cache once via `hf download BAAI/bge-small-zh-v1.5` (~33 MB) so startup does not depend on the network. Model-loading tests can take about 15 seconds and may download the embedding model.

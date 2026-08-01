@@ -11,6 +11,17 @@ def reset_singleton():
     ResourceManager._instance = None
 
 
+@pytest.fixture(autouse=True)
+def isolate_tracker(tmp_path):
+    """Redirect the file tracker to a temp path so tests never touch the real
+    data/file_tracker.json in the knowledge base."""
+    import src.ingestion.tracker as tracker
+    original = tracker.TRACKER_FILE
+    tracker.TRACKER_FILE = str(tmp_path / "file_tracker.json")
+    yield
+    tracker.TRACKER_FILE = original
+
+
 @pytest.fixture
 def rm():
     from src.resources import ResourceManager

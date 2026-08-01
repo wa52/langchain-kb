@@ -39,6 +39,38 @@ class TestKnowledgeHome:
         assert Path(config.KNOWLEDGE_HOME).is_absolute()
 
 
+class TestWheelDeploymentDefaults:
+
+    def test_site_packages_falls_back_to_cwd(self, monkeypatch, tmp_path):
+        """When config.py is installed under site-packages (wheel install),
+        the knowledge base root should default to the current working directory
+        so no environment configuration is required."""
+        import sysconfig
+        purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
+        fake_site = purelib / "site-packages" / "personal_knowledge_base"
+        monkeypatch.setattr(config, "PROJECT_ROOT", fake_site)
+        monkeypatch.delenv("KNOWLEDGE_HOME", raising=False)
+        monkeypatch.chdir(tmp_path)
+        assert config._default_knowledge_home() == tmp_path.resolve()
+
+    def test_site_packages_but_env_set_uses_env(self, monkeypatch, tmp_path):
+        import sysconfig
+        purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
+        fake_site = purelib / "site-packages" / "personal_knowledge_base"
+        monkeypatch.setattr(config, "PROJECT_ROOT", fake_site)
+        monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path / "kb"))
+        monkeypatch.chdir(tmp_path)
+        assert config._default_knowledge_home() == (tmp_path / "kb").resolve()
+
+    def test_dev_checkout_uses_project_root(self, monkeypatch, tmp_path):
+        """Development checkout (not under site-packages) keeps the project
+        root as the default regardless of the working directory."""
+        monkeypatch.setattr(config, "PROJECT_ROOT", Path("D:/proj/langchain-kb"))
+        monkeypatch.delenv("KNOWLEDGE_HOME", raising=False)
+        monkeypatch.chdir(tmp_path)
+        assert config._default_knowledge_home() == Path("D:/proj/langchain-kb").resolve()
+
+
 class TestRelativePathResolution:
 
     def test_chroma_persist_dir_resolves_against_home(self, fresh_config, tmp_path, monkeypatch):

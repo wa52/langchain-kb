@@ -72,6 +72,12 @@ def rebuild_bm25(store, echo_fn: callable = print):
     except Exception:
         expected_count = None
 
+    if _bm25_retriever is not None:
+        # Already loaded in this process (data unchanged); avoid re-parsing the
+        # persisted pickle on every agent construction.
+        echo_fn("  -> BM25 索引已在内存中，跳过重建")
+        return
+
     if _load_bm25_from_disk(expected_count=expected_count):
         echo_fn(f"  -> BM25 索引已从磁盘加载 ({_BM25_PERSIST_PATH})")
         return

@@ -11,6 +11,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ["HF_ENDPOINT"] = "https://huggingface.co"
 
+# Windows terminals may use GBK; keep eval output ASCII-safe and UTF-8 robust.
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = __import__("io").TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = __import__("io").TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 from fastapi.testclient import TestClient
 from src.api.app import create_app
 from src.resources import ResourceManager
@@ -124,6 +129,8 @@ def _flatten(messages):
 
 
 def run_eval():
+    import time as _time
+
     print("=" * 60)
     print("Citation Completeness Evaluation")
     print("=" * 60)
@@ -135,6 +142,7 @@ def run_eval():
     total_citation = 0.0
     total_accuracy = 0.0
     total_honesty = 0.0
+    total_time = 0.0
     results = []
 
     print(f"\n{'─'*60}")
@@ -143,8 +151,11 @@ def run_eval():
 
     for i, q in enumerate(QUESTIONS, 1):
         print(f"\n[{i}/{len(QUESTIONS)}] {q['id']}: {q['question'][:60]}...", flush=True)
+        t_start = _time.time()
         resp = client.post("/api/v1/chat", json={"query": q["question"]})
         data = resp.json()
+        elapsed = _time.time() - t_start
+        total_time += elapsed
         answer = data.get("answer", "") or ""
         snippet = answer.replace("\n", " ").strip()[:200]
         try:
@@ -154,13 +165,14 @@ def run_eval():
 
         verdict = judge_answer(answer, q["criteria"])
         print(f"  Score: {verdict['total_score']}/3 (C:{verdict['citation_score']} A:{verdict['accuracy_score']} H:{verdict['honesty_score']})", flush=True)
+        print(f"  Time:  {elapsed:.1f}s", flush=True)
         print(f"  Reason: {verdict['reason']}", flush=True)
 
         total_score += verdict["total_score"]
         total_citation += verdict["citation_score"]
         total_accuracy += verdict["accuracy_score"]
         total_honesty += verdict["honesty_score"]
-        results.append({**q, "answer": answer, "verdict": verdict})
+        results.append({**q, "answer": answer, "verdict": verdict, "elapsed_s": round(elapsed, 2)})
 
     print(f"\n{'─'*60}")
     print(f"Phase 2: No-knowledge questions ({len(NO_KNOWLEDGE_QUESTIONS)} items)")
@@ -169,8 +181,11 @@ def run_eval():
     no_knowledge_scores = []
     for i, q in enumerate(NO_KNOWLEDGE_QUESTIONS, 1):
         print(f"\n[{i}/{len(NO_KNOWLEDGE_QUESTIONS)}] {q['id']}: {q['question'][:60]}...", flush=True)
+        t_start = _time.time()
         resp = client.post("/api/v1/chat", json={"query": q["question"]})
         data = resp.json()
+        elapsed = _time.time() - t_start
+        total_time += elapsed
         answer = data.get("answer", "") or ""
         snippet = answer.replace("\n", " ").strip()[:200]
         try:
@@ -180,6 +195,7 @@ def run_eval():
 
         verdict = judge_answer(answer, q["expected"])
         print(f"  Score: {verdict['total_score']}/3 (C:{verdict['citation_score']} A:{verdict['accuracy_score']} H:{verdict['honesty_score']})", flush=True)
+        print(f"  Time:  {elapsed:.1f}s", flush=True)
         print(f"  Reason: {verdict['reason']}", flush=True)
 
         no_knowledge_scores.append(verdict["total_score"])
@@ -187,7 +203,7 @@ def run_eval():
         total_citation += verdict["citation_score"]
         total_accuracy += verdict["accuracy_score"]
         total_honesty += verdict["honesty_score"]
-        results.append({**q, "answer": answer, "verdict": verdict})
+        results.append({**q, "answer": answer, "verdict": verdict, "elapsed_s": round(elapsed, 2)})
 
     n = len(QUESTIONS) + len(NO_KNOWLEDGE_QUESTIONS)
     avg_score = total_score / n
@@ -210,7 +226,8 @@ def run_eval():
     print(f"  Accuracy score:      {avg_accuracy:.2f}/1.0")
     print(f"  Honesty score:       {avg_honesty:.2f}/1.0")
     print(f"  No-knowledge avg:    {nk_avg:.2f}/3.0")
-    print(f"  {'✅ PASS' if passed else '❌ FAIL'}")
+    print(f"  Total time:          {total_time:.1f}s (avg {total_time/n:.1f}s/q)")
+    print(f"  {'[PASS]' if passed else '[FAIL]'}")
     if not passed:
         if not passed_avg:
             print(f"    → Average below 2.0")
@@ -231,6 +248,8 @@ def run_eval():
             "avg_accuracy": round(avg_accuracy, 2),
             "avg_honesty": round(avg_honesty, 2),
             "no_knowledge_avg": round(nk_avg, 2),
+            "total_time_s": round(total_time, 2),
+            "avg_time_per_q_s": round(total_time / n, 2),
             "passed": passed,
         },
         "results": results,

@@ -1,0 +1,16 @@
+# Exclude non-runtime files from sdist/wheel
+prune tests
+prune evals
+prune reports
+prune docs
+prune .agents
+prune .claude
+prune agent
+prune .opencode
+prune .scratch
+prune .serena
+exclude *.bat
+exclude *.cmd
+exclude opencode-proxy.cmd
+exclude skills-lock.json
+exclude AGENTS.md

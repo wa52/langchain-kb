@@ -17,6 +17,7 @@ py-modules = ["config"]
 
 [tool.setuptools.packages.find]
 include = ["src*"]
+exclude = ["tests*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

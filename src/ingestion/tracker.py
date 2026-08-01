@@ -1,8 +1,13 @@
 import json
 import hashlib
+import os
 from pathlib import Path
 
-TRACKER_FILE = "./data/file_tracker.json"
+from config import KNOWLEDGE_HOME
+
+TRACKER_FILE = os.getenv(
+    "FILE_TRACKER_PATH", str(KNOWLEDGE_HOME / "data" / "file_tracker.json")
+)
 
 
 def _load_tracker() -> dict:

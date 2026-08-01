@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+kb_env/
+build/
+dist/
+发布/
