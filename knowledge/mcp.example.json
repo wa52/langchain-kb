@@ -6,8 +6,7 @@
         "npx",
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "D:\\",
-        "C:\\Users\\feng\\Desktop"
+        "/path/to/your/data"
       ],
       "enabled": true
     },

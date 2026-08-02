@@ -9,3 +9,19 @@ kb_env/
 build/
 dist/
 发布/
+
+# 本地工具 / AI 助手状态（不随项目发布）
+.agents/
+.claude/
+.opencode/
+.scratch/
+.serena/
+agent/skills/
+skills-lock.json
+使用说明.txt
+
+# 本地 MCP 配置（含个人路径，不随项目发布；模板见 knowledge/mcp.example.json）
+mcp.json
+
+# 本地代理启动脚本
+opencode-proxy.cmd
