@@ -1,0 +1,23 @@
+{
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "D:\\",
+        "C:\\Users\\feng\\Desktop"
+      ],
+      "enabled": true
+    },
+    "remote_service": {
+      "type": "remote",
+      "url": "https://example.com/mcp",
+      "enabled": false,
+      "headers": {
+        "Authorization": "Bearer your-token"
+      }
+    }
+  }
+}

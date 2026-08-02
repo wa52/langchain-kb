@@ -64,6 +64,11 @@ RERANK_LLM = os.getenv("RERANK_LLM", "deepseek").lower()
 LOCAL_LLM_BASE = os.getenv("LOCAL_LLM_BASE", "http://127.0.0.1:11434/v1")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3.5:4b")
 
+# 外部 MCP 客户端配置（opencode 风格 mcp.json，默认 <KNOWLEDGE_HOME>/mcp.json）
+MCP_CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "") or str(
+    KNOWLEDGE_HOME / "mcp.json"
+)
+
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://huggingface.co")
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"

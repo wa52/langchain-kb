@@ -56,6 +56,17 @@ def create_rag_agent():
     if ENABLE_GRAPH:
         tools.append(retrieve_graph)
 
+    # Load external MCP tools (opencode-style mcp.json). Degrades gracefully:
+    # a failure here never blocks the local knowledge tools.
+    try:
+        from src.agent.mcp_client import load_mcp_tools, default_mcp_config_path
+        external = load_mcp_tools(default_mcp_config_path())
+        if external:
+            tools.extend(external)
+            print(f"  [MCP] 已加载 {len(external)} 个外部工具")
+    except Exception as e:
+        print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
+
     _t4 = _time.time()
     agent = create_deep_agent(
         model=model,
