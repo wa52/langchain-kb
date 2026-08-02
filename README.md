@@ -111,6 +111,43 @@ TOP_K=5
 
 ---
 
+## 📥 克隆后使用（从 GitHub 拉取）
+
+克隆项目后，**运行时所需的资料/配置不会包含在仓库中**（`.env`、`data/`、
+`chroma_db/` 等均在 `.gitignore` 排除）。按下面清单配置后即可使用：
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 创建配置（.env 仓库中不提供，只提供模板）
+cp .env.example .env
+# 编辑 .env，填入 DEEPSEEK_API_KEY（必填）
+
+# 3. 验证配置与依赖
+python main.py knowledge doctor
+
+# 4. 导入你自己的资料（支持 .md/.txt/.pdf/.hdev/源代码）
+python main.py knowledge index ./你的资料路径
+
+# 5. 启动
+python main.py knowledge web        # 或 knowledge web（安装 CLI 后）
+```
+
+**克隆后首次运行会自动：**
+- 创建 `data/`、`chroma_db/` 目录骨架
+- 下载 embedding 模型（bge-small-zh-v1.5，约 33MB，需联网）
+
+**可选配置：**
+- **外部 MCP**：`cp knowledge/mcp.example.json mcp.json`，编辑填入你的目录
+- **离线环境**：提前下载模型 `hf download BAAI/bge-small-zh-v1.5`，或设置 `HF_HUB_OFFLINE=1`
+- **路径含中文**：在 `.env` 设置 ASCII 的 `CHROMA_PERSIST_DIR`
+
+> 若想直接使用已有知识库（含历史导入的 11 万 chunks），需同时拷贝本地的
+> `data/` 和 `chroma_db/` 目录，否则克隆后知识库为空，需重新 `index`。
+
+---
+
 ## 🚀 快速开始
 
 ```bash
