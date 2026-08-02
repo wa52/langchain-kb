@@ -143,9 +143,6 @@ python main.py knowledge web        # 或 knowledge web（安装 CLI 后）
 - **离线环境**：提前下载模型 `hf download BAAI/bge-small-zh-v1.5`，或设置 `HF_HUB_OFFLINE=1`
 - **路径含中文**：在 `.env` 设置 ASCII 的 `CHROMA_PERSIST_DIR`
 
-> 若想直接使用已有知识库（含历史导入的 11 万 chunks），需同时拷贝本地的
-> `data/` 和 `chroma_db/` 目录，否则克隆后知识库为空，需重新 `index`。
-
 ---
 
 ## 🚀 快速开始
