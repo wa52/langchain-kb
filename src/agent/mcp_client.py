@@ -66,11 +66,44 @@ def _to_connections(config_path) -> dict:
     return connections
 
 
+def _make_sync_compatible(tool):
+    """Wrap an async-only MCP tool so it also supports synchronous invocation.
+
+    MCP tools are StructuredTool with func=None and only an async _arun.
+    The sync agent (agent.stream) calls _run which raises "does not support
+    sync invocation". Rebuild the tool with a sync func that bridges via
+    asyncio.run, while keeping the original async coroutine.
+    """
+    if getattr(tool, "func", None) is not None:
+        return tool
+
+    original_arun = tool._arun
+    args_schema = tool.args_schema
+
+    def sync_func(*args, config=None, run_manager=None, **kwargs):
+        import asyncio
+        # StructuredTool's _run passes config only when the func signature has
+        # a config param; we declare it so the async impl receives it.
+        return asyncio.run(original_arun(*args, config=config, run_manager=run_manager, **kwargs))
+
+    from langchain_core.tools import StructuredTool
+    return StructuredTool.from_function(
+        func=sync_func,
+        coroutine=original_arun,
+        name=tool.name,
+        description=tool.description,
+        args_schema=args_schema,
+        return_direct=getattr(tool, "return_direct", False),
+        response_format=getattr(tool, "response_format", "content"),
+    )
+
+
 def load_mcp_tools(config_path, tool_name_prefix: bool = True) -> list:
     """Load external MCP tools for the agent.
 
-    Returns a list of LangChain BaseTools. On any failure (missing config,
-    server unreachable), returns [] so the agent still builds with local tools.
+    Returns a list of LangChain BaseTools, each wrapped to support both sync
+    and async invocation. On any failure (missing config, server unreachable),
+    returns [] so the agent still builds with local tools.
     """
     connections = _to_connections(config_path)
     if not connections:
@@ -84,7 +117,8 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True) -> list:
             connections,
             tool_name_prefix=tool_name_prefix,
         )
-        return asyncio.run(client.get_tools())
+        tools = asyncio.run(client.get_tools())
+        return [_make_sync_compatible(t) for t in tools]
     except Exception as e:
         print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
         return []

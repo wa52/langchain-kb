@@ -109,3 +109,65 @@ class TestRagAgentIntegration:
             tools = m_create.call_args.kwargs["tools"]
             assert "ext_tool_1" in tools
             assert "ext_tool_2" in tools
+
+
+class TestSyncCompatible:
+    def _async_only_tool(self):
+        """Build a StructuredTool with only async (coroutine) impl, func=None."""
+        import asyncio
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel, Field
+
+        class Args(BaseModel):
+            path: str = Field(description="path")
+
+        async def _impl(path: str) -> str:
+            await asyncio.sleep(0)
+            return f"read {path}"
+
+        return StructuredTool.from_function(
+            coroutine=_impl,
+            name="fs_read",
+            description="read file",
+            args_schema=Args,
+        )
+
+    def test_wrapped_tool_supports_sync(self):
+        from src.agent.mcp_client import _make_sync_compatible
+
+        tool = self._async_only_tool()
+        assert getattr(tool, "func", None) is None  # 确认原工具 async-only
+
+        wrapped = _make_sync_compatible(tool)
+        result = wrapped.invoke({"path": "D:/"})
+        assert result == "read D:/"
+
+    def test_wrapped_keeps_async(self):
+        import asyncio
+        from src.agent.mcp_client import _make_sync_compatible
+
+        tool = self._async_only_tool()
+        wrapped = _make_sync_compatible(tool)
+        result = asyncio.run(wrapped.ainvoke({"path": "D:/"}))
+        assert result == "read D:/"
+
+    def test_wrapped_preserves_metadata(self):
+        from src.agent.mcp_client import _make_sync_compatible
+
+        tool = self._async_only_tool()
+        wrapped = _make_sync_compatible(tool)
+        assert wrapped.name == "fs_read"
+        assert "read file" in wrapped.description
+
+    def test_existing_sync_tool_untouched(self):
+        from src.agent.mcp_client import _make_sync_compatible
+        from langchain_core.tools import tool
+
+        @tool
+        def local_tool(x: int) -> int:
+            """Local tool."""
+            return x + 1
+
+        wrapped = _make_sync_compatible(local_tool)
+        assert wrapped.func is not None
+        assert wrapped.invoke({"x": 1}) == 2
