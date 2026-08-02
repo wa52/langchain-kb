@@ -696,7 +696,7 @@ def design_command(
     from config import KNOWLEDGE_HOME, LLM_MODEL
     from src.llm import get_llm
     from src.agent.requirement_analyzer import analyze_requirement
-    from src.agent.algorithm_selector import select_algorithm
+    from src.agent.algorithm_selector import select_algorithm_llm
     from src.agent.solution_generator import generate_solution
     from src.agent.project_report import write_report, log_llm_call, write_check_report
 
@@ -724,11 +724,12 @@ def design_command(
              f"product={requirement['product']}, task={requirement['task']}",
              _t.time() - t0)
 
-        # 2) 算法推荐（规则表 + cap4 补充）
+        # 2) 算法推荐（规则表 + cap4 检索 + LLM 算子细化）
         t0 = _t.time()
-        algorithm = select_algorithm(requirement["task"], requirement.get("scene", ""), llm=None)
+        algorithm = select_algorithm_llm(requirement["task"], requirement.get("scene", ""), llm=llm)
         _log("algorithm_select", f"任务: {requirement['task']}",
-             f"算法: {','.join(algorithm['algorithms'])}", _t.time() - t0)
+             f"算法: {','.join(algorithm['algorithms'])}; 算子: {','.join(algorithm.get('operators', []))}",
+             _t.time() - t0)
 
         # 3) 方案生成（1 次 LLM）
         t0 = _t.time()
@@ -810,6 +811,12 @@ def _assemble_sections(requirement: dict, algorithm: dict, solution: dict) -> di
         f"**推荐算法**: {', '.join(algorithm.get('algorithms', []))}",
         f"**选择理由**: {algorithm.get('reason', '')}",
     ]
+    if algorithm.get("operators"):
+        alg_lines += ["", "**具体算子/API**:"] + [
+            f"- {op}" for op in algorithm["operators"]
+        ]
+    if algorithm.get("llm_refinements"):
+        alg_lines += ["", "**LLM 细化建议**:", "", algorithm["llm_refinements"]]
     if algorithm.get("knowledge_refs"):
         alg_lines += ["", "**知识参考**:"] + [
             f"- [{r['source']}] {r['content'][:150]}" for r in algorithm["knowledge_refs"]
