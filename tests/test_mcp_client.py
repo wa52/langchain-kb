@@ -67,18 +67,19 @@ class TestConnections:
 
 class TestLoadTools:
     def test_load_returns_tools(self, sample_config):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
         from src.agent.mcp_client import load_mcp_tools
 
-        fake_tools = [MagicMock(), MagicMock()]
+        fake_tools = TestServerDispatch()._fake_server_tools()
 
-        async def fake_get_tools():
+        async def fake_get_tools(server_name=None):
             return fake_tools
 
         with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
             instance = MockClient.return_value
             instance.get_tools = fake_get_tools
             tools = load_mcp_tools(sample_config)
+        # 2 个 enabled server → 2 个收敛工具
         assert len(tools) == 2
 
     def test_load_failure_returns_empty(self, sample_config):
@@ -171,3 +172,84 @@ class TestSyncCompatible:
         wrapped = _make_sync_compatible(local_tool)
         assert wrapped.func is not None
         assert wrapped.invoke({"x": 1}) == 2
+
+
+class TestServerDispatch:
+    def _fake_server_tools(self):
+        """Two fake sync tools under one 'filesystem' server."""
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel, Field
+
+        class ListArgs(BaseModel):
+            path: str = Field(description="path")
+
+        class ReadArgs(BaseModel):
+            path: str = Field(description="path")
+
+        def list_dir(path: str) -> str:
+            return f"list {path}"
+
+        def read_file(path: str) -> str:
+            return f"read {path}"
+
+        return [
+            StructuredTool.from_function(func=list_dir, name="list_directory", description="list dir", args_schema=ListArgs),
+            StructuredTool.from_function(func=read_file, name="read_file", description="read file", args_schema=ReadArgs),
+        ]
+
+    def test_dispatch_returns_single_tool(self):
+        from src.agent.mcp_client import _server_dispatch_tool
+        tool = _server_dispatch_tool("filesystem", self._fake_server_tools())
+        assert tool.name == "filesystem"
+        # 工具 args_schema 含 operation
+        assert "operation" in tool.args_schema.model_fields
+
+    def test_dispatch_routes_operation(self):
+        from src.agent.mcp_client import _server_dispatch_tool
+        tool = _server_dispatch_tool("filesystem", self._fake_server_tools())
+        r = tool.invoke({"operation": "list_directory", "path": "D:/"})
+        assert r == "list D:/"
+        r2 = tool.invoke({"operation": "read_file", "path": "D:/x.txt"})
+        assert r2 == "read D:/x.txt"
+
+    def test_dispatch_unknown_operation(self):
+        from src.agent.mcp_client import _server_dispatch_tool
+        tool = _server_dispatch_tool("filesystem", self._fake_server_tools())
+        r = tool.invoke({"operation": "delete", "path": "D:/"})
+        assert "未知操作" in r
+        assert "list_directory" in r
+
+    def test_dispatch_description_lists_operations(self):
+        from src.agent.mcp_client import _server_dispatch_tool
+        tool = _server_dispatch_tool("filesystem", self._fake_server_tools())
+        assert "list_directory" in tool.description
+        assert "read_file" in tool.description
+
+
+class TestLoadToolsConverged:
+    def test_load_returns_one_tool_per_server(self, sample_config):
+        """每个 server 的工具收敛为 1 个调度工具。"""
+        from unittest.mock import patch
+        from src.agent.mcp_client import load_mcp_tools
+
+        fake_tools = TestServerDispatch()._fake_server_tools()
+
+        async def fake_get_tools(server_name=None):
+            return fake_tools
+
+        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
+            instance = MockClient.return_value
+            instance.get_tools = fake_get_tools
+            tools = load_mcp_tools(sample_config)
+
+        # sample_config 有 2 个 enabled server → 2 个收敛工具
+        assert len(tools) == 2
+        names = [getattr(t, "name", str(t)) for t in tools]
+        assert "filesystem" in names
+        assert "remote_svc" in names
+
+    def test_agent_tools_unaffected(self):
+        """本地工具仍保留。"""
+        from src.agent import rag_agent
+        assert rag_agent.retrieve_knowledge is not None
+        assert rag_agent.project_workflow is not None
