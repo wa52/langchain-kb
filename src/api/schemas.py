@@ -14,6 +14,24 @@ class HealthResponse(BaseModel):
     entity_count: int
 
 
+class ComponentStatus(BaseModel):
+    name: str
+    state: str
+    detail: str | None = None
+    duration_ms: float | None = None
+    error: str | None = None
+
+
+class SystemStatusResponse(BaseModel):
+    status: str
+    uptime: float
+    index_version: int
+    vector_count: int
+    entity_count: int
+    bm25_chunks: int | None = None
+    components: dict[str, ComponentStatus]
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000, examples=["什么是知识库？"])
     top_k: int = Field(default=5, ge=1, le=50)
@@ -36,6 +54,22 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(
         default=None, description="会话 ID，用于延续历史对话"
     )
+
+
+class ChatStreamRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000, examples=["什么是知识库？"])
+    session_id: str | None = Field(
+        default=None, description="会话 ID，用于延续历史对话"
+    )
+    capability: str | None = Field(
+        default=None, description="能力域过滤（第一阶段保留字段）"
+    )
+
+
+class ChatStreamSource(BaseModel):
+    source: str
+    chunk_id: str = ""
+    excerpt: str | None = None
 
 
 class CitationItem(BaseModel):

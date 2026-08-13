@@ -138,6 +138,18 @@ python main.py knowledge web        # 或 knowledge web（安装 CLI 后）
 - 创建 `data/`、`chroma_db/` 目录骨架
 - 下载 embedding 模型（bge-small-zh-v1.5，约 33MB，需联网）
 
+**Web 客户端（Vite + React + TypeScript）：**
+`web/` 是独立前端工程，构建产物 `web/dist/` 由 FastAPI 托管（用户仍只启动一个服务）：
+
+```bash
+cd web
+npm install
+npm run build                     # 产物输出到 web/dist
+```
+
+未构建 `web/dist` 时，`/` 会回退到内嵌的单文件 UI（旧版）。开发前端时可先启动后端，
+再在 `web/` 下运行 `npm run dev`（Vite 会把 `/api` 代理到 127.0.0.1:8000）。
+
 **可选配置：**
 - **外部 MCP**：`cp knowledge/mcp.example.json mcp.json`，编辑填入你的目录
 - **离线环境**：提前下载模型 `hf download BAAI/bge-small-zh-v1.5`，或设置 `HF_HUB_OFFLINE=1`

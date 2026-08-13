@@ -30,6 +30,7 @@ def rm():
     mock_kg.graph.number_of_edges.return_value = 5
     rm.vector_store = mock_vs
     rm.graph = mock_kg
+    rm.agent = MagicMock()
     return rm
 
 
@@ -174,8 +175,8 @@ class TestOpenAPISchema:
             for method, details in methods.items():
                 oids.add(details.get("operationId"))
         expected = {"health_check", "search_knowledge", "answer_with_knowledge",
-                     "start_index_task", "get_index_status",
-                     "list_sessions", "get_session", "delete_session"}
+                     "chat_stream", "start_index_task", "get_index_status",
+                     "system_status", "list_sessions", "get_session", "delete_session"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 
     async def test_mcp_instance_stored_in_app_state(self, session):
@@ -223,6 +224,9 @@ class TestIndexToolCall:
     async def test_get_index_status_returns_task_status(self, session):
         from src.api.services.indexing import get_task_manager
         mgr = get_task_manager()
+        # Order-independent: other tests may have left tasks (e.g. a pending
+        # "/some/path" from test_api_routes) in this module-level singleton.
+        mgr._tasks.clear()
         tid = mgr.create_task("/some/path")
         mgr.update_task(tid, status="running", progress="50%")
 

@@ -1,9 +1,11 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from config import PRODUCT_NAME, PRODUCT_NAME_EN
+from config import PRODUCT_NAME, PRODUCT_NAME_EN, PROJECT_ROOT
 from src.api.web import web_app_html
 from src.api.schemas import ErrorResponse
 from src.resources import app_lifespan
@@ -15,6 +17,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+# Built web client (Vite + React + TypeScript). When present, it is served
+# instead of the embedded single-file UI and SPA routes fall back to it.
+WEB_DIST = PROJECT_ROOT / "web" / "dist"
+
+
+def _web_dist_available() -> bool:
+    return (WEB_DIST / "index.html").exists()
+
+
+def _spa_index() -> FileResponse:
+    return FileResponse(WEB_DIST / "index.html")
 
 
 def create_app() -> FastAPI:
@@ -28,12 +42,14 @@ def create_app() -> FastAPI:
     )
 
     from src.api.routers.health import router as health_router
+    from src.api.routers.status import router as status_router
     from src.api.routers.search import router as search_router
     from src.api.routers.chat import router as chat_router
     from src.api.routers.indexing import router as indexing_router
     from src.api.routers.sessions import router as sessions_router
 
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(status_router, prefix="/api/v1")
     app.include_router(search_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(indexing_router, prefix="/api/v1")
@@ -41,7 +57,16 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     async def landing_page():
+        if _web_dist_available():
+            return _spa_index()
         return web_app_html()
+
+    if _web_dist_available() and (WEB_DIST / "assets").is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=WEB_DIST / "assets"),
+            name="web-assets",
+        )
 
     from fastapi_mcp import FastApiMCP
     app.state.mcp = FastApiMCP(
@@ -51,6 +76,17 @@ def create_app() -> FastAPI:
         description=f"Semantic search, RAG Q&A, and index status for the {PRODUCT_NAME_EN}",
     )
     app.state.mcp.mount_http()
+
+    if _web_dist_available():
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str):
+            # API/MCP/docs paths that did not match an actual route stay JSON 404;
+            # everything else is the single-page app's client-side route.
+            first = full_path.split("/", 1)[0]
+            if first in ("api", "mcp", "docs", "redoc", "openapi.json", "assets"):
+                raise HTTPException(status_code=404, detail=f"Route GET /{full_path} not found")
+            return _spa_index()
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException):

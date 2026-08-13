@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,17 @@ def reset_singleton():
     ResourceManager._lock = type(ResourceManager._lock)()
     yield
     ResourceManager._instance = None
+
+
+@pytest.fixture(autouse=True)
+def embedded_ui_only(monkeypatch):
+    """These tests assert on the embedded single-file UI.
+
+    It remains the fallback when web/dist is not built; pin WEB_DIST to a
+    missing directory so the suite passes regardless of build state.
+    """
+    from src.api import app as app_module
+    monkeypatch.setattr(app_module, "WEB_DIST", Path("no_such_web_dist_dir"))
 
 
 @pytest.fixture
