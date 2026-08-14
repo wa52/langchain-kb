@@ -4,8 +4,11 @@ from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.agent.chat_history import allocate_session_id, save_history, load_history
+from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH
 
-_CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]+)\]")
+_CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]{1,256})\]")
+_EXCERPT_LIMIT = 200
+_BASENAME_TTL = 60.0
 
 
 def _get_agent():
@@ -70,6 +73,111 @@ def extract_sources(answer: str) -> list[dict]:
         if source and source not in seen:
             seen.add(source)
             sources.append({"source": source, "chunk_id": "", "excerpt": None})
+    return sources
+
+
+_basename_index: dict[str, str] | None = None
+_basename_index_ts: float = 0.0
+
+
+def _query_source(name: str) -> dict:
+    """Fetch the first vector-store chunk whose ``source`` equals ``name``."""
+    try:
+        from src.vector_store.chroma_client import get_vector_store
+        vs = get_vector_store()
+        col = vs._collection
+        res = col.get(where={"source": name}, include=["documents", "metadatas"], limit=1)
+        ids = res.get("ids") or []
+        docs = res.get("documents") or []
+        metas = res.get("metadatas") or []
+        if ids and docs:
+            text = docs[0] or ""
+            meta = (metas[0] or {}) if metas else {}
+            excerpt = text
+            if len(excerpt) > _EXCERPT_LIMIT:
+                excerpt = excerpt[:_EXCERPT_LIMIT] + "…"
+            return {"chunk_id": ids[0] or meta.get("chunk_id", ""), "excerpt": excerpt}
+    except Exception:
+        pass
+    return {"chunk_id": "", "excerpt": None}
+
+
+def _build_basename_index() -> dict[str, str]:
+    """Map stored ``source`` basename -> full stored path (metadata scan).
+
+    Stored sources are relative paths (``sub/dir.md``) for directory loads
+    while the agent cites basenames; the index lets a basename citation fall
+    back to the real chunk. Metadata-only scan, cached briefly below."""
+    from src.vector_store.chroma_client import get_vector_store
+    vs = get_vector_store()
+    col = vs._collection
+    mapping: dict[str, str] = {}
+    batch_size = 500
+    offset = 0
+    while True:
+        batch = col.get(include=["metadatas"], limit=batch_size, offset=offset)
+        metas = batch.get("metadatas", []) if batch else []
+        if not metas:
+            break
+        for m in metas:
+            src = (m or {}).get("source", "")
+            if src:
+                base = src.replace("\\", "/").rsplit("/", 1)[-1]
+                mapping.setdefault(base, src)
+        offset += batch_size
+    return mapping
+
+
+def _basename_to_source(name: str) -> str | None:
+    """Full stored source path for a basename, using a short-TTL cache."""
+    global _basename_index, _basename_index_ts
+    now = time.time()
+    if _basename_index is None or (now - _basename_index_ts) > _BASENAME_TTL:
+        try:
+            _basename_index = _build_basename_index()
+        except Exception:
+            _basename_index = {}
+        _basename_index_ts = now
+    return _basename_index.get(name)
+
+
+def _source_lookup(name: str) -> dict:
+    """Best-effort: chunk_id + excerpt for a cited source filename.
+
+    Exact-match first; when the name is a bare basename and the exact match
+    misses, fall back through the stored-source basename index (handles
+    nested directory loads). Never raises."""
+    found = _query_source(name)
+    if found.get("chunk_id"):
+        return found
+    if "/" not in name and "\\" not in name:
+        full = _basename_to_source(name)
+        if full and full != name:
+            found = _query_source(full)
+            if found.get("chunk_id"):
+                return found
+    return {"chunk_id": "", "excerpt": None}
+
+
+def _hit_chain() -> list[str]:
+    """Engines the retrieval pipeline may have contributed for an answer."""
+    chain = ["vector"]
+    if ENABLE_HYBRID_SEARCH:
+        chain.append("bm25")
+    if ENABLE_GRAPH:
+        chain.append("graph")
+    return chain
+
+
+def build_sources(answer: str) -> list[dict]:
+    """Extract source markers and enrich them with chunk/excerpt/chain."""
+    sources = extract_sources(answer)
+    chain = _hit_chain()
+    for s in sources:
+        found = _source_lookup(s["source"])
+        s["chunk_id"] = found.get("chunk_id", "")
+        s["excerpt"] = found.get("excerpt")
+        s["hit_chain"] = list(chain)
     return sources
 
 
@@ -143,7 +251,7 @@ def stream_chat_events(
     new_session_id = save_history(history, session_id)
     elapsed_ms = (time.time() - t0) * 1000
 
-    yield {"type": "sources", "data": {"sources": extract_sources(answer)}}
+    yield {"type": "sources", "data": {"sources": build_sources(answer)}}
     yield {
         "type": "message_end",
         "data": {

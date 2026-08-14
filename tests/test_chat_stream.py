@@ -48,6 +48,8 @@ def _patch_stream(stream_result, save_return="sess_stream", load_return=None):
     stack.enter_context(patch("src.api.services.chat.save_history", return_value=save_return))
     stack.enter_context(patch("src.api.services.chat.load_history", return_value=load_return))
     stack.enter_context(patch("src.api.services.chat.allocate_session_id", return_value="sess_new"))
+    stack.enter_context(patch("src.api.services.chat._source_lookup",
+                              return_value={"chunk_id": "", "excerpt": None}))
     return stack
 
 
@@ -99,7 +101,77 @@ class TestChatStreamSSEFraming:
             resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
         events = _parse_sse(resp.text)
         sources = [e for e in events if e[0] == "sources"][0][1]["sources"]
-        assert sources == [{"source": "guide.md", "chunk_id": "", "excerpt": None}]
+        assert len(sources) == 1
+        assert sources[0]["source"] == "guide.md"
+        assert sources[0]["chunk_id"] == ""
+        assert sources[0]["excerpt"] is None
+        assert isinstance(sources[0]["hit_chain"], list)
+
+    def test_sources_are_enriched_with_chunk_and_excerpt(self, client):
+        with (
+            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
+            patch("src.api.services.chat.stream_rag_response",
+                  return_value=["根据资料 [来源: guide.md] 说明。"]),
+            patch("src.api.services.chat.save_history", return_value="sess_x"),
+            patch("src.api.services.chat.load_history", return_value=None),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+            patch("src.api.services.chat._source_lookup",
+                  return_value={"chunk_id": "chunk-42", "excerpt": "标定方法要点…"}),
+        ):
+            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+        events = _parse_sse(resp.text)
+        sources = [e for e in events if e[0] == "sources"][0][1]["sources"]
+        assert sources[0]["chunk_id"] == "chunk-42"
+        assert sources[0]["excerpt"] == "标定方法要点…"
+
+    def test_source_lookup_falls_back_to_empty(self):
+        from src.api.services.chat import _source_lookup
+        with patch("src.vector_store.chroma_client.get_vector_store",
+                   side_effect=RuntimeError("no store")):
+            assert _source_lookup("missing.md") == {"chunk_id": "", "excerpt": None}
+
+    def test_source_lookup_falls_back_to_basename_match(self):
+        from src.api.services.chat import _source_lookup
+        with (
+            patch("src.api.services.chat._query_source",
+                  side_effect=lambda n: {"chunk_id": "", "excerpt": None}
+                  if n == "dir.md"
+                  else {"chunk_id": "chunk-9", "excerpt": "子目录文档摘录…"}),
+            patch("src.api.services.chat._basename_to_source", return_value="sub/dir.md"),
+        ):
+            result = _source_lookup("dir.md")
+        assert result == {"chunk_id": "chunk-9", "excerpt": "子目录文档摘录…"}
+
+    def test_source_lookup_skips_basename_fallback_for_pathlike(self):
+        from src.api.services.chat import _source_lookup
+        with (
+            patch("src.api.services.chat._query_source",
+                  return_value={"chunk_id": "", "excerpt": None}),
+            patch("src.api.services.chat._basename_to_source",
+                  return_value="should-not-be-used") as mock_base,
+        ):
+            result = _source_lookup("sub/dir.md")
+        assert result == {"chunk_id": "", "excerpt": None}
+        mock_base.assert_not_called()
+
+    def test_basename_to_source_builds_index(self):
+        import src.api.services.chat as chat_mod
+        fake_col = MagicMock()
+        fake_col.get.side_effect = [
+            {
+                "metadatas": [{"source": "a/b.md"}, {"source": "top.md"}, {"source": "c/b.md"}],
+            },
+            {"metadatas": []},
+        ]
+        fake_store = MagicMock()
+        fake_store._collection = fake_col
+        with (
+            patch.object(chat_mod, "_basename_index", None),
+            patch.object(chat_mod, "_basename_index_ts", 0.0),
+            patch("src.vector_store.chroma_client.get_vector_store", return_value=fake_store),
+        ):
+            result = chat_mod._basename_to_source("b.md")
+        assert result == "a/b.md"
 
     def test_history_saved_with_interrupted_flag_false(self, client):
         saved = []

@@ -70,6 +70,7 @@ class ChatStreamSource(BaseModel):
     source: str
     chunk_id: str = ""
     excerpt: str | None = None
+    hit_chain: list[str] = []
 
 
 class CitationItem(BaseModel):

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { SourceItem } from "../../types/api";
 
@@ -7,8 +7,16 @@ interface SourceDrawerProps {
   onClose: () => void;
 }
 
+const CHAIN_LABEL: Record<string, string> = {
+  vector: "向量检索",
+  bm25: "BM25",
+  graph: "知识图谱",
+};
+
 export function SourceDrawer({ source, onClose }: SourceDrawerProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -16,8 +24,29 @@ export function SourceDrawer({ source, onClose }: SourceDrawerProps) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
   }, [onClose]);
+
+  const reference = `[来源: ${source.source}]`;
+
+  async function copyReference(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(reference);
+      setCopyState("copied");
+      timerRef.current = window.setTimeout(() => setCopyState("idle"), 1600);
+    } catch {
+      setCopyState("failed");
+      timerRef.current = window.setTimeout(() => setCopyState("idle"), 1600);
+    }
+  }
+
+  const chain = (source.hit_chain ?? []).map((c) => CHAIN_LABEL[c] ?? c);
+
+  const copyLabel =
+    copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制引用";
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -39,18 +68,34 @@ export function SourceDrawer({ source, onClose }: SourceDrawerProps) {
         </button>
         <h3 className="drawer-title">{source.source}</h3>
         <dl>
-          <dt>chunk id</dt>
-          <dd>{source.chunk_id || "—"}</dd>
+          {chain.length > 0 ? (
+            <>
+              <dt>候选检索链路</dt>
+              <dd>{chain.join(" · ")}</dd>
+            </>
+          ) : null}
+          {source.chunk_id ? (
+            <>
+              <dt>chunk id</dt>
+              <dd className="mono">{source.chunk_id}</dd>
+            </>
+          ) : null}
           {source.excerpt ? (
             <>
               <dt>摘录</dt>
-              <dd>{source.excerpt}</dd>
+              <dd className="drawer-excerpt">{source.excerpt}</dd>
             </>
           ) : null}
+          <dt>引用</dt>
+          <dd className="mono">{reference}</dd>
         </dl>
-        <p className="muted" style={{ fontSize: 13 }}>
-          命中链路与引用文本会在后续版本提供。
-        </p>
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => void copyReference()}
+        >
+          {copyLabel}
+        </button>
       </div>
     </div>
   );

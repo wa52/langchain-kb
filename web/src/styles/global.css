@@ -597,6 +597,11 @@ button.primary:not(:disabled):hover {
   font-family: var(--font-mono);
 }
 
+.drawer-excerpt {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
 .drawer-backdrop {
   position: fixed;
   inset: 0;

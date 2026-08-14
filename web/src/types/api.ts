@@ -20,6 +20,7 @@ export interface SourceItem {
   source: string;
   chunk_id: string;
   excerpt?: string | null;
+  hit_chain?: string[];
 }
 
 export interface ChatMessage {
