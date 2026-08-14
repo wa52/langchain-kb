@@ -177,6 +177,7 @@ class TestOpenAPISchema:
         expected = {"health_check", "search_knowledge", "answer_with_knowledge",
                      "chat_stream", "start_index_task", "upload_documents",
                      "get_index_status", "system_status", "knowledge_stats",
+                     "run_diagnostics", "get_diagnostics_status", "repair_diagnostics",
                      "list_sessions", "get_session", "delete_session"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 

@@ -1,4 +1,5 @@
 import type {
+  DiagnosticsTaskStatus,
   IndexTask,
   KnowledgeStats,
   SessionDetail,
@@ -180,4 +181,37 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
   });
   if (!resp.ok) throw new Error(`任务查询失败 (${resp.status})`);
   return (await resp.json()) as TaskStatus;
+}
+
+export async function startDiagnostics(): Promise<{ task_id: string; status: string }> {
+  const resp = await fetch("/api/v1/diagnostics", { method: "POST" });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `诊断请求失败 (${resp.status})`));
+  }
+  return (await resp.json()) as { task_id: string; status: string };
+}
+
+export async function getDiagnostics(
+  taskId: string,
+): Promise<DiagnosticsTaskStatus> {
+  const resp = await fetch(`/api/v1/diagnostics/tasks/${encodeURIComponent(taskId)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`诊断查询失败 (${resp.status})`);
+  return (await resp.json()) as DiagnosticsTaskStatus;
+}
+
+export async function repairDiagnostics(
+  taskId: string,
+  name: string,
+): Promise<{ repaired: boolean }> {
+  const resp = await fetch("/api/v1/diagnostics/repair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_id: taskId, name }),
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `修复请求失败 (${resp.status})`));
+  }
+  return (await resp.json()) as { repaired: boolean };
 }

@@ -138,6 +138,50 @@ class IndexTaskSummary(TaskStatusResponse):
     pass
 
 
+class DiagnosticsTaskResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class DiagnosticsCheck(BaseModel):
+    name: str
+    ok: bool
+    status: str
+    detail: str = ""
+    error: str | None = None
+    duration_ms: float | None = None
+    fix: str = ""
+    repairable: bool = False
+
+
+class DiagnosticsSummary(BaseModel):
+    total: int
+    ok: int
+    failed: int
+
+
+class DiagnosticsResult(BaseModel):
+    checks: list[DiagnosticsCheck]
+    summary: DiagnosticsSummary
+
+
+class DiagnosticsTaskStatus(BaseModel):
+    task_id: str
+    status: str
+    result: DiagnosticsResult | None = None
+    error: str | None = None
+
+
+class RepairRequest(BaseModel):
+    task_id: str
+    name: str
+
+
+class RepairResponse(BaseModel):
+    name: str
+    repaired: bool
+
+
 class KnowledgeStatsResponse(BaseModel):
     documents: int
     chunks: int

@@ -91,3 +91,32 @@ export interface UploadTasks {
   tasks: IndexTask[];
   saved: string[];
 }
+
+export interface DiagnosticsCheck {
+  name: string;
+  ok: boolean;
+  status: string;
+  detail: string;
+  error?: string | null;
+  duration_ms?: number | null;
+  fix: string;
+  repairable: boolean;
+}
+
+export interface DiagnosticsSummary {
+  total: number;
+  ok: number;
+  failed: number;
+}
+
+export interface DiagnosticsResult {
+  checks: DiagnosticsCheck[];
+  summary: DiagnosticsSummary;
+}
+
+export interface DiagnosticsTaskStatus {
+  task_id: string;
+  status: string;
+  result?: DiagnosticsResult | null;
+  error?: string | null;
+}
