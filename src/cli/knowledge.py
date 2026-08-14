@@ -28,7 +28,8 @@ app = typer.Typer(
         "  knowledge web\n"
         "  knowledge cli\n"
         '  knowledge search "什么是RAG?"\n'
-        "  knowledge index ./docs"
+        "  knowledge index ./docs\n"
+        "\n聊天、检索建议优先使用 Web 客户端: knowledge web"
     ),
 )
 
@@ -106,9 +107,9 @@ def _exit(code: int):
 
 _COMMANDS = [
     ("web", "启动 Web 服务（首页 + API + MCP）"),
-    ("cli", "进入交互式问答控制台"),
-    ("search", "检索知识片段"),
-    ("chat", "基于知识库回答"),
+    ("cli", "进入交互式问答控制台（建议优先使用 Web）"),
+    ("search", "检索知识片段（建议优先使用 Web 检索）"),
+    ("chat", "基于知识库回答（建议优先使用 Web 聊天）"),
     ("index", "索引文件或目录到向量库"),
     ("map", "查看能力模型与知识覆盖"),
     ("project", "按能力阶段引导工业视觉项目"),
@@ -240,7 +241,7 @@ def web(
 
 @app.command()
 def cli():
-    """进入交互式问答控制台"""
+    """进入交互式问答控制台（建议优先使用 Web 聊天）"""
     from src.cli.console import run_console
     run_console()
 
@@ -294,6 +295,38 @@ def serve(
 ):
     """启动 API + MCP 服务"""
     _serve(host, port, reload, as_json)
+
+
+@app.command()
+def lark(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
+    """启动飞书机器人（长连接模式，无需公网 URL）"""
+    import os as _os
+
+    from src.feishu.bot import get_feishu_credentials, run_feishu_bot
+
+    app_id, _secret = get_feishu_credentials()
+    if not app_id or not _secret:
+        _fail(
+            as_json, EXIT_CONFIG,
+            "FEISHU_APP_ID / FEISHU_APP_SECRET 未配置",
+            "FEISHU_NOT_CONFIGURED", "feishu_not_configured", recoverable=True,
+            suggestions=[
+                "在 .env 中配置飞书应用凭证（.env.example 有模板）",
+                "运行 knowledge doctor 检查环境",
+            ],
+        )
+        return
+    if as_json:
+        _emit_json({"status": "ok", "data": {"app_id": app_id}})
+    else:
+        _data_console().print(Panel(
+            f"[bold]飞书机器人:[/bold] {app_id}\n"
+            "[bold]连接方式:[/bold] 长连接（WebSocket）\n"
+            "[bold]知识库 API:[/bold] " + _os.getenv("KB_API_BASE", "http://127.0.0.1:8000"),
+            title="飞书机器人",
+            border_style="cyan",
+        ))
+    run_feishu_bot()
 
 
 @app.command()
@@ -378,7 +411,7 @@ def search(
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
     plain: bool = typer.Option(False, help="纯文本输出（适合管道）"),
 ):
-    """检索知识片段（可用 --capability 按能力域过滤）"""
+    """检索知识片段（可用 --capability 按能力域过滤；建议优先使用 Web 检索）"""
     try:
         if capability:
             from src.vector_store.service import VectorStoreService
@@ -456,7 +489,7 @@ def chat(
     session: str = typer.Option(None, help="恢复会话 ID"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
-    """基于知识库回答（不带问题参数时进入交互式多轮对话）"""
+    """基于知识库回答（不带问题参数时进入交互式对话；建议优先使用 Web 聊天）"""
     if question is None:
         from src.cli.console import run_console
         run_console()
@@ -496,14 +529,15 @@ def chat(
 
 @app.command()
 def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
-    """查看系统状态"""
-    from config import DATA_DIR, EMBEDDING_MODEL, KNOWLEDGE_HOME, LLM_MODEL
+    """查看系统状态（与 Web 状态页同一组件模型）"""
+    from config import DATA_DIR, EMBEDDING_MODEL, GRAPH_PERSIST_DIR, KNOWLEDGE_HOME, LLM_MODEL
     from src.llm import get_llm
     from src.retrieval.retriever import _BM25_PERSIST_PATH
+    from src.status import overall_state
     from src.vector_store.embedding import get_embedding_model
     from src.vector_store.service import VectorStoreService
 
-    embedding = {"name": EMBEDDING_MODEL, "status": "ok"}
+    embedding = {"name": EMBEDDING_MODEL, "status": "ready"}
     try:
         get_embedding_model()
     except Exception:
@@ -514,17 +548,34 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
         stats = VectorStoreService().get_stats()
         vector_store = {"chunks": stats.get("count", 0),
                         "sources": stats.get("source_count", 0),
-                        "status": "ok"}
+                        "status": "ready"}
     except Exception:
         pass
 
-    llm = {"name": LLM_MODEL, "status": "ok"}
+    llm = {"name": LLM_MODEL, "status": "ready"}
     try:
         get_llm(temperature=0)
     except Exception:
         llm["status"] = "error"
 
-    bm25 = "ok" if _BM25_PERSIST_PATH.exists() else "missing"
+    bm25_state = "ready" if _BM25_PERSIST_PATH.exists() else "pending"
+    graph_state, graph_nodes, graph_detail = _graph_status(GRAPH_PERSIST_DIR)
+
+    # 与 Web 状态页（System Rail / /api/v1/status）一致的组件模型
+    components = {
+        "embedding": {"state": embedding["status"], "detail": EMBEDDING_MODEL},
+        "llm": {"state": llm["status"], "detail": LLM_MODEL},
+        "vector_store": {
+            "state": vector_store["status"],
+            "detail": f"{vector_store['chunks']} chunks · {vector_store['sources']} 来源",
+        },
+        "bm25": {"state": bm25_state, "detail": "磁盘缓存就绪" if bm25_state == "ready" else "未构建"},
+        "graph": {"state": graph_state, "detail": graph_detail},
+        "agent": {"state": "pending", "detail": "会话时按需加载"},
+        "index": {"state": "pending", "detail": "无活动任务"},
+    }
+    overall = overall_state(components)
+
     mcp = "running" if _port_open(8000) else "stopped"
     home_status = "ok" if Path(KNOWLEDGE_HOME).exists() else "error"
     docs_status = "ok" if Path(DATA_DIR).exists() else "error"
@@ -533,11 +584,15 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
         _emit_json({"status": "ok", "data": {
             "knowledge_home": str(KNOWLEDGE_HOME),
             "data_dir": str(DATA_DIR),
-            "embedding": embedding,
+            "embedding": {"name": EMBEDDING_MODEL, "status": embedding["status"]},
             "vector_store": vector_store,
-            "llm": llm,
-            "bm25": bm25,
+            "llm": {"name": LLM_MODEL, "status": llm["status"]},
+            "bm25": bm25_state,
             "mcp": mcp,
+            "overall": overall,
+            "graph_nodes": graph_nodes,
+            "components": {name: {"state": c["state"], "detail": c["detail"]}
+                           for name, c in components.items()},
         }})
         return
 
@@ -548,13 +603,44 @@ def status(as_json: bool = typer.Option(False, "--json", help="JSON 输出")):
     table.add_column("详情")
     table.add_row("数据目录", _dot(home_status), str(KNOWLEDGE_HOME))
     table.add_row("源文档目录", _dot(docs_status), str(DATA_DIR))
-    table.add_row("Embedding", _dot(embedding["status"]), embedding["name"])
-    table.add_row("向量库", _dot(vector_store["status"]),
+    table.add_row("整体状态", _state_mark(overall), "core: embedding/llm/vector_store")
+    table.add_row("Embedding", _state_mark(embedding["status"]), embedding["name"])
+    table.add_row("向量库", _state_mark(vector_store["status"]),
                   f"{vector_store['chunks']} chunks · {vector_store['sources']} 来源")
-    table.add_row("LLM", _dot(llm["status"]), llm["name"])
-    table.add_row("BM25 索引", "●" if bm25 == "ok" else "○", bm25)
+    table.add_row("LLM", _state_mark(llm["status"]), llm["name"])
+    table.add_row("BM25 索引", _state_mark(bm25_state),
+                  "磁盘缓存就绪" if bm25_state == "ready" else "未构建")
+    table.add_row("知识图谱", _state_mark(graph_state), graph_detail)
+    table.add_row("组件链路",
+                  " | ".join(f"{name} {_state_mark(c['state'])[0]}"
+                             for name, c in components.items()),
+                  "与 Web 状态页一致")
     table.add_row("MCP 服务", "●" if mcp == "running" else "○", mcp)
     console.print(table)
+
+
+def _state_mark(state: str) -> str:
+    if state == "ready" or state == "ok":
+        return "● 就绪"
+    if state == "error":
+        return "✖ 错误"
+    return "○ 等待"
+
+
+def _graph_status(graph_persist_dir) -> tuple[str, int, str]:
+    """确定性图谱探针：文件缺失→pending，损坏→error，实体为空→pending。"""
+    path = Path(graph_persist_dir) / "knowledge_graph.json"
+    if not path.exists():
+        return "pending", 0, "未构建"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        nodes = data.get("nodes") or []
+        n = len(nodes) if isinstance(nodes, list) else 0
+    except Exception:
+        return "error", 0, "文件损坏"
+    if n == 0:
+        return "pending", 0, "实体为空"
+    return "ready", n, f"{n} 个实体"
 
 
 def _dot(status: str) -> str:

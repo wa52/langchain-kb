@@ -278,6 +278,7 @@ class TestStatus:
             patch("config.LLM_MODEL", "deepseek-chat"),
             patch("config.KNOWLEDGE_HOME", "C:/knowledge-home"),
             patch("config.DATA_DIR", Path("C:/knowledge-home/data/docs")),
+            patch("config.GRAPH_PERSIST_DIR", Path("C:/knowledge-home/data")),
         ):
             mock_vs.return_value.get_stats.return_value = {"count": 10, "sources": ["a"], "source_count": 1}
             mock_bm25.exists.return_value = True
@@ -286,6 +287,8 @@ class TestStatus:
         assert_snapshot("status_json", result.output)
         parsed = json.loads(result.output)
         assert parsed["data"]["vector_store"]["chunks"] == 10
+        assert parsed["data"]["overall"] == "ok"
+        assert parsed["data"]["components"]["graph"]["state"] == "pending"
         assert _ANSI.search(result.output) is None
 
 
