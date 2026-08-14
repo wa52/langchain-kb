@@ -62,7 +62,7 @@ export default function App() {
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (
-            <SettingsPage {...pageProps} />
+            <SettingsPage />
           )}
         </main>
       </div>

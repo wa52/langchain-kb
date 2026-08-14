@@ -189,3 +189,35 @@ class KnowledgeStatsResponse(BaseModel):
     bm25_chunks: int | None = None
     graph: GraphStats
     index_task: IndexTaskSummary | None = None
+
+
+class SettingsResponse(BaseModel):
+    knowledge_home: str
+    data_dir: str
+    external_dir: str
+    chroma_persist_dir: str
+    chroma_ok: bool
+    graph_persist_dir: str
+    embedding_model: str
+    embedding_device: str
+    llm_model: str
+    llm_api_base: str
+    llm_api_configured: bool
+    rerank_llm: str
+    local_llm_base: str
+    local_llm_model: str
+    hf_endpoint: str
+    hf_offline: bool
+    graph_enabled: bool
+    graph_llm_extraction: bool
+    hybrid_search: bool
+    grading: bool
+    rewrite: bool
+    context_compression: bool
+    chunk_size: int
+    chunk_overlap: int
+    top_k: int
+    max_context_tokens: int
+    mcp_config_path: str
+    mcp_enabled: bool
+    lan_protection: bool

@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     from src.api.routers.sessions import router as sessions_router
     from src.api.routers.knowledge import router as knowledge_router
     from src.api.routers.diagnostics import router as diagnostics_router
+    from src.api.routers.settings import router as settings_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(status_router, prefix="/api/v1")
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router, prefix="/api/v1")
     app.include_router(knowledge_router, prefix="/api/v1")
     app.include_router(diagnostics_router, prefix="/api/v1")
+    app.include_router(settings_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     async def landing_page():

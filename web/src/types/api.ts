@@ -121,3 +121,35 @@ export interface DiagnosticsTaskStatus {
   result?: DiagnosticsResult | null;
   error?: string | null;
 }
+
+export interface AppSettings {
+  knowledge_home: string;
+  data_dir: string;
+  external_dir: string;
+  chroma_persist_dir: string;
+  chroma_ok: boolean;
+  graph_persist_dir: string;
+  embedding_model: string;
+  embedding_device: string;
+  llm_model: string;
+  llm_api_base: string;
+  llm_api_configured: boolean;
+  rerank_llm: string;
+  local_llm_base: string;
+  local_llm_model: string;
+  hf_endpoint: string;
+  hf_offline: boolean;
+  graph_enabled: boolean;
+  graph_llm_extraction: boolean;
+  hybrid_search: boolean;
+  grading: boolean;
+  rewrite: boolean;
+  context_compression: boolean;
+  chunk_size: number;
+  chunk_overlap: number;
+  top_k: number;
+  max_context_tokens: number;
+  mcp_config_path: string;
+  mcp_enabled: boolean;
+  lan_protection: boolean;
+}

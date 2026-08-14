@@ -233,6 +233,16 @@ button.primary:not(:disabled):hover {
   word-break: break-all;
 }
 
+.settings-section h3 {
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--grid-line);
+}
+
 .issue {
   border-left: 3px solid var(--warn-amber);
   padding: 10px 12px;

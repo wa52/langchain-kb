@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   DiagnosticsTaskStatus,
   IndexTask,
   KnowledgeStats,
@@ -221,4 +222,12 @@ export async function repairDiagnostics(
     throw new Error(await readError(resp, `修复请求失败 (${resp.status})`));
   }
   return (await resp.json()) as { repaired: boolean };
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  const resp = await fetch("/api/v1/settings", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`配置读取失败 (${resp.status})`);
+  return (await resp.json()) as AppSettings;
 }
