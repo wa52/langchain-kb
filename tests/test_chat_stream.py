@@ -47,6 +47,7 @@ def _patch_stream(stream_result, save_return="sess_stream", load_return=None):
     stack.enter_context(patch("src.api.services.chat.stream_rag_response", return_value=stream_result))
     stack.enter_context(patch("src.api.services.chat.save_history", return_value=save_return))
     stack.enter_context(patch("src.api.services.chat.load_history", return_value=load_return))
+    stack.enter_context(patch("src.api.services.chat.allocate_session_id", return_value="sess_new"))
     return stack
 
 
@@ -111,6 +112,8 @@ class TestChatStreamSSEFraming:
             patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
             patch("src.api.services.chat.stream_rag_response", return_value=["ok"]),
             patch("src.api.services.chat.save_history", side_effect=fake_save),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+            patch("src.api.services.chat.load_history", return_value=None),
         ):
             resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
         assert resp.status_code == 200
@@ -132,6 +135,8 @@ class TestChatStreamErrors:
         with (
             patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
             patch("src.api.services.chat.stream_rag_response", side_effect=boom),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+            patch("src.api.services.chat.load_history", return_value=None),
         ):
             resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
         events = _parse_sse(resp.text)
@@ -153,6 +158,66 @@ class TestChatStreamContinuation:
         assert end["session_id"] == "sess_old"
 
 
+class TestChatStreamSessionAllocation:
+    def test_brand_new_session_preallocates_id(self, client):
+        saved = []
+
+        def fake_save(history, session_id):
+            saved.append((history, session_id))
+            return session_id
+
+        with (
+            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
+            patch("src.api.services.chat.stream_rag_response", return_value=["ok"]),
+            patch("src.api.services.chat.save_history", side_effect=fake_save),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+        ):
+            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+        events = _parse_sse(resp.text)
+        start = [e for e in events if e[0] == "message_start"][0][1]
+        end = [e for e in events if e[0] == "message_end"][0][1]
+        assert start["session_id"] == "sess_new"
+        assert end["session_id"] == "sess_new"
+        assert saved[0][1] == "sess_new"
+
+    def test_continuation_keeps_given_id_in_message_start(self, client):
+        with _patch_stream(["ok"], save_return="sess_old",
+                           load_return=[{"role": "user", "content": "prev"}]):
+            resp = client.post("/api/v1/chat/stream", json={
+                "query": "follow",
+                "session_id": "sess_old",
+            })
+        events = _parse_sse(resp.text)
+        start = [e for e in events if e[0] == "message_start"][0][1]
+        assert start["session_id"] == "sess_old"
+
+    def test_interrupted_brand_new_session_uses_preallocated_id(self):
+        from src.api.services.chat import stream_chat_events
+        stop = threading.Event()
+        saved = []
+
+        def fake_save(history, session_id):
+            saved.append((history, session_id))
+            return session_id
+
+        with (
+            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
+            patch("src.api.services.chat.stream_rag_response", return_value=["part1"]),
+            patch("src.api.services.chat.save_history", side_effect=fake_save),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+        ):
+            gen = stream_chat_events("hi", None, stop)
+            start = next(gen)["data"]
+            next(gen)
+            stop.set()
+            events = list(gen)
+        end = events[-1]["data"]
+        assert start["session_id"] == "sess_new"
+        assert end["session_id"] == "sess_new"
+        assert end["interrupted"] is True
+        assert saved[0][1] == "sess_new"
+
+
 class TestChatStreamServiceInterrupted:
     def test_stop_before_stream_saves_empty_interrupted(self):
         from src.api.services.chat import stream_chat_events
@@ -168,6 +233,7 @@ class TestChatStreamServiceInterrupted:
             patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
             patch("src.api.services.chat.stream_rag_response", return_value=["partial", " text"]),
             patch("src.api.services.chat.save_history", side_effect=fake_save),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
             events = list(stream_chat_events("hi", None, stop))
         types = [e["type"] for e in events]
@@ -190,6 +256,7 @@ class TestChatStreamServiceInterrupted:
             patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
             patch("src.api.services.chat.stream_rag_response", return_value=["part1", "part2"]),
             patch("src.api.services.chat.save_history", side_effect=fake_save),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
             gen = stream_chat_events("hi", None, stop)
             assert next(gen)["type"] == "message_start"

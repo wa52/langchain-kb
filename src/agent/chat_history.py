@@ -22,6 +22,25 @@ def _session_path(session_id: str | None = None) -> Path:
     return HISTORY_DIR / f"session_{ts}.json"
 
 
+def allocate_session_id() -> str:
+    """Allocate a unique session id without creating a file yet.
+
+    Streaming chat pre-allocates the id for brand-new sessions so the
+    client can learn it from the first SSE event (``message_start``) and
+    still reconcile an interrupted run even when the connection is aborted
+    before ``message_end`` reaches it. Microsecond precision plus an
+    existence-guarded ``_N`` suffix makes same-second collisions
+    practically impossible even without an atomic file reservation."""
+    _ensure_dir()
+    base = datetime.now().strftime("session_%Y%m%d_%H%M%S_%f")
+    candidate = base
+    i = 1
+    while (HISTORY_DIR / f"{candidate}.json").exists():
+        candidate = f"{base}_{i}"
+        i += 1
+    return candidate
+
+
 def save_history(messages: list[dict], session_id: str | None = None):
     path = _session_path(session_id)
     with open(path, "w", encoding="utf-8") as f:

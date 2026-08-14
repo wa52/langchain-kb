@@ -3,7 +3,7 @@ import time
 from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
-from src.agent.chat_history import save_history, load_history
+from src.agent.chat_history import allocate_session_id, save_history, load_history
 
 _CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]+)\]")
 
@@ -112,7 +112,14 @@ def stream_chat_events(
     ``stop_event`` is a threading.Event the caller can set to stop token
     generation. Whatever text was already produced is persisted as an
     assistant message with ``interrupted=True``.
+
+    For brand-new sessions the session id is pre-allocated up front and
+    carried by ``message_start``, so an interrupted run remains
+    recoverable on the client even if the connection dies before
+    ``message_end``.
     """
+    if session_id is None:
+        session_id = allocate_session_id()
     yield {"type": "message_start", "data": {"session_id": session_id}}
     t0 = time.time()
 

@@ -141,6 +141,46 @@ class TestListSessionsEnhanced:
         assert "created" in sessions[0]
 
 
+class TestAllocateSessionId:
+
+    def _patch_now(self, fixed):
+        import src.agent.chat_history as ch
+        import datetime as dt
+        fake = type("FixedDatetime", (), {"now": staticmethod(lambda: fixed)})
+        return patch.object(ch, "datetime", fake)
+
+    def test_preallocates_underscore_microsecond_id(self, tmp_path):
+        import src.agent.chat_history as ch
+        import datetime as dt
+        session_dir = tmp_path / "chat_history"
+        session_dir.mkdir()
+        fixed = dt.datetime(2026, 8, 15, 10, 30, 45, 123456)
+        with patch.object(ch, "HISTORY_DIR", session_dir), self._patch_now(fixed):
+            sid = ch.allocate_session_id()
+        assert sid == "session_20260815_103045_123456"
+
+    def test_appends_suffix_when_base_exists(self, tmp_path):
+        import src.agent.chat_history as ch
+        import datetime as dt
+        session_dir = tmp_path / "chat_history"
+        session_dir.mkdir()
+        fixed = dt.datetime(2026, 8, 15, 10, 30, 45, 123456)
+        base = "session_20260815_103045_123456"
+        (session_dir / f"{base}.json").write_text("[]", encoding="utf-8")
+        with patch.object(ch, "HISTORY_DIR", session_dir), self._patch_now(fixed):
+            sid = ch.allocate_session_id()
+        assert sid == f"{base}_1"
+
+    def test_consecutive_calls_differ(self, tmp_path):
+        import src.agent.chat_history as ch
+        session_dir = tmp_path / "chat_history"
+        session_dir.mkdir()
+        with patch.object(ch, "HISTORY_DIR", session_dir):
+            a = ch.allocate_session_id()
+            b = ch.allocate_session_id()
+        assert a != b
+
+
 class TestSessionsCommandDisplay:
 
     def test_slash_sessions_shows_title_header(self, state):

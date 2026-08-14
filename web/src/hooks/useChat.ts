@@ -6,6 +6,22 @@ import type { ChatMessage, SessionSummary, SourceItem } from "../types/api";
 let seq = 0;
 const nextId = (): string => `m_${Date.now().toString(36)}_${seq++}`;
 
+const CITATION_RE = /\[来源:\s*([^\]]+)\]/g;
+
+function deriveSources(content: string): SourceItem[] {
+  const seen = new Set<string>();
+  const sources: SourceItem[] = [];
+  CITATION_RE.lastIndex = 0;
+  for (const m of content.matchAll(CITATION_RE)) {
+    const name = m[1].trim();
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      sources.push({ source: name, chunk_id: "", excerpt: null });
+    }
+  }
+  return sources;
+}
+
 export interface UseChatResult {
   messages: ChatMessage[];
   streaming: boolean;
@@ -23,6 +39,8 @@ export function useChat(): UseChatResult {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const streamSessionRef = useRef<string | null>(null);
+  const runSeqRef = useRef(0);
 
   const appendToken = useCallback((id: string, text: string) => {
     setMessages((prev) =>
@@ -58,6 +76,7 @@ export function useChat(): UseChatResult {
       if (!query || streaming) return;
       const abort = new AbortController();
       abortRef.current = abort;
+      const runSeq = ++runSeqRef.current;
       const assistantId = nextId();
       setMessages((prev) => [
         ...prev,
@@ -66,15 +85,20 @@ export function useChat(): UseChatResult {
       ]);
       setStreaming(true);
       setError(null);
+      streamSessionRef.current = sessionId;
 
       void (async () => {
         try {
           await streamChat(
             { query, session_id: sessionId },
             {
+              onStart: (sid) => {
+                if (sid) streamSessionRef.current = sid;
+              },
               onToken: (text) => appendToken(assistantId, text),
               onSources: (sources) => setSources(assistantId, sources),
               onEnd: (sid, interrupted) => {
+                streamSessionRef.current = sid;
                 setSessionId(sid);
                 finish(assistantId, interrupted);
               },
@@ -87,14 +111,20 @@ export function useChat(): UseChatResult {
           );
         } catch (err) {
           if (abort.signal.aborted) {
-            finish(assistantId, true);
+            if (runSeq === runSeqRef.current) {
+              if (streamSessionRef.current) setSessionId(streamSessionRef.current);
+              finish(assistantId, true);
+            }
           } else {
             const message = err instanceof Error ? err.message : String(err);
             setError(message);
             fail(assistantId, message);
           }
         } finally {
-          abortRef.current = null;
+          if (runSeq === runSeqRef.current) {
+            abortRef.current = null;
+            streamSessionRef.current = null;
+          }
         }
       })();
     },
@@ -107,6 +137,7 @@ export function useChat(): UseChatResult {
 
   const newChat = useCallback(() => {
     abortRef.current?.abort();
+    runSeqRef.current++;
     setMessages([]);
     setSessionId(null);
     setError(null);
@@ -115,15 +146,20 @@ export function useChat(): UseChatResult {
 
   const loadSession = useCallback(async (summary: SessionSummary) => {
     abortRef.current?.abort();
+    runSeqRef.current++;
     const detail = await getSession(summary.id);
     const msgs: ChatMessage[] = (detail.messages ?? [])
       .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "human" || m.role === "ai")
-      .map((m) => ({
-        id: nextId(),
-        role: m.role === "user" || m.role === "human" ? "user" : "assistant",
-        content: m.content ?? "",
-        interrupted: Boolean(m.interrupted),
-      }));
+      .map((m) => {
+        const content = m.content ?? "";
+        return {
+          id: nextId(),
+          role: m.role === "user" || m.role === "human" ? "user" : "assistant",
+          content,
+          interrupted: Boolean(m.interrupted),
+          sources: deriveSources(content),
+        };
+      });
     setMessages(msgs);
     setSessionId(detail.id);
     setError(null);

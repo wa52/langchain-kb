@@ -32,6 +32,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       ) : null}
       {message.interrupted ? <div className="msg-note">已停止生成</div> : null}
+      {message.interrupted && !hasSources ? (
+        <div className="msg-note">来源未完成</div>
+      ) : null}
       {hasSources ? (
         <SourceChips sources={message.sources ?? []} onOpen={setDrawerSource} />
       ) : null}

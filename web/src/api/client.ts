@@ -10,6 +10,7 @@ import type {
 } from "../types/api";
 
 export interface StreamHandlers {
+  onStart?: (sessionId: string | null) => void;
   onToken?: (text: string) => void;
   onSources?: (sources: SourceItem[]) => void;
   onEnd?: (sessionId: string, interrupted: boolean) => void;
@@ -40,6 +41,12 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
     payload = data;
   }
   switch (eventType) {
+    case "message_start":
+      if (typeof payload === "object" && payload && "session_id" in payload) {
+        const start = payload as { session_id: string | null };
+        handlers.onStart?.(start.session_id ?? null);
+      }
+      break;
     case "token":
       handlers.onToken?.(typeof payload === "object" && payload && "text" in payload
         ? String((payload as { text: string }).text)
