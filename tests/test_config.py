@@ -1,5 +1,6 @@
 import importlib
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,17 +42,35 @@ class TestKnowledgeHome:
 
 class TestWheelDeploymentDefaults:
 
-    def test_site_packages_falls_back_to_cwd(self, monkeypatch, tmp_path):
+    def test_site_packages_falls_back_to_platform_data_home(self, monkeypatch, tmp_path):
         """When config.py is installed under site-packages (wheel install),
-        the knowledge base root should default to the current working directory
-        so no environment configuration is required."""
+        the knowledge base root defaults to the platform application data
+        directory (not the CWD), so upgrades never overwrite user data."""
         import sysconfig
         purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
         fake_site = purelib / "site-packages" / "personal_knowledge_base"
         monkeypatch.setattr(config, "PROJECT_ROOT", fake_site)
         monkeypatch.delenv("KNOWLEDGE_HOME", raising=False)
         monkeypatch.chdir(tmp_path)
-        assert config._default_knowledge_home() == tmp_path.resolve()
+        result = config._default_knowledge_home()
+        assert result == config._platform_data_home()
+        assert result.is_absolute()
+        assert result != tmp_path.resolve()
+
+    def test_platform_data_home_windows(self, monkeypatch, tmp_path):
+        if sys.platform != "win32":
+            pytest.skip("windows only")
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+        assert config._platform_data_home() == (
+            tmp_path / "AppData" / "Local" / "KnowledgeAgent"
+        ).resolve()
+
+    def test_platform_data_home_linux_xdg(self, monkeypatch, tmp_path):
+        if sys.platform in ("win32", "darwin"):
+            pytest.skip("posix-only")
+        monkeypatch.delenv("LOCALAPPDATA", raising=False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        assert config._platform_data_home() == (tmp_path / "xdg" / "knowledge-agent").resolve()
 
     def test_site_packages_but_env_set_uses_env(self, monkeypatch, tmp_path):
         import sysconfig

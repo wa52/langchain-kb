@@ -64,11 +64,11 @@ filesystem           ← 外部 MCP（含 read_file / write_file / list_director
 ### 🌐 多端入口
 | 入口 | 说明 |
 |------|------|
-| `knowledge web` | Web 界面（聊天 + 历史会话）|
-| `knowledge cli` | 交互式控制台 |
-| `knowledge chat` | 单次问答 |
-| `knowledge search` | 能力域检索 |
-| API + MCP Server | `/api/v1` + `/mcp`（3 个工具暴露）|
+| `knowledge web` | Web 界面（聊天 + 来源 + 状态 + 知识库）主入口 |
+| `knowledge cli` | 交互式控制台（建议优先使用 Web）|
+| `knowledge chat` | 单次问答（建议优先使用 Web）|
+| `knowledge search` | 能力域检索（建议优先使用 Web）|
+| API + MCP Server | `/api/v1` + `/mcp`（只读工具：检索/问答/状态）|
 
 ---
 
@@ -107,6 +107,9 @@ CHUNK_OVERLAP=80
 
 # 检索参数
 TOP_K=5
+
+# 局域网访问保护（可选，仅非本机访问需要）
+# LAN_TOKEN=你的口令   # 设置后访问 /api 与 /mcp 需 Bearer 令牌；本机回环免登录
 ```
 
 ---
@@ -261,7 +264,12 @@ filesystem(operation="filesystem_read_file", path="D:/x.txt")
 
 ## 📊 数据目录
 
-数据通过 `KNOWLEDGE_HOME` 环境变量定位（默认项目根）：
+数据通过 `KNOWLEDGE_HOME` 环境变量定位：
+
+- **默认值**：开发模式（源码目录运行）为项目根；已安装部署（wheel）为平台应用数据目录
+  （Windows `%LOCALAPPDATA%\KnowledgeAgent`、macOS `~/Library/Application Support/KnowledgeAgent`、
+  Linux `$XDG_DATA_HOME/knowledge-agent`），升级/重装不会覆盖知识库。
+- **覆盖**：设置环境变量 `KNOWLEDGE_HOME` 指向任意目录即可迁移（详见 [docs/deployment.md](docs/deployment.md)）。
 
 ```
 <KNOWLEDGE_HOME>/

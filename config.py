@@ -1,8 +1,53 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _platform_data_home() -> Path:
+    """Platform application data directory for an installed deployment.
+
+    - Windows: %LOCALAPPDATA%/KnowledgeAgent
+    - macOS:   ~/Library/Application Support/KnowledgeAgent
+    - Linux:   $XDG_DATA_HOME/knowledge-agent or ~/.local/share/knowledge-agent
+
+    Upgrades and re-installs never overwrite user data because the code lives
+    in site-packages while the data lives here.
+    """
+    home = Path.home()
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or (home / "AppData" / "Local"))
+        return (base / "KnowledgeAgent").resolve()
+    if sys.platform == "darwin":
+        return (home / "Library" / "Application Support" / "KnowledgeAgent").resolve()
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg).resolve() if xdg else (home / ".local" / "share")
+    return (base / "knowledge-agent").resolve()
+
+
+def _default_knowledge_home() -> Path:
+    """Pick the knowledge-base root.
+
+    Priority:
+      1. KNOWLEDGE_HOME env var (explicitly set by the user).
+      2. When the package is installed (config.py lives under site-packages),
+         default to the platform application data directory so a deployed
+         knowledge base survives upgrades and is independent of the working
+         directory (see ``_platform_data_home``).
+      3. Development checkout: the project root (current behaviour).
+    """
+    if os.getenv("KNOWLEDGE_HOME"):
+        return Path(os.environ["KNOWLEDGE_HOME"]).expanduser().resolve()
+    try:
+        import sysconfig
+        purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
+        if str(PROJECT_ROOT).startswith(str(purelib)):
+            return _platform_data_home()
+    except Exception:
+        pass
+    return PROJECT_ROOT
 
 
 def _resolve_dir(key: str, default: str) -> str:
@@ -13,31 +58,9 @@ def _resolve_dir(key: str, default: str) -> str:
     return str(p)
 
 
-def _default_knowledge_home() -> Path:
-    """Pick the knowledge-base root.
-
-    Priority:
-      1. KNOWLEDGE_HOME env var (explicitly set by the user).
-      2. When the package is installed (config.py lives under site-packages),
-         fall back to the current working directory so a wheel install works
-         out of the box without any env config.
-      3. Development checkout: the project root (current behaviour).
-    """
-    if os.getenv("KNOWLEDGE_HOME"):
-        return Path(os.environ["KNOWLEDGE_HOME"]).expanduser().resolve()
-    try:
-        import sysconfig
-        purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
-        if str(PROJECT_ROOT).startswith(str(purelib)):
-            return Path.cwd().resolve()
-    except Exception:
-        pass
-    return PROJECT_ROOT
-
-
 # Knowledge base home: where .env, chroma_db, data and the knowledge graph live.
-# Explicit env wins; wheel installs default to the current working directory;
-# development checkouts default to the project root.
+# Explicit env wins; installed (wheel) deployments default to the platform
+# application data directory; development checkouts default to the project root.
 KNOWLEDGE_HOME = _default_knowledge_home()
 
 load_dotenv(KNOWLEDGE_HOME / ".env")

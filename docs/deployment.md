@@ -38,10 +38,16 @@ pip install -e .       # 可编辑安装（开发用，代码改动即时生效�
 `KNOWLEDGE_HOME` 的解析优先级：
 
 1. **环境变量 `KNOWLEDGE_HOME`**（推荐显式设置）：`$env:KNOWLEDGE_HOME = "D:\KnowledgeBase"`
-2. **wheel 安装**（config.py 位于 site-packages）：默认用**当前工作目录**——在哪运行就在哪建数据，装完即可用
+2. **wheel 安装**（config.py 位于 site-packages）：默认用**平台应用数据目录**，与运行目录无关，升级/重装不会覆盖知识库：
+   - Windows：`%LOCALAPPDATA%\KnowledgeAgent`
+   - macOS：`~/Library/Application Support/KnowledgeAgent`
+   - Linux：`$XDG_DATA_HOME/knowledge-agent`（未设置时 `~/.local/share/knowledge-agent`）
 3. **开发模式**（源码目录运行）：默认用项目根目录
 
 `KNOWLEDGE_HOME` 决定 `.env` 从哪读取、相对路径如何解析。首次运行 `ensure_data_dirs()` 会自动创建目录骨架。
+
+> 旧版本 wheel 部署默认使用当前工作目录；升级后建议用 `KNOWLEDGE_HOME` 显式指向原数据目录，
+> 或把原目录整体复制到新默认目录，见下方「数据迁移」。
 
 ### 3. 配置 `.env`
 
@@ -94,7 +100,30 @@ knowledge search "测试"  # 确认检索可用
 knowledge chat "你好"    # 确认问答可用（需 DeepSeek key）
 ```
 
-## 五、常见问题
+## 五、局域网访问
+
+默认监听 `127.0.0.1` 仅本机访问，无需登录。要在局域网内使用 Web 客户端：
+
+1. **配置访问令牌**：在 `.env` 中设置 `LAN_TOKEN`（任意字符串，作为简单口令）：
+
+   ```ini
+   LAN_TOKEN=你的口令
+   ```
+
+2. **监听所有网卡启动**：
+
+   ```powershell
+   knowledge web --host 0.0.0.0
+   ```
+
+访问规则：
+
+- 本机回环（127.0.0.1 / localhost）始终免登录。
+- 局域网其他机器访问 `/api` 或 `/mcp` 需在浏览器输入一次令牌（或 MCP 客户端配置
+  `Authorization: Bearer <LAN_TOKEN>`）；Web 首页首次遇到 401 会弹出令牌输入框。
+- `LAN_TOKEN` 留空则无保护（仅限本机使用）；令牌为明文传输的便利性屏障，非强认证。
+
+## 六、常见问题
 
 - **`knowledge` 命令找不到**：未安装或 `pip install -e .` 从错误目录安装。重新 `pip install .`
 - **中文路径报错**：设置 ASCII 的 `CHROMA_PERSIST_DIR`
