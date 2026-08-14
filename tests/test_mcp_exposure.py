@@ -61,7 +61,7 @@ async def session(rm):
 
 class TestToolDiscovery:
 
-    async def test_tools_list_returns_three_tools(self, session):
+    async def test_tools_list_returns_read_only_tools(self, session):
         ac = session["client"]
         sid = session["session_id"]
         headers = {"mcp-session-id": sid, "Accept": "application/json"}
@@ -70,7 +70,12 @@ class TestToolDiscovery:
         assert resp.status_code == 200
         tools = resp.json()["result"]["tools"]
         names = sorted(t["name"] for t in tools)
-        assert names == ["answer_with_knowledge", "get_index_status", "search_knowledge"]
+        assert names == [
+            "answer_with_knowledge",
+            "get_index_status",
+            "search_knowledge",
+            "system_status",
+        ]
 
     async def test_excluded_tools_not_in_list(self, session):
         forbidden = {"health_check", "start_index_task", "index_document",
@@ -254,3 +259,26 @@ class TestIndexToolCall:
         assert tid in text
         assert "running" in text
         assert "50%" in text
+
+
+class TestSystemStatusToolCall:
+
+    async def test_system_status_returns_status(self, session):
+        ac = session["client"]
+        sid = session["session_id"]
+        headers = {"mcp-session-id": sid, "Accept": "application/json"}
+        body = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "id": 6,
+            "params": {"name": "system_status", "arguments": {}},
+        }
+        resp = await ac.post("/mcp", json=body, headers=headers)
+        assert resp.status_code == 200
+        result = resp.json()
+        assert "result" in result
+        content = result["result"]["content"]
+        text = "".join(c["text"] for c in content)
+        assert "vector_count" in text
+        assert "42" in text
+        assert "components" in text

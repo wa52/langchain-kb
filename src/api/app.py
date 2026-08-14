@@ -77,7 +77,12 @@ def create_app() -> FastAPI:
     from fastapi_mcp import FastApiMCP
     app.state.mcp = FastApiMCP(
         app,
-        include_operations=["search_knowledge", "answer_with_knowledge", "get_index_status"],
+        include_operations=[
+            "search_knowledge",
+            "answer_with_knowledge",
+            "get_index_status",
+            "system_status",
+        ],
         name=PRODUCT_NAME,
         description=f"Semantic search, RAG Q&A, and index status for the {PRODUCT_NAME_EN}",
     )
