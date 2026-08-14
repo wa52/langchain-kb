@@ -1,4 +1,12 @@
-import type { SessionDetail, SessionSummary, SourceItem } from "../types/api";
+import type {
+  IndexTask,
+  KnowledgeStats,
+  SessionDetail,
+  SessionSummary,
+  SourceItem,
+  TaskStatus,
+  UploadTasks,
+} from "../types/api";
 
 export interface StreamHandlers {
   onToken?: (text: string) => void;
@@ -120,4 +128,56 @@ export async function deleteSession(id: string): Promise<void> {
   if (!resp.ok && resp.status !== 204) {
     throw new Error(`会话删除失败 (${resp.status})`);
   }
+}
+
+async function readError(resp: Response, fallback: string): Promise<string> {
+  let detail = fallback;
+  try {
+    const body = await resp.json();
+    detail = (body?.detail || body?.error || detail) as string;
+  } catch {
+    /* keep fallback */
+  }
+  return detail;
+}
+
+export async function getKnowledgeStats(): Promise<KnowledgeStats> {
+  const resp = await fetch("/api/v1/knowledge/stats", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`知识库统计请求失败 (${resp.status})`);
+  return (await resp.json()) as KnowledgeStats;
+}
+
+export async function indexPath(path: string): Promise<IndexTask> {
+  const resp = await fetch("/api/v1/documents/index", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `索引请求失败 (${resp.status})`));
+  }
+  return (await resp.json()) as IndexTask;
+}
+
+export async function uploadFiles(files: File[]): Promise<UploadTasks> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  const resp = await fetch("/api/v1/documents/upload", {
+    method: "POST",
+    body: form,
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `上传失败 (${resp.status})`));
+  }
+  return (await resp.json()) as UploadTasks;
+}
+
+export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
+  const resp = await fetch(`/api/v1/index/tasks/${encodeURIComponent(taskId)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`任务查询失败 (${resp.status})`);
+  return (await resp.json()) as TaskStatus;
 }

@@ -175,8 +175,9 @@ class TestOpenAPISchema:
             for method, details in methods.items():
                 oids.add(details.get("operationId"))
         expected = {"health_check", "search_knowledge", "answer_with_knowledge",
-                     "chat_stream", "start_index_task", "get_index_status",
-                     "system_status", "list_sessions", "get_session", "delete_session"}
+                     "chat_stream", "start_index_task", "upload_documents",
+                     "get_index_status", "system_status", "knowledge_stats",
+                     "list_sessions", "get_session", "delete_session"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 
     async def test_mcp_instance_stored_in_app_state(self, session):

@@ -52,3 +52,42 @@ export interface SessionDetail {
   id: string;
   messages: SessionMessage[];
 }
+
+export interface GraphStats {
+  entities: number;
+  relations: number;
+}
+
+export interface IndexTask {
+  task_id: string;
+  status: string;
+}
+
+export interface TaskStatus {
+  task_id: string;
+  status: string;
+  progress?: string | null;
+  result?: { chunks_added?: number } | null;
+  error?: string | null;
+}
+
+export interface IndexTaskSummary {
+  task_id: string;
+  status: string;
+  progress?: string | null;
+  result?: { chunks_added?: number } | null;
+  error?: string | null;
+}
+
+export interface KnowledgeStats {
+  documents: number;
+  chunks: number;
+  bm25_chunks?: number | null;
+  graph: GraphStats;
+  index_task?: IndexTaskSummary | null;
+}
+
+export interface UploadTasks {
+  tasks: IndexTask[];
+  saved: string[];
+}

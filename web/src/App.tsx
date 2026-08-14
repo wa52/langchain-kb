@@ -58,7 +58,7 @@ export default function App() {
           {view === "chat" ? (
             <ChatPage {...pageProps} onNavigate={(v) => navigate(v)} />
           ) : view === "knowledge" ? (
-            <KnowledgePage {...pageProps} />
+            <KnowledgePage />
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (

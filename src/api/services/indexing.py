@@ -36,6 +36,15 @@ class IndexTaskManager:
             for t in self._tasks.values()
         )
 
+    def latest_task(self) -> dict | None:
+        if not self._tasks:
+            return None
+        return max(self._tasks.values(), key=lambda t: t["created_at"])
+
+    def clear(self) -> None:
+        """Drop all tracked tasks (used by tests for isolation)."""
+        self._tasks.clear()
+
 
 _task_manager = IndexTaskManager()
 
@@ -44,45 +53,49 @@ def get_task_manager() -> IndexTaskManager:
     return _task_manager
 
 
-async def run_index_task(task_id: str, path: str):
+async def run_index_task(task_id: str, path: str, in_place: bool = False):
     mgr = get_task_manager()
+    from src.status import get_registry
+    reg = get_registry()
     mgr.update_task(task_id, status="running", progress="Starting...")
+    reg.set_loading("index", f"索引任务 {task_id}")
     try:
-        from config import DATA_DIR, EXTERNAL_DIR
-        from src.ingestion.pipeline import run_add_path, run_ingestion
         from pathlib import Path
-
         path_obj = Path(path)
-        if path_obj.exists():
-            def _do_index():
-                mgr.update_task(task_id, progress="Indexing...")
-                count = run_add_path(str(path_obj), EXTERNAL_DIR)
-                from src.resources import ResourceManager
-                rm = ResourceManager.get_instance()
-                rm.invalidate_retriever_cache()
-                return count
-            loop = asyncio.get_event_loop()
-            count = await loop.run_in_executor(None, _do_index)
-        else:
-            def _do_full_ingest():
-                mgr.update_task(task_id, progress="Full ingestion...")
-                count = run_ingestion(DATA_DIR)
-                from src.resources import ResourceManager
-                rm = ResourceManager.get_instance()
-                rm.invalidate_retriever_cache()
-                return count
-            loop = asyncio.get_event_loop()
-            count = await loop.run_in_executor(None, _do_full_ingest)
 
+        def _do_index():
+            if in_place:
+                mgr.update_task(task_id, progress="Indexing...")
+                from src.ingestion.pipeline import run_single_file_update
+                count = run_single_file_update(path)
+            elif path_obj.exists():
+                mgr.update_task(task_id, progress="Indexing...")
+                from config import EXTERNAL_DIR
+                from src.ingestion.pipeline import run_add_path
+                count = run_add_path(path, EXTERNAL_DIR)
+            else:
+                mgr.update_task(task_id, progress="Full ingestion...")
+                from config import DATA_DIR
+                from src.ingestion.pipeline import run_ingestion
+                count = run_ingestion(DATA_DIR)
+            from src.resources import ResourceManager
+            rm = ResourceManager.get_instance()
+            rm.invalidate_retriever_cache()
+            return count
+
+        loop = asyncio.get_event_loop()
+        count = await loop.run_in_executor(None, _do_index)
         mgr.update_task(
             task_id,
             status="done",
             progress="Complete",
             result={"chunks_added": count},
         )
+        reg.set_ready("index", f"索引任务 {task_id} · {count} chunks")
     except Exception as e:
         mgr.update_task(
             task_id,
             status="failed",
             error=str(e),
         )
+        reg.set_error("index", e, f"索引任务 {task_id}")

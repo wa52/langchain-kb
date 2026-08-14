@@ -122,3 +122,25 @@ class TaskStatusResponse(BaseModel):
     progress: str | None = None
     result: dict | None = None
     error: str | None = None
+
+
+class UploadTasksResponse(BaseModel):
+    tasks: list[IndexTaskResponse]
+    saved: list[str]
+
+
+class GraphStats(BaseModel):
+    entities: int
+    relations: int
+
+
+class IndexTaskSummary(TaskStatusResponse):
+    pass
+
+
+class KnowledgeStatsResponse(BaseModel):
+    documents: int
+    chunks: int
+    bm25_chunks: int | None = None
+    graph: GraphStats
+    index_task: IndexTaskSummary | None = None
