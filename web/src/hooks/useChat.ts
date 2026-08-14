@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
-import { streamChat } from "../api/client";
-import type { ChatMessage, SourceItem } from "../types/api";
+import { getSession, streamChat } from "../api/client";
+import type { ChatMessage, SessionSummary, SourceItem } from "../types/api";
 
 let seq = 0;
 const nextId = (): string => `m_${Date.now().toString(36)}_${seq++}`;
@@ -14,6 +14,7 @@ export interface UseChatResult {
   send: (query: string) => void;
   stop: () => void;
   newChat: () => void;
+  loadSession: (summary: SessionSummary) => Promise<void>;
 }
 
 export function useChat(): UseChatResult {
@@ -112,5 +113,22 @@ export function useChat(): UseChatResult {
     setStreaming(false);
   }, []);
 
-  return { messages, streaming, error, sessionId, send, stop, newChat };
+  const loadSession = useCallback(async (summary: SessionSummary) => {
+    abortRef.current?.abort();
+    const detail = await getSession(summary.id);
+    const msgs: ChatMessage[] = (detail.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "human" || m.role === "ai")
+      .map((m) => ({
+        id: nextId(),
+        role: m.role === "user" || m.role === "human" ? "user" : "assistant",
+        content: m.content ?? "",
+        interrupted: Boolean(m.interrupted),
+      }));
+    setMessages(msgs);
+    setSessionId(detail.id);
+    setError(null);
+    setStreaming(false);
+  }, []);
+
+  return { messages, streaming, error, sessionId, send, stop, newChat, loadSession };
 }

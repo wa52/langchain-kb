@@ -33,3 +33,22 @@ export interface ChatMessage {
 }
 
 export type ViewId = "chat" | "knowledge" | "status" | "settings";
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  created: string;
+  turns: number;
+  size: number;
+}
+
+export interface SessionMessage {
+  role: string;
+  content: string;
+  interrupted?: boolean;
+}
+
+export interface SessionDetail {
+  id: string;
+  messages: SessionMessage[];
+}

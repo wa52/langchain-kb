@@ -1,4 +1,4 @@
-import type { SourceItem } from "../types/api";
+import type { SessionDetail, SessionSummary, SourceItem } from "../types/api";
 
 export interface StreamHandlers {
   onToken?: (text: string) => void;
@@ -93,5 +93,31 @@ export async function streamChat(
       handleSseBlock(block, handlers);
       idx = buffer.indexOf("\n\n");
     }
+  }
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const resp = await fetch("/api/v1/sessions", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`会话列表请求失败 (${resp.status})`);
+  const data = (await resp.json()) as { sessions: SessionSummary[] };
+  return data.sessions ?? [];
+}
+
+export async function getSession(id: string): Promise<SessionDetail> {
+  const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`会话读取失败 (${resp.status})`);
+  return (await resp.json()) as SessionDetail;
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!resp.ok && resp.status !== 204) {
+    throw new Error(`会话删除失败 (${resp.status})`);
   }
 }
