@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { setAuthRequiredHandler } from "./api/client";
+import { DeveloperPane } from "./components/DeveloperPane";
 import { SystemRail } from "./components/SystemRail";
 import { TokenDialog } from "./components/TokenDialog";
+import { useDeveloperMode } from "./hooks/useDeveloperMode";
 import { useSystemStatus } from "./hooks/useSystemStatus";
 import { ChatPage } from "./pages/ChatPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
@@ -25,6 +27,7 @@ interface PageProps {
 export default function App() {
   const [view, setView] = useState<ViewId>("chat");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const [devMode, toggleDevMode] = useDeveloperMode();
   const authDismissedRef = useRef(false);
   const { status } = useSystemStatus();
 
@@ -49,6 +52,15 @@ export default function App() {
           components={status?.components ?? {}}
           onOpenStatus={() => navigate("status")}
         />
+        <button
+          type="button"
+          className={devMode ? "dev-toggle active" : "dev-toggle"}
+          aria-pressed={devMode}
+          onClick={toggleDevMode}
+          title="开发者模式"
+        >
+          开发者
+        </button>
       </header>
 
       <div className="app-body">
@@ -81,6 +93,7 @@ export default function App() {
             />
           )}
         </main>
+        {devMode ? <DeveloperPane /> : null}
       </div>
 
       <nav className="mobile-tabs" aria-label="主导航">

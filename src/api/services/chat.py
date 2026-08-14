@@ -215,7 +215,11 @@ def stream_chat_events(
 ) -> Iterator[dict]:
     """Yield chat stream events; persist history (including interrupted runs).
 
-    Event types: message_start, token, sources, message_end.
+    Event types: message_start, token, tool, sources, message_end.
+
+    ``tool`` is emitted only when the agent called at least one tool, with
+    the ordered list of tool names; it is a lightweight trace intended for
+    developer mode and carries no prompt or raw chunk data.
 
     ``stop_event`` is a threading.Event the caller can set to stop token
     generation. Whatever text was already produced is persisted as an
@@ -234,8 +238,14 @@ def stream_chat_events(
     messages = _build_messages(query, session_id)
     agent = _get_agent()
 
+    tool_names: list[str] = []
+
+    def _on_tool(name: str) -> None:
+        if name not in tool_names:
+            tool_names.append(name)
+
     answer_parts = []
-    for chunk in stream_rag_response(agent, messages):
+    for chunk in stream_rag_response(agent, messages, on_tool=_on_tool):
         if stop_event.is_set():
             break
         if chunk:
@@ -244,6 +254,9 @@ def stream_chat_events(
 
     answer = "".join(answer_parts)
     interrupted = stop_event.is_set()
+
+    if tool_names:
+        yield {"type": "tool", "data": {"tools": tool_names}}
 
     history = _serialize_messages(messages) + [
         {"role": "assistant", "content": answer, "interrupted": interrupted}

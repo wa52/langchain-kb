@@ -199,9 +199,44 @@ class TestChatStreamSSEFraming:
         assert resp.status_code == 422
 
 
+class TestChatStreamToolEvent:
+    def test_tool_event_emitted_when_agent_uses_tools(self, client):
+        def fake_stream(agent, messages, on_tool=None):
+            if on_tool:
+                on_tool("retrieve_knowledge")
+                on_tool("retrieve_graph")
+                on_tool("retrieve_knowledge")  # duplicate id deduped by service
+            yield "answer"
+
+        with (
+            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
+            patch("src.api.services.chat.stream_rag_response", side_effect=fake_stream),
+            patch("src.api.services.chat.save_history", return_value="sess_x"),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+            patch("src.api.services.chat.load_history", return_value=None),
+        ):
+            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+        events = _parse_sse(resp.text)
+        types = [e[0] for e in events]
+        assert "tool" in types
+        idx = types.index("tool")
+        # tool is emitted after tokens, before sources / message_end
+        assert types[:idx] == ["message_start", "token"]
+        assert types.index("sources") > idx
+        tool_events = [e for e in events if e[0] == "tool"]
+        assert tool_events[-1][1]["tools"] == ["retrieve_knowledge", "retrieve_graph"]
+
+    def test_no_tool_event_without_tool_calls(self, client):
+        with _patch_stream(["plain answer"]):
+            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+        events = _parse_sse(resp.text)
+        types = [e[0] for e in events]
+        assert "tool" not in types
+
+
 class TestChatStreamErrors:
     def test_stream_error_emits_error_event(self, client):
-        def boom(agent, messages):
+        def boom(agent, messages, on_tool=None):
             raise RuntimeError("llm unavailable")
 
         with (

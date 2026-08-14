@@ -30,6 +30,8 @@ SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责
 def create_rag_agent():
     import os as _os
     import time as _time
+    from src.status import get_registry
+    get_registry().set_loading("agent", "构建 RAG Agent")
     _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     import logging
     logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
@@ -73,12 +75,14 @@ def create_rag_agent():
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
     )
+    get_registry().set_ready("agent", "Deep Agent")
     print(f"  [计时] 构建 Deep Agent: {_time.time() - _t4:.2f}s")
     return agent
 
 
-def stream_rag_response(agent, messages: list):
+def stream_rag_response(agent, messages: list, on_tool=None):
     tool_called = False
+    seen_tool_ids = set()
     for event in agent.stream({"messages": messages}):
         for node_name, value in event.items():
             if not isinstance(value, dict) or "messages" not in value:
@@ -92,3 +96,10 @@ def stream_rag_response(agent, messages: list):
                     tool_called = True
                     n = len(content) if content else 0
                     yield f"\n  [知识库检索完成 ({n} 字符)]\n\n"
+                if on_tool is not None and mtype == "tool":
+                    tid = getattr(msg, "tool_call_id", None) or getattr(msg, "id", None)
+                    if tid is not None and tid in seen_tool_ids:
+                        continue
+                    if tid is not None:
+                        seen_tool_ids.add(tid)
+                    on_tool(getattr(msg, "name", "") or "tool")

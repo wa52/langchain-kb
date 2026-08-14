@@ -9,13 +9,16 @@ import type {
   TaskStatus,
   UploadTasks,
 } from "../types/api";
+import { recordApiError } from "../lib/telemetry";
 
 export interface StreamHandlers {
   onStart?: (sessionId: string | null) => void;
   onToken?: (text: string) => void;
   onSources?: (sources: SourceItem[]) => void;
+  onTool?: (tools: string[]) => void;
   onEnd?: (sessionId: string, interrupted: boolean) => void;
   onError?: (message: string) => void;
+  onEvent?: (type: string, payload: unknown) => void;
 }
 
 export interface StreamPayload {
@@ -77,6 +80,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     ...authHeaders(),
   };
   const resp = await fetch(path, { ...init, headers });
+  if (!resp.ok) recordApiError(path, resp.status);
   if (resp.status === 401) authHandler?.();
   return resp;
 }
@@ -99,6 +103,7 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
   } catch {
     payload = data;
   }
+  handlers.onEvent?.(eventType, payload);
   switch (eventType) {
     case "message_start":
       if (typeof payload === "object" && payload && "session_id" in payload) {
@@ -114,6 +119,11 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
     case "sources":
       if (typeof payload === "object" && payload && "sources" in payload) {
         handlers.onSources?.((payload as { sources: SourceItem[] }).sources ?? []);
+      }
+      break;
+    case "tool":
+      if (typeof payload === "object" && payload && "tools" in payload) {
+        handlers.onTool?.((payload as { tools: string[] }).tools ?? []);
       }
       break;
     case "message_end":

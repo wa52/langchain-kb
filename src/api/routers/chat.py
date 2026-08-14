@@ -45,7 +45,7 @@ def chat(req: ChatRequest):
     summary="流式对话",
     description=(
         "POST + fetch readable stream，SSE 事件：message_start / token / "
-        "sources / message_end / error。客户端可通过中断请求停止生成，"
+        "tool / sources / message_end / error。客户端可通过中断请求停止生成，"
         "已产生的半截回答会保存到会话历史并标记 interrupted=true。"
     ),
 )

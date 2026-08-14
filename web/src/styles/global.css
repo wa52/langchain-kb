@@ -130,6 +130,110 @@ button.primary:not(:disabled):hover {
   display: none;
 }
 
+/* ---------- Developer mode ---------- */
+
+.dev-toggle {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dev-toggle.active {
+  border-color: var(--laser-cyan);
+  color: var(--ink);
+}
+
+.dev-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+  min-width: 260px;
+  overflow-y: auto;
+  padding: 12px;
+  border-left: 1px solid var(--grid-line);
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.dev-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dev-pane-action {
+  padding: 3px 10px;
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dev-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dev-section h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+.dev-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dev-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.dev-list code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.dev-count {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.dev-muted {
+  color: var(--muted);
+}
+
+.dev-error {
+  color: var(--danger);
+}
+
+.dev-json {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px;
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  background: var(--bg);
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* ---------- System rail ---------- */
 
 .sys-rail {

@@ -1,12 +1,24 @@
 import { useCallback, useRef, useState } from "react";
 
 import { getSession, streamChat } from "../api/client";
+import {
+  recordRunEnd,
+  recordRunError,
+  recordRunSources,
+  recordRunStart,
+  recordRunTools,
+  recordStreamEvent,
+} from "../lib/telemetry";
 import type { ChatMessage, SessionSummary, SourceItem } from "../types/api";
 
 let seq = 0;
 const nextId = (): string => `m_${Date.now().toString(36)}_${seq++}`;
 
 const CITATION_RE = /\[来源:\s*([^\]]+)\]/g;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
 
 function deriveSources(content: string): SourceItem[] {
   const seen = new Set<string>();
@@ -86,6 +98,7 @@ export function useChat(): UseChatResult {
       setStreaming(true);
       setError(null);
       streamSessionRef.current = sessionId;
+      recordRunStart();
 
       void (async () => {
         try {
@@ -97,6 +110,7 @@ export function useChat(): UseChatResult {
               },
               onToken: (text) => appendToken(assistantId, text),
               onSources: (sources) => setSources(assistantId, sources),
+              onTool: (tools) => recordRunTools(tools),
               onEnd: (sid, interrupted) => {
                 streamSessionRef.current = sid;
                 setSessionId(sid);
@@ -105,6 +119,18 @@ export function useChat(): UseChatResult {
               onError: (message) => {
                 setError(message);
                 fail(assistantId, message);
+              },
+              onEvent: (type, payload) => {
+                recordStreamEvent(type);
+                if (type === "sources" && isRecord(payload) && Array.isArray(payload.sources)) {
+                  recordRunSources(payload.sources as Array<{ hit_chain?: string[] }>);
+                } else if (type === "message_end" && isRecord(payload)) {
+                  recordRunEnd(
+                    typeof payload.elapsed_ms === "number" ? payload.elapsed_ms : null,
+                  );
+                } else if (type === "error" && isRecord(payload)) {
+                  recordRunError(String(payload.error ?? "unknown error"));
+                }
               },
             },
             abort.signal,
