@@ -23,6 +23,64 @@ export interface StreamPayload {
   session_id?: string | null;
 }
 
+const TOKEN_KEY = "lan_access_token";
+
+export function getAccessToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAccessToken(token: string): void {
+  try {
+    sessionStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+type AuthRequiredHandler = () => void;
+let authHandler: AuthRequiredHandler | null = null;
+
+export function setAuthRequiredHandler(handler: AuthRequiredHandler | null): void {
+  authHandler = handler;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function plainHeaders(init: RequestInit | undefined): Record<string, string> {
+  const raw = init?.headers;
+  if (!raw) return {};
+  if (raw instanceof Headers) {
+    const out: Record<string, string> = {};
+    raw.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(raw)) {
+    const out: Record<string, string> = {};
+    for (const [key, value] of raw) out[key] = value;
+    return out;
+  }
+  return { ...raw };
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = {
+    ...plainHeaders(init),
+    ...authHeaders(),
+  };
+  const resp = await fetch(path, { ...init, headers });
+  if (resp.status === 401) authHandler?.();
+  return resp;
+}
+
 function handleSseBlock(block: string, handlers: StreamHandlers): void {
   let eventType: string | null = null;
   let data: string | null = null;
@@ -79,7 +137,7 @@ export async function streamChat(
   handlers: StreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {
-  const resp = await fetch("/api/v1/chat/stream", {
+  const resp = await apiFetch("/api/v1/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -114,7 +172,7 @@ export async function streamChat(
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  const resp = await fetch("/api/v1/sessions", {
+  const resp = await apiFetch("/api/v1/sessions", {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`会话列表请求失败 (${resp.status})`);
@@ -123,7 +181,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 export async function getSession(id: string): Promise<SessionDetail> {
-  const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
+  const resp = await apiFetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`会话读取失败 (${resp.status})`);
@@ -131,7 +189,7 @@ export async function getSession(id: string): Promise<SessionDetail> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
+  const resp = await apiFetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!resp.ok && resp.status !== 204) {
@@ -151,7 +209,7 @@ async function readError(resp: Response, fallback: string): Promise<string> {
 }
 
 export async function getKnowledgeStats(): Promise<KnowledgeStats> {
-  const resp = await fetch("/api/v1/knowledge/stats", {
+  const resp = await apiFetch("/api/v1/knowledge/stats", {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`知识库统计请求失败 (${resp.status})`);
@@ -159,7 +217,7 @@ export async function getKnowledgeStats(): Promise<KnowledgeStats> {
 }
 
 export async function indexPath(path: string): Promise<IndexTask> {
-  const resp = await fetch("/api/v1/documents/index", {
+  const resp = await apiFetch("/api/v1/documents/index", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -173,7 +231,7 @@ export async function indexPath(path: string): Promise<IndexTask> {
 export async function uploadFiles(files: File[]): Promise<UploadTasks> {
   const form = new FormData();
   for (const f of files) form.append("files", f);
-  const resp = await fetch("/api/v1/documents/upload", {
+  const resp = await apiFetch("/api/v1/documents/upload", {
     method: "POST",
     body: form,
   });
@@ -184,7 +242,7 @@ export async function uploadFiles(files: File[]): Promise<UploadTasks> {
 }
 
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const resp = await fetch(`/api/v1/index/tasks/${encodeURIComponent(taskId)}`, {
+  const resp = await apiFetch(`/api/v1/index/tasks/${encodeURIComponent(taskId)}`, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`任务查询失败 (${resp.status})`);
@@ -192,7 +250,7 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
 }
 
 export async function startDiagnostics(): Promise<{ task_id: string; status: string }> {
-  const resp = await fetch("/api/v1/diagnostics", { method: "POST" });
+  const resp = await apiFetch("/api/v1/diagnostics", { method: "POST" });
   if (!resp.ok) {
     throw new Error(await readError(resp, `诊断请求失败 (${resp.status})`));
   }
@@ -202,7 +260,7 @@ export async function startDiagnostics(): Promise<{ task_id: string; status: str
 export async function getDiagnostics(
   taskId: string,
 ): Promise<DiagnosticsTaskStatus> {
-  const resp = await fetch(`/api/v1/diagnostics/tasks/${encodeURIComponent(taskId)}`, {
+  const resp = await apiFetch(`/api/v1/diagnostics/tasks/${encodeURIComponent(taskId)}`, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`诊断查询失败 (${resp.status})`);
@@ -213,7 +271,7 @@ export async function repairDiagnostics(
   taskId: string,
   name: string,
 ): Promise<{ repaired: boolean }> {
-  const resp = await fetch("/api/v1/diagnostics/repair", {
+  const resp = await apiFetch("/api/v1/diagnostics/repair", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task_id: taskId, name }),
@@ -225,7 +283,7 @@ export async function repairDiagnostics(
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  const resp = await fetch("/api/v1/settings", {
+  const resp = await apiFetch("/api/v1/settings", {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`配置读取失败 (${resp.status})`);

@@ -16,16 +16,25 @@ function Row({ k, v }: { k: string; v: string | number | boolean }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  footer,
+}: {
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
   return (
     <section className="card settings-section">
       <h3>{title}</h3>
       <dl className="kv">{children}</dl>
+      {footer}
     </section>
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => void }) {
   const { settings, error } = useSettings();
 
   if (error) {
@@ -36,6 +45,16 @@ export function SettingsPage() {
           <p className="chat-error" role="alert">
             配置读取失败：{error}
           </p>
+          {onOpenTokenDialog ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={onOpenTokenDialog}
+              style={{ marginTop: 12 }}
+            >
+              输入访问令牌
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -101,7 +120,21 @@ export function SettingsPage() {
         <Row k="最大上下文 Token" v={s.max_context_tokens} />
       </Section>
 
-      <Section title="扩展与安全">
+      <Section
+        title="扩展与安全"
+        footer={
+          onOpenTokenDialog && s.lan_protection ? (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={onOpenTokenDialog}
+              style={{ marginTop: 10 }}
+            >
+              输入访问令牌
+            </button>
+          ) : null
+        }
+      >
         <Row k="MCP 配置" v={s.mcp_config_path} />
         <Row k="MCP 已启用" v={s.mcp_enabled} />
         <Row k="局域网访问保护" v={s.lan_protection} />

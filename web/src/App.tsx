@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { setAuthRequiredHandler } from "./api/client";
 import { SystemRail } from "./components/SystemRail";
+import { TokenDialog } from "./components/TokenDialog";
 import { useSystemStatus } from "./hooks/useSystemStatus";
 import { ChatPage } from "./pages/ChatPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
@@ -22,7 +24,16 @@ interface PageProps {
 
 export default function App() {
   const [view, setView] = useState<ViewId>("chat");
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const authDismissedRef = useRef(false);
   const { status } = useSystemStatus();
+
+  useEffect(() => {
+    setAuthRequiredHandler(() => {
+      if (!authDismissedRef.current) setTokenDialogOpen(true);
+    });
+    return () => setAuthRequiredHandler(null);
+  }, []);
 
   function navigate(v: ViewId): void {
     setView(v);
@@ -62,7 +73,12 @@ export default function App() {
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (
-            <SettingsPage />
+            <SettingsPage
+              onOpenTokenDialog={() => {
+                authDismissedRef.current = false;
+                setTokenDialogOpen(true);
+              }}
+            />
           )}
         </main>
       </div>
@@ -80,6 +96,15 @@ export default function App() {
           </button>
         ))}
       </nav>
+
+      {tokenDialogOpen ? (
+        <TokenDialog
+          onClose={() => {
+            authDismissedRef.current = true;
+            setTokenDialogOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -50,7 +50,18 @@ class TestSettingsApi:
             assert key in body, f"missing field {key}"
         assert isinstance(body["llm_api_configured"], bool)
         assert isinstance(body["graph_enabled"], bool)
-        assert body["lan_protection"] is False
+        assert isinstance(body["lan_protection"], bool)
+
+    def test_lan_protection_reflects_token(self, client):
+        with patch("config.LAN_TOKEN", ""):
+            assert client.get("/api/v1/settings").json()["lan_protection"] is False
+        with patch("config.LAN_TOKEN", "sekrit"):
+            resp = client.get(
+                "/api/v1/settings",
+                headers={"Authorization": "Bearer sekrit"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["lan_protection"] is True
 
     def test_no_secret_leakage_when_key_configured(self, client):
         secret = "sk-test-very-secret-value-12345"

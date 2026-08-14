@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { apiFetch } from "../api/client";
 import type { SystemStatus } from "../types/api";
 
 export interface UseSystemStatusResult {
@@ -15,7 +16,7 @@ export function useSystemStatus(): UseSystemStatusResult {
     let active = true;
     async function load(): Promise<void> {
       try {
-        const resp = await fetch("/api/v1/status", {
+        const resp = await apiFetch("/api/v1/status", {
           headers: { Accept: "application/json" },
         });
         if (!resp.ok) throw new Error(`状态请求失败 (${resp.status})`);

@@ -64,6 +64,10 @@ RERANK_LLM = os.getenv("RERANK_LLM", "deepseek").lower()
 LOCAL_LLM_BASE = os.getenv("LOCAL_LLM_BASE", "http://127.0.0.1:11434/v1")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3.5:4b")
 
+# 局域网访问保护: 设置后，非回环(loopback)客户端访问 /api 与 /mcp 必须携带
+# `Authorization: Bearer <LAN_TOKEN>`。本机回环访问始终免登录。留空则无保护。
+LAN_TOKEN = os.getenv("LAN_TOKEN", "")
+
 # 外部 MCP 客户端配置（opencode 风格 mcp.json，默认 <KNOWLEDGE_HOME>/mcp.json）
 MCP_CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "") or str(
     KNOWLEDGE_HOME / "mcp.json"

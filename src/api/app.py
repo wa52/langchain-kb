@@ -89,7 +89,7 @@ def create_app() -> FastAPI:
         async def spa_fallback(full_path: str):
             # API/MCP/docs paths that did not match an actual route stay JSON 404;
             # everything else is the single-page app's client-side route.
-            first = full_path.split("/", 1)[0]
+            first = full_path.lower().split("/", 1)[0]
             if first in ("api", "mcp", "docs", "redoc", "openapi.json", "assets"):
                 raise HTTPException(status_code=404, detail=f"Route GET /{full_path} not found")
             return _spa_index()
@@ -128,6 +128,9 @@ def create_app() -> FastAPI:
                 ).model_dump(),
             )
         return response
+
+    from src.api.security import lan_access_middleware
+    app.middleware("http")(lan_access_middleware)
 
     return app
 

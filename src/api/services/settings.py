@@ -70,6 +70,6 @@ def get_settings_view() -> dict:
         # MCP
         "mcp_config_path": config.MCP_CONFIG_PATH,
         "mcp_enabled": Path(config.MCP_CONFIG_PATH).is_file(),
-        # Access protection (LAN token protection is not implemented yet)
-        "lan_protection": False,
+        # Access protection (LAN token; loopback is always exempt)
+        "lan_protection": bool((config.LAN_TOKEN or "").strip()),
     }
