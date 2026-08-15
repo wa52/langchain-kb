@@ -35,7 +35,7 @@ function Section({
 }
 
 export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => void }) {
-  const { settings, error } = useSettings();
+  const { settings, error, actionError, saving, setGraphMode } = useSettings();
 
   if (error) {
     return (
@@ -108,13 +108,47 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
         <Row k="HF 离线模式" v={s.hf_offline} />
       </Section>
 
-      <Section title="检索与分块">
+      <Section
+        title="检索与分块"
+        footer={
+          <div style={{ marginTop: 10 }}>
+            {saving ? <p className="muted">保存中…</p> : null}
+            {actionError ? (
+              <p className="msg-error" role="alert">
+                {actionError}
+              </p>
+            ) : null}
+            <p className="muted" style={{ fontSize: 13 }}>
+              图谱抽取模式：jieba 使用本地分词（快，零 API 调用）；LLM 使用
+              DeepSeek 抽取（慢，但实体关系更准确）。切换立即生效，并写入{" "}
+              <span className="mono">.env</span>。
+            </p>
+          </div>
+        }
+      >
         <Row k="混合检索（向量+BM25）" v={s.hybrid_search} />
         <Row k="文档评分" v={s.grading} />
         <Row k="查询改写" v={s.rewrite} />
         <Row k="上下文压缩" v={s.context_compression} />
         <Row k="知识图谱检索" v={s.graph_enabled} />
-        <Row k="图谱 LLM 抽取" v={s.graph_llm_extraction} />
+        <dt>图谱抽取模式</dt>
+        <dd>
+          <div className="mode-switch" aria-label="图谱抽取模式">
+            <span className={s.graph_llm_extraction ? "muted" : "active"}>jieba</span>
+            <button
+              type="button"
+              className="switch"
+              role="switch"
+              aria-checked={s.graph_llm_extraction}
+              aria-label="切换图谱抽取模式"
+              disabled={saving}
+              onClick={() => void setGraphMode(!s.graph_llm_extraction)}
+            >
+              <span className="knob" />
+            </button>
+            <span className={s.graph_llm_extraction ? "active" : "muted"}>LLM</span>
+          </div>
+        </dd>
         <Row k="分块大小 / 重叠" v={`${s.chunk_size} / ${s.chunk_overlap}`} />
         <Row k="Top K" v={s.top_k} />
         <Row k="最大上下文 Token" v={s.max_context_tokens} />

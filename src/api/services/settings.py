@@ -73,3 +73,21 @@ def get_settings_view() -> dict:
         # Access protection (LAN token; loopback is always exempt)
         "lan_protection": bool((config.LAN_TOKEN or "").strip()),
     }
+
+
+def set_graph_extraction_mode(enabled: bool) -> dict:
+    """Persist the graph extraction mode (jieba / LLM) to .env.
+
+    Mirrors the console ``/mode llm|jieba`` command: writes
+    ``ENABLE_GRAPH_LLM_EXTRACTION`` and updates the in-process config so the
+    change takes effect for the next index run without a restart.
+    """
+    from dotenv import find_dotenv, set_key
+
+    value = "true" if enabled else "false"
+    dotenv_path = find_dotenv()
+    if dotenv_path:
+        set_key(dotenv_path, "ENABLE_GRAPH_LLM_EXTRACTION", value)
+    os.environ["ENABLE_GRAPH_LLM_EXTRACTION"] = value
+    config.ENABLE_GRAPH_LLM_EXTRACTION = enabled
+    return {"ok": True, "graph_llm_extraction": enabled}

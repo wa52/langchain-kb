@@ -107,6 +107,7 @@ ENABLE_CONTEXT_COMPRESSION = os.getenv("ENABLE_CONTEXT_COMPRESSION", "true").low
 ENABLE_GRAPH = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
 ENABLE_GRAPH_LLM_EXTRACTION = os.getenv("ENABLE_GRAPH_LLM_EXTRACTION", "false").lower() == "true"
 GRAPH_LLM_BATCH_SIZE = int(os.getenv("GRAPH_LLM_BATCH_SIZE", "10"))
+GRAPH_LLM_CONCURRENCY = int(os.getenv("GRAPH_LLM_CONCURRENCY", "5"))
 GRAPH_PERSIST_DIR = _resolve_dir("GRAPH_PERSIST_DIR", "./data")
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
 

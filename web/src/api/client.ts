@@ -299,3 +299,20 @@ export async function getSettings(): Promise<AppSettings> {
   if (!resp.ok) throw new Error(`配置读取失败 (${resp.status})`);
   return (await resp.json()) as AppSettings;
 }
+
+export interface GraphModeResult {
+  ok: boolean;
+  graph_llm_extraction: boolean;
+}
+
+export async function setGraphExtractionMode(enabled: boolean): Promise<GraphModeResult> {
+  const resp = await apiFetch("/api/v1/settings/graph-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `切换失败 (${resp.status})`));
+  }
+  return (await resp.json()) as GraphModeResult;
+}

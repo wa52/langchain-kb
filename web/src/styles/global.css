@@ -234,6 +234,55 @@ button.primary:not(:disabled):hover {
   overflow: auto;
 }
 
+/* ---------- Mode switch ---------- */
+
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mode-switch .active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mode-switch .muted {
+  color: var(--muted);
+}
+
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--grid-line);
+  background: var(--bg);
+  transition: background 0.15s ease;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--signal-blue);
+  border-color: var(--signal-blue);
+}
+
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.switch[aria-checked="true"] .knob {
+  transform: translateX(20px);
+}
+
+
 /* ---------- System rail ---------- */
 
 .sys-rail {

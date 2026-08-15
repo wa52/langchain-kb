@@ -119,3 +119,55 @@ class TestSettingsApi:
         assert resp.status_code == 405
         resp = client.put("/api/v1/settings", json={})
         assert resp.status_code == 405
+
+
+class TestGraphModeToggle:
+    def test_enable_llm_mode_persists_and_applies(self, client, tmp_path):
+        import config
+
+        original = config.ENABLE_GRAPH_LLM_EXTRACTION
+        try:
+            with (
+                patch("dotenv.find_dotenv", return_value=str(tmp_path / ".env")),
+                patch("dotenv.set_key") as mock_set_key,
+            ):
+                resp = client.post("/api/v1/settings/graph-mode", json={"enabled": True})
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["ok"] is True
+            assert body["graph_llm_extraction"] is True
+            mock_set_key.assert_called_once_with(
+                str(tmp_path / ".env"), "ENABLE_GRAPH_LLM_EXTRACTION", "true"
+            )
+            # takes effect immediately for the settings view
+            assert config.ENABLE_GRAPH_LLM_EXTRACTION is True
+            assert client.get("/api/v1/settings").json()["graph_llm_extraction"] is True
+        finally:
+            config.ENABLE_GRAPH_LLM_EXTRACTION = original
+
+    def test_disable_jieba_mode(self, client, tmp_path):
+        import config
+
+        original = config.ENABLE_GRAPH_LLM_EXTRACTION
+        try:
+            with (
+                patch("dotenv.find_dotenv", return_value=str(tmp_path / ".env")),
+                patch("dotenv.set_key") as mock_set_key,
+            ):
+                resp = client.post("/api/v1/settings/graph-mode", json={"enabled": False})
+            assert resp.status_code == 200
+            assert resp.json()["graph_llm_extraction"] is False
+            mock_set_key.assert_called_once_with(
+                str(tmp_path / ".env"), "ENABLE_GRAPH_LLM_EXTRACTION", "false"
+            )
+            assert config.ENABLE_GRAPH_LLM_EXTRACTION is False
+        finally:
+            config.ENABLE_GRAPH_LLM_EXTRACTION = original
+
+    def test_invalid_body_rejected(self, client):
+        resp = client.post("/api/v1/settings/graph-mode", json={"enabled": "not-a-bool"})
+        assert resp.status_code == 422
+
+    def test_missing_body_rejected(self, client):
+        resp = client.post("/api/v1/settings/graph-mode", json={})
+        assert resp.status_code == 422
