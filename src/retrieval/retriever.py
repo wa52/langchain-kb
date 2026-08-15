@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 import time
 from pathlib import Path
 
@@ -13,6 +14,21 @@ from src.vector_store.embedding import get_embedding_model
 
 _bm25_retriever = None
 _BM25_PERSIST_PATH = Path(CHROMA_PERSIST_DIR) / "bm25_index.pkl"
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _bm25_tokenize(text: str) -> list[str]:
+    """Tokenize for BM25.
+
+    jieba segments Chinese text, which the default whitespace split would
+    treat as a single giant token; non-CJK text keeps the fast whitespace
+    split so the (mostly English) corpus stays cheap to load/rebuild.
+    """
+    if _CJK_RE.search(text):
+        import jieba
+        return [t for t in jieba.cut(text) if t.strip()]
+    return text.split()
 
 
 def set_bm25_retriever(r):
@@ -38,7 +54,7 @@ def get_retriever(k: int | None = None):
     return vector_retriever
 
 
-def _load_bm25_from_disk(expected_count: int | None = None) -> bool:
+def _load_bm25_from_disk(expected_count: int | None = None, echo_fn: callable = None) -> bool:
     global _bm25_retriever
     if not _BM25_PERSIST_PATH.exists():
         return False
@@ -47,10 +63,17 @@ def _load_bm25_from_disk(expected_count: int | None = None) -> bool:
             data = pickle.load(f)
         texts: list[str] = data["texts"]
         if expected_count is not None and len(texts) != expected_count:
+            if echo_fn:
+                echo_fn(
+                    f"  -> BM25 缓存已失效（缓存 {len(texts)} / 当前 {expected_count}），"
+                    "需要全量重建（可能耗时数十秒）..."
+                )
             _bm25_retriever = None
             return False
         metadatas: list[dict] = data["metadatas"]
-        _bm25_retriever = BM25Retriever.from_texts(texts, metadatas=metadatas)
+        _bm25_retriever = BM25Retriever.from_texts(
+            texts, metadatas=metadatas, preprocess_func=_bm25_tokenize
+        )
         _bm25_retriever.k = TOP_K
         return True
     except Exception:
@@ -60,12 +83,26 @@ def _load_bm25_from_disk(expected_count: int | None = None) -> bool:
 
 def _save_bm25_to_disk(texts: list[str], metadatas: list[dict]):
     _BM25_PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(_BM25_PERSIST_PATH, "wb") as f:
+    tmp = _BM25_PERSIST_PATH.with_suffix(".pkl.tmp")
+    with open(tmp, "wb") as f:
         pickle.dump({"texts": texts, "metadatas": metadatas}, f)
+    tmp.replace(_BM25_PERSIST_PATH)
+
+
+def _bm25_doc_count(retriever) -> int | None:
+    """Best-effort chunk count of a loaded BM25Retriever."""
+    try:
+        return len(retriever.docs)
+    except Exception:
+        return None
 
 
 def rebuild_bm25(store, echo_fn: callable = print):
     global _bm25_retriever
+
+    from src.status import get_registry
+    reg = get_registry()
+    reg.set_loading("bm25", "加载/构建 BM25 索引")
 
     try:
         expected_count = store._collection.count()
@@ -73,13 +110,20 @@ def rebuild_bm25(store, echo_fn: callable = print):
         expected_count = None
 
     if _bm25_retriever is not None:
-        # Already loaded in this process (data unchanged); avoid re-parsing the
-        # persisted pickle on every agent construction.
-        echo_fn("  -> BM25 索引已在内存中，跳过重建")
-        return
+        in_mem = _bm25_doc_count(_bm25_retriever)
+        # Skip only when the in-memory index still matches the collection;
+        # after a data change the index must be rebuilt even in this process.
+        if expected_count is not None and in_mem == expected_count:
+            echo_fn("  -> BM25 索引已在内存中，跳过重建")
+            reg.set_ready("bm25", f"{in_mem} chunks · 已在内存" if in_mem is not None else "已在内存")
+            return
+        echo_fn("  -> BM25 数据已变更，重建索引")
+        _bm25_retriever = None
 
-    if _load_bm25_from_disk(expected_count=expected_count):
+    if _load_bm25_from_disk(expected_count=expected_count, echo_fn=echo_fn):
         echo_fn(f"  -> BM25 索引已从磁盘加载 ({_BM25_PERSIST_PATH})")
+        n = _bm25_doc_count(_bm25_retriever)
+        reg.set_ready("bm25", f"{n} chunks · 磁盘加载" if n is not None else "磁盘加载")
         return
 
     try:
@@ -103,6 +147,7 @@ def rebuild_bm25(store, echo_fn: callable = print):
             offset += batch_size
 
         if not all_texts:
+            reg.set_ready("bm25", "0 chunks（空语料）")
             return
         docs = [
             Document(page_content=t, metadata=m or {})
@@ -111,10 +156,13 @@ def rebuild_bm25(store, echo_fn: callable = print):
         t0 = time.time()
         texts = [doc.page_content for doc in docs]
         _bm25_retriever = BM25Retriever.from_texts(
-            texts, metadatas=[doc.metadata for doc in docs]
+            texts, metadatas=[doc.metadata for doc in docs],
+            preprocess_func=_bm25_tokenize,
         )
         _bm25_retriever.k = TOP_K
         _save_bm25_to_disk(texts, [doc.metadata for doc in docs])
+        reg.set_ready("bm25", f"{len(docs)} chunks · 全量重建")
         echo_fn(f"  -> BM25 索引构建完成 ({len(docs)} 篇, {time.time()-t0:.1f}s)")
     except Exception as e:
+        reg.set_error("bm25", e, "全量重建")
         echo_fn(f"  [BM25] 索引更新失败: {e}")
