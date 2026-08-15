@@ -109,6 +109,11 @@ ENABLE_GRAPH_LLM_EXTRACTION = os.getenv("ENABLE_GRAPH_LLM_EXTRACTION", "false").
 GRAPH_LLM_BATCH_SIZE = int(os.getenv("GRAPH_LLM_BATCH_SIZE", "10"))
 GRAPH_LLM_CONCURRENCY = int(os.getenv("GRAPH_LLM_CONCURRENCY", "5"))
 GRAPH_PERSIST_DIR = _resolve_dir("GRAPH_PERSIST_DIR", "./data")
+
+# 定时同步的经验库目录（分号分隔的绝对路径；为空则不启用定时同步）。
+# 由 sync_experience 原位读取，不做整树复制，仅索引新增/变更的 md/txt/pdf。
+EXPERIENCE_DIRS = [d.strip() for d in os.getenv("EXPERIENCE_DIRS", "").split(";") if d.strip()]
+SYNC_INTERVAL_HOURS = float(os.getenv("SYNC_INTERVAL_HOURS", "24"))
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
 
 

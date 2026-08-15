@@ -316,3 +316,56 @@ export async function setGraphExtractionMode(enabled: boolean): Promise<GraphMod
   }
   return (await resp.json()) as GraphModeResult;
 }
+
+export interface SyncStatus {
+  dirs: string[];
+  enabled: boolean;
+  interval_hours: number;
+  running: boolean;
+  last_sync_at: string | null;
+  last_result: {
+    dirs: number;
+    changed: number;
+    skipped: number;
+    chunks: number;
+    graph_chunks: number;
+  } | null;
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const resp = await apiFetch("/api/v1/sync/status", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`同步状态读取失败 (${resp.status})`);
+  return (await resp.json()) as SyncStatus;
+}
+
+export async function addSyncDir(path: string): Promise<{ dirs: string[]; path: string }> {
+  const resp = await apiFetch("/api/v1/sync/dirs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `添加目录失败 (${resp.status})`));
+  }
+  return (await resp.json()) as { dirs: string[]; path: string };
+}
+
+export async function removeSyncDir(path: string): Promise<{ dirs: string[] }> {
+  const resp = await apiFetch(`/api/v1/sync/dirs?path=${encodeURIComponent(path)}`, {
+    method: "DELETE",
+  });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `移除目录失败 (${resp.status})`));
+  }
+  return (await resp.json()) as { dirs: string[] };
+}
+
+export async function runSync(): Promise<{ running: boolean; started: boolean }> {
+  const resp = await apiFetch("/api/v1/sync/run", { method: "POST" });
+  if (!resp.ok) {
+    throw new Error(await readError(resp, `触发同步失败 (${resp.status})`));
+  }
+  return (await resp.json()) as { running: boolean; started: boolean };
+}

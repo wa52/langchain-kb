@@ -184,7 +184,8 @@ class TestOpenAPISchema:
                      "get_index_status", "system_status", "knowledge_stats",
                      "run_diagnostics", "get_diagnostics_status", "repair_diagnostics",
                      "list_sessions", "get_session", "delete_session",
-                     "get_settings", "set_graph_extraction_mode"}
+                     "get_settings", "set_graph_extraction_mode",
+                     "get_sync_status", "add_sync_dir", "remove_sync_dir", "run_sync"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 
     async def test_mcp_instance_stored_in_app_state(self, session):

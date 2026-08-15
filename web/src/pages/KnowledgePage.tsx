@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DragEvent, FormEvent } from "react";
 
 import { useKnowledge } from "../hooks/useKnowledge";
+import { useSync } from "../hooks/useSync";
 
 const STATE_LABEL: Record<string, string> = {
   pending: "等待中",
@@ -9,6 +10,12 @@ const STATE_LABEL: Record<string, string> = {
   done: "完成",
   failed: "失败",
 };
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return "从未";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
 
 export function KnowledgePage() {
   const {
@@ -25,6 +32,8 @@ export function KnowledgePage() {
   const [dragDepth, setDragDepth] = useState(0);
   const closeRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [syncDirInput, setSyncDirInput] = useState("");
+  const sync = useSync();
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -113,6 +122,78 @@ export function KnowledgePage() {
         <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>
           支持索引服务器本机上的文件/目录路径，或从浏览器拖拽上传文件。
         </p>
+      </div>
+
+      <div className="card">
+        <h3>定时同步目录</h3>
+        <p className="muted" style={{ fontSize: 13 }}>
+          把服务器本机目录加入列表后，服务会每 {sync.status?.interval_hours ?? "—"}{" "}
+          小时自动增量同步其中新增/变更的文档（原位读取，不复制）。适合把项目经验库等外部资料持续接入。
+        </p>
+        {sync.status?.dirs.length ? (
+          <ul className="sync-dir-list">
+            {sync.status.dirs.map((d) => (
+              <li key={d}>
+                <span className="mono">{d}</span>
+                <button
+                  type="button"
+                  className="link-btn"
+                  disabled={sync.status?.running}
+                  onClick={() => void sync.removeDir(d)}
+                >
+                  移除
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">尚未配置定时同步目录。</p>
+        )}
+        <form
+          className="field-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const p = syncDirInput.trim();
+            if (!p) return;
+            void (async () => {
+              if (await sync.addDir(p)) setSyncDirInput("");
+            })();
+          }}
+        >
+          <input
+            type="text"
+            value={syncDirInput}
+            onChange={(e) => setSyncDirInput(e.target.value)}
+            placeholder="服务器本机目录路径"
+            aria-label="定时同步目录路径"
+          />
+          <button type="submit" className="secondary" disabled={!syncDirInput.trim()}>
+            添加
+          </button>
+        </form>
+        <div className="sync-meta" style={{ marginTop: 8 }}>
+          <span className="muted">
+            {sync.status?.running ? "同步中…" : "上次同步：" + fmtTime(sync.status?.last_sync_at ?? null)}
+          </span>
+          {sync.status?.last_result ? (
+            <span className="muted">
+              结果：{sync.status.last_result.changed} 变更 / {sync.status.last_result.chunks} 片段
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="secondary"
+            disabled={sync.status?.running || !sync.status?.enabled}
+            onClick={() => void sync.triggerRun()}
+          >
+            立即同步
+          </button>
+        </div>
+        {sync.actionError ? (
+          <p className="msg-error" role="alert" style={{ marginTop: 8 }}>
+            {sync.actionError}
+          </p>
+        ) : null}
       </div>
 
       {drawerOpen ? (

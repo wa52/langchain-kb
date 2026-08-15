@@ -116,6 +116,7 @@ _COMMANDS = [
     ("design", "根据需求生成初版工业视觉方案"),
     ("status", "查看系统状态"),
     ("doctor", "健康检查"),
+    ("sync-experience", "增量同步经验库目录（EXPERIENCE_DIRS）"),
     ("serve", "启动 API + MCP 服务"),
 ]
 
@@ -295,6 +296,26 @@ def serve(
 ):
     """启动 API + MCP 服务"""
     _serve(host, port, reload, as_json)
+
+
+@app.command("sync-experience")
+def sync_experience_command(
+    as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """增量同步经验库目录（EXPERIENCE_DIRS，分号分隔的绝对路径）"""
+    from src.ingestion.pipeline import sync_experience
+
+    echo = _PipelineEcho(_err_console(), enabled=not as_json)
+    result = sync_experience(echo_fn=echo)
+    echo.finish()
+    if as_json:
+        _emit_json({"status": "ok", "data": result})
+    else:
+        _data_console().print(
+            f"[green]✔[/green] 经验同步完成: "
+            f"{result['dirs']} 目录 · 变更 {result['changed']} · "
+            f"新增 {result['chunks']} 片段"
+        )
 
 
 @app.command()

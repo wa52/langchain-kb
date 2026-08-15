@@ -252,6 +252,35 @@ button.primary:not(:disabled):hover {
   color: var(--muted);
 }
 
+/* ---------- Scheduled sync ---------- */
+
+.sync-dir-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.sync-dir-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sync-dir-list .mono {
+  overflow-wrap: anywhere;
+}
+
+.sync-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+
 .switch {
   position: relative;
   width: 44px;

@@ -111,6 +111,86 @@ def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callab
     return len(chunks)
 
 
+def sync_experience(echo_fn: callable = print) -> dict:
+    """Incrementally index the configured experience-library directories.
+
+    Reads the curated ``EXPERIENCE_DIRS`` in place (no copy into the data
+    dir). Only new or changed ``md/txt/pdf`` files are processed, keyed by
+    their full relative source path, so repeated scheduled runs never create
+    duplicate chunks for modified files.
+
+    Returns a summary dict: {dirs, changed, skipped, chunks, graph_chunks}.
+    """
+    from config import EXPERIENCE_DIRS
+    from src.graph_store.graph import KnowledgeGraph
+    from src.graph_store.retriever import set_graph
+
+    dirs = [Path(d) for d in EXPERIENCE_DIRS if Path(d).is_dir()]
+    if not dirs:
+        echo_fn("EXPERIENCE_DIRS 未配置或目录不存在")
+        return {"dirs": 0, "changed": 0, "skipped": 0, "chunks": 0, "graph_chunks": 0}
+
+    data_dirs = [(str(d), "experience") for d in dirs]
+    changed, unchanged = get_changed_files(data_dirs)
+    echo_fn(f"经验库: {len(dirs)} 个目录 · 变更 {len(changed)} · 未变更 {len(unchanged)}")
+    if not changed:
+        return {"dirs": len(dirs), "changed": 0, "skipped": len(unchanged), "chunks": 0, "graph_chunks": 0}
+
+    changed_by_source: dict[str, str] = {}
+    for d in dirs:
+        dabs = d.resolve()
+        for p in changed:
+            fp = Path(p)
+            try:
+                rel = str(fp.resolve().relative_to(dabs))
+            except ValueError:
+                continue
+            if rel not in changed_by_source:
+                changed_by_source[rel] = p
+
+    all_docs = []
+    for d in dirs:
+        loader = MarkdownLoader(d, echo_fn=echo_fn)
+        for doc in loader.load_all():
+            if doc.metadata.get("source"):
+                all_docs.append(doc)
+
+    changed_docs = [doc for doc in all_docs if doc.metadata["source"] in changed_by_source]
+    if not changed_docs:
+        echo_fn("没有需要更新的经验文档")
+        return {"dirs": len(dirs), "changed": len(changed), "skipped": len(unchanged),
+                "chunks": 0, "graph_chunks": 0}
+
+    for source in changed_by_source:
+        delete_by_source(source)
+
+    splitter = create_splitter()
+    chunks = splitter.split_documents(changed_docs)
+    echo_fn(f"  -> {len(chunks)} 个经验片段")
+
+    embeddings = get_embedding_model()
+    get_vector_store(embeddings)
+    add_documents_with_progress(chunks, echo_fn=echo_fn)
+
+    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+
+    from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
+    if ENABLE_GRAPH:
+        from src.llm import get_llm
+        kg = KnowledgeGraph(echo_fn=echo_fn)
+        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
+        kg.add_chunks(chunks, llm=llm)
+        kg.save()
+        set_graph(kg)
+
+    for d in dirs:
+        update_tracker("experience", d)
+
+    echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
+    return {"dirs": len(dirs), "changed": len(changed), "skipped": len(unchanged),
+            "chunks": len(chunks), "graph_chunks": len(chunks)}
+
+
 def run_single_file_update(filepath: str, echo_fn: callable = print):
     path = Path(filepath)
     if not path.exists():
