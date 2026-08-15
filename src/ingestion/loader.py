@@ -1,5 +1,4 @@
 from pathlib import Path
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_core.documents import Document
 
 
@@ -30,8 +29,31 @@ def _iter_files(data_dir: Path):
         yield path
 
 
-def _read_utf8(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+def _read_text(path: Path) -> str:
+    """Read a text file tolerantly. Strict UTF-8 is tried first. When it fails,
+    the file is usually one of two cases:
+
+    - a UTF-8 file with a few corrupt bytes (PDF-extracted manuals): keep
+      UTF-8-with-replacement so the readable Chinese/English survives;
+    - a genuinely GBK/GB18030 encoded doc: UTF-8-lossy turns nearly every byte
+      into a replacement char, so fall through to GB18030/UTF-16/Latin-1.
+
+    The replacement-char ratio cleanly separates the two (real UTF-8 files stay
+    well under 30%; a GBK file comes out mostly replacement chars)."""
+    raw = path.read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    lossy = raw.decode("utf-8", errors="replace")
+    if lossy.count("\ufffd") / max(1, len(lossy)) < 0.30:
+        return lossy
+    for enc in ("gb18030", "utf-16", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return lossy
 
 
 def _load_file(path: Path, base_dir: Path | None = None) -> list:
@@ -39,11 +61,11 @@ def _load_file(path: Path, base_dir: Path | None = None) -> list:
 
     suffix = path.suffix.lower()
     if suffix in _CODE_EXTS or suffix in _HDEV_EXTS:
-        text = _read_utf8(path)
+        text = _read_text(path)
         enhanced = extract_document(path, text, suffix)
         docs = [Document(page_content=enhanced, metadata={})]
     elif suffix in _TEXT_EXTS:
-        docs = TextLoader(str(path), encoding="utf-8").load()
+        docs = [Document(page_content=_read_text(path), metadata={})]
     elif suffix in _PDF_EXTS:
         docs = _make_pdf_loader(path).load()
     else:
@@ -85,3 +107,19 @@ def load_path(path: str | Path, echo_fn: callable = print) -> list:
             echo_fn()
         return docs
     return []
+
+
+def load_files(paths: list[str | Path], base_dir: str | Path, echo_fn: callable = print) -> list:
+    """Load an explicit set of files, with sources relative to ``base_dir``.
+
+    Unlike ``load_path`` this does not scan the directory, so a stale leftover
+    from a previously failed copy is never picked up and indexed twice."""
+    base = Path(base_dir)
+    docs = []
+    for i, f in enumerate(paths):
+        docs.extend(_load_file(Path(f), base_dir=base))
+        if (i + 1) % 20 == 0 or i == len(paths) - 1:
+            echo_fn(f"\r  [{i+1}/{len(paths)}] 已加载 {len(docs)} 个文档", end="")
+    if paths:
+        echo_fn()
+    return docs

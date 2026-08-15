@@ -1,8 +1,9 @@
+import hashlib
 import shutil
 from pathlib import Path
 
 from config import CHUNK_OVERLAP, CHUNK_SIZE
-from src.ingestion.loader import MarkdownLoader, load_path
+from src.ingestion.loader import MarkdownLoader, load_files, load_path
 from src.ingestion.splitter import create_splitter
 from src.ingestion.tracker import get_changed_files, update_tracker, remove_from_tracker
 from src.retrieval.retriever import rebuild_bm25
@@ -12,10 +13,29 @@ from src.vector_store.embedding import get_embedding_model
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".jp2", ".webp"}
 
 
-def _ignore_images(directory, names):
-    """shutil.copytree ignore filter: drop image files while copying, so the
-    external data dir only holds indexable content."""
-    return [n for n in names if (Path(directory) / n).suffix.lower() in _IMAGE_EXTS]
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _existing_by_size(base_dir: Path) -> dict[int, list[Path]]:
+    """Every file already living under ``base_dir``, grouped by byte size
+    (stat-only; hashing is deferred to same-size lookups via the digest cache)."""
+    result: dict[int, list[Path]] = {}
+    for p in base_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() in _IMAGE_EXTS:
+            continue
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        result.setdefault(size, []).append(p)
+    return result
 
 
 def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_overlap: int | None = None, echo_fn: callable = print):
@@ -250,6 +270,10 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
         if is_already_indexed([str(src)]):
             echo_fn(f"  -> {src.name} 已添加过，跳过")
             return 0
+        existing = {_file_sha256(p) for p in _existing_by_size(target_base).get(src.stat().st_size, [])}
+        if _file_sha256(src) in existing:
+            echo_fn(f"  -> {src.name} 与知识库已有文件内容相同，跳过")
+            return 0
         if target.exists():
             stem = target.stem
             suffix = target.suffix
@@ -263,24 +287,42 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
         echo_fn(f"[1/3] Copying {src.name} -> {target}")
 
     elif src.is_dir():
-        target = target_base / src.name
-        if is_already_indexed([str(p) for p in _iter_files(src)]):
+        src_files = list(_iter_files(src))
+        if src_files and is_already_indexed([str(p) for p in src_files]):
             echo_fn(f"  -> 目录 {src.name} 已添加过，跳过")
             return 0
+        target = target_base / src.name
+        by_size = _existing_by_size(target_base)
         if target.exists():
-            stem = target.stem
-            counter = 1
-            while target.exists():
-                target = target_base / f"{stem}_{counter}"
-                counter += 1
-            echo_fn(f"  同名目录已存在，重命名为: {target.name}")
-        echo_fn("  正在复制目录到 data/external/ ...")
-        shutil.copytree(str(src), str(target), ignore=_ignore_images)
-        copied_paths = [str(p) for p in _iter_files(target)]
-        echo_fn(f"[1/3] Copying directory {src.name} -> {target}")
+            echo_fn(f"  目标目录 {target.name} 已存在（疑似上次未完成的副本），仅补充缺失文件")
+        target.mkdir(parents=True, exist_ok=True)
+        digest_cache: dict[int, set[str]] = {}
+        seen: set[str] = set()
+        skipped = 0
+        for p in src_files:
+            size = p.stat().st_size
+            if size not in digest_cache:
+                digest_cache[size] = {_file_sha256(x) for x in by_size.get(size, [])}
+            digest = _file_sha256(p)
+            if digest in digest_cache[size] or digest in seen:
+                skipped += 1
+                continue
+            rel = p.relative_to(src)
+            dest = target / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(p), str(dest))
+            seen.add(digest)
+            copied_paths.append(str(dest))
+        echo_fn(f"[1/3] Copying directory {src.name} -> {target} ({len(copied_paths)} 新增, {skipped} 重复跳过)")
+        if not copied_paths:
+            echo_fn("  -> 没有新增内容（全部与知识库已有文件重复）")
+            return 0
 
     echo_fn(f"[2/3] Loading and splitting ...")
-    docs = load_path(target, echo_fn=echo_fn)
+    if src.is_dir():
+        docs = load_files(copied_paths, target, echo_fn=echo_fn)
+    else:
+        docs = load_path(target, echo_fn=echo_fn)
     if not docs:
         echo_fn("  -> 未找到可处理的文档，已复制到外部目录")
         return 0
