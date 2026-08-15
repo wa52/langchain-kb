@@ -19,6 +19,8 @@ export function ChatPage({ status, onNavigate }: ChatPageProps) {
 
   const agentState = status?.components.agent?.state ?? "loading";
   const vectorCount = status?.vector_count ?? 0;
+  const knowledgeEmpty = status !== null && vectorCount === 0;
+  const onlyGreeting = messages.length === 1;
 
   async function resume(s: SessionSummary): Promise<void> {
     try {
@@ -44,9 +46,9 @@ export function ChatPage({ status, onNavigate }: ChatPageProps) {
           历史会话
         </button>
       </div>
-      {messages.length === 0 ? (
+      {onlyGreeting && knowledgeEmpty ? (
         <EmptyState
-          knowledgeEmpty={status !== null && vectorCount === 0}
+          knowledgeEmpty={true}
           onAddMaterials={() => onNavigate("knowledge")}
         />
       ) : (
