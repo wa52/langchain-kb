@@ -53,7 +53,7 @@ def get_task_manager() -> IndexTaskManager:
     return _task_manager
 
 
-async def run_index_task(task_id: str, path: str, in_place: bool = False):
+async def run_index_task(task_id: str, path: str, in_place: bool = False, exclude: list[str] | None = None):
     mgr = get_task_manager()
     from src.status import get_registry
     reg = get_registry()
@@ -72,7 +72,7 @@ async def run_index_task(task_id: str, path: str, in_place: bool = False):
                 mgr.update_task(task_id, progress="Indexing...")
                 from config import EXTERNAL_DIR
                 from src.ingestion.pipeline import run_add_path
-                count = run_add_path(path, EXTERNAL_DIR)
+                count = run_add_path(path, EXTERNAL_DIR, exclude=exclude)
             else:
                 mgr.update_task(task_id, progress="Full ingestion...")
                 from config import DATA_DIR

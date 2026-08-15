@@ -252,7 +252,12 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
     return len(chunks)
 
 
-def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: callable = print):
+def run_add_path(
+    path: str,
+    external_dir: str = "./data/external",
+    echo_fn: callable = print,
+    exclude: list[str] | tuple[str, ...] | None = None,
+):
     from src.ingestion.loader import _iter_files
     from src.ingestion.tracker import is_already_indexed
     src = Path(path)
@@ -262,6 +267,10 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
 
     target_base = Path(external_dir)
     target_base.mkdir(parents=True, exist_ok=True)
+
+    # Relative-path prefixes (POSIX separators) whose files are skipped, e.g.
+    # to keep a source subtree that duplicates already-indexed content out.
+    excludes = {p.strip("/").replace("\\", "/") for p in (exclude or []) if p.strip()}
 
     copied_paths = []
 
@@ -300,6 +309,11 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
         seen: set[str] = set()
         skipped = 0
         for p in src_files:
+            rel = p.relative_to(src)
+            rel_posix = rel.as_posix()
+            if any(rel_posix.startswith(pre) for pre in excludes):
+                skipped += 1
+                continue
             size = p.stat().st_size
             if size not in digest_cache:
                 digest_cache[size] = {_file_sha256(x) for x in by_size.get(size, [])}
@@ -307,7 +321,6 @@ def run_add_path(path: str, external_dir: str = "./data/external", echo_fn: call
             if digest in digest_cache[size] or digest in seen:
                 skipped += 1
                 continue
-            rel = p.relative_to(src)
             dest = target / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(p), str(dest))

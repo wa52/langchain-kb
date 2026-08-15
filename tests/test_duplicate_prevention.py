@@ -126,6 +126,35 @@ class TestDuplicatePrevention:
             finally:
                 tr.TRACKER_FILE = orig
 
+    def test_add_dir_excludes_subtree(self):
+        import src.ingestion.tracker as tr
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ext = root / "external"
+            ext.mkdir()
+            src = root / "src"
+            src.mkdir()
+            (src / "keep.md").write_text("保留", encoding="utf-8")
+            halcon = src / "manuals" / "Technology" / "HALCON"
+            halcon.mkdir(parents=True)
+            (halcon / "skip.md").write_text("跳过", encoding="utf-8")
+            orig = tr.TRACKER_FILE
+            tr.TRACKER_FILE = str(root / "file_tracker.json")
+
+            try:
+                c = run_add_path(
+                    str(src),
+                    str(ext),
+                    echo_fn=lambda *a, **k: None,
+                    exclude=["manuals/Technology/HALCON"],
+                )
+                copied = sorted(str(p.relative_to(ext)).replace("\\", "/") for p in ext.rglob("*.md"))
+                assert c > 0
+                assert "src/keep.md" in copied
+                assert not any("HALCON" in p for p in copied), f"排除的子树不应被复制: {copied}"
+            finally:
+                tr.TRACKER_FILE = orig
+
     def test_add_dir_reuses_stale_target_no_rename(self):
         import src.ingestion.tracker as tr
         with tempfile.TemporaryDirectory() as td:

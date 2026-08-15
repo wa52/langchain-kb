@@ -85,7 +85,7 @@ async def index_documents(req: IndexRequest, rm: RmDep):
     if mgr.has_active_task(req.path):
         raise HTTPException(status_code=409, detail=f"Already indexing: {req.path}")
     task_id = mgr.create_task(req.path)
-    asyncio.create_task(run_index_task(task_id, req.path))
+    asyncio.create_task(run_index_task(task_id, req.path, exclude=req.exclude or None))
     return IndexTaskResponse(task_id=task_id, status="pending")
 
 

@@ -110,6 +110,10 @@ class IndexRequest(BaseModel):
         description="文件或目录路径",
         examples=["./data/external/docs"],
     )
+    exclude: list[str] = Field(
+        default_factory=list,
+        description="添加目录时跳过这些相对子路径前缀（如 'manuals/Technology/HALCON'），用于不复制已存在内容的重复子树",
+    )
 
 
 class IndexTaskResponse(BaseModel):
