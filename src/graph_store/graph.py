@@ -1,4 +1,5 @@
 import json
+import pickle
 import time
 from pathlib import Path
 from collections import Counter
@@ -15,7 +16,8 @@ class KnowledgeGraph:
         self.echo_fn = echo_fn
         self.path = Path(cfg.GRAPH_PERSIST_DIR) / "knowledge_graph.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        if self.path.exists():
+        self._snapshot = Path(cfg.GRAPH_PERSIST_DIR) / "knowledge_graph.gpickle"
+        if self.path.exists() or self._snapshot.exists():
             self._load()
         else:
             self.graph = nx.DiGraph()
@@ -163,11 +165,39 @@ class KnowledgeGraph:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.path)
+        try:
+            snapshot = {
+                "graph": self.graph,
+                "counts": dict(self._entity_count),
+                "sources": {k: list(v) for k, v in self._entity_sources.items()},
+            }
+            stmp = self._snapshot.with_suffix(".gpickle.tmp")
+            with open(stmp, "wb") as f:
+                pickle.dump(snapshot, f, protocol=pickle.HIGHEST_PROTOCOL)
+            stmp.replace(self._snapshot)
+        except Exception:
+            self.echo_fn("  [警告] 知识图谱二进制快照保存失败（不影响 JSON）")
 
     def _load(self):
         self.graph = nx.DiGraph()
         self._entity_count = Counter()
         self._entity_sources = {}
+        if self._snapshot.exists():
+            snap_current = True
+            if self.path.exists():
+                snap_current = self._snapshot.stat().st_mtime >= self.path.stat().st_mtime
+            if snap_current:
+                try:
+                    with open(self._snapshot, "rb") as f:
+                        data = pickle.load(f)
+                    self.graph = data["graph"]
+                    self._entity_count = Counter(data.get("counts", {}))
+                    self._entity_sources = {k: set(v) for k, v in data.get("sources", {}).items()}
+                    return
+                except Exception:
+                    self.echo_fn("  [警告] 知识图谱快照损坏，回退 JSON 加载")
+        if not self.path.exists():
+            return
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

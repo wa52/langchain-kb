@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     from src.api.routers.diagnostics import router as diagnostics_router
     from src.api.routers.settings import router as settings_router
     from src.api.routers.sync import router as sync_router
+    from src.api.routers.files import router as files_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(status_router, prefix="/api/v1")
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(diagnostics_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
     app.include_router(sync_router, prefix="/api/v1")
+    app.include_router(files_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     async def landing_page():
@@ -84,9 +86,20 @@ def create_app() -> FastAPI:
             "answer_with_knowledge",
             "get_index_status",
             "system_status",
+            "start_index_task",
+            "upload_documents",
+            "remove_file",
+            "list_files",
+            "list_sessions",
+            "delete_session",
+            "set_graph_extraction_mode",
+            "get_sync_status",
+            "add_sync_dir",
+            "remove_sync_dir",
+            "run_sync",
         ],
         name=PRODUCT_NAME,
-        description=f"Semantic search, RAG Q&A, and index status for the {PRODUCT_NAME_EN}",
+        description=f"Knowledge operations for the {PRODUCT_NAME_EN}",
     )
     app.state.mcp.mount_http()
 

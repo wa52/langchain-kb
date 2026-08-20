@@ -99,3 +99,33 @@ async def run_index_task(task_id: str, path: str, in_place: bool = False, exclud
             error=str(e),
         )
         reg.set_error("index", e, f"索引任务 {task_id}")
+
+
+async def run_remove_task(task_id: str, name: str, keep_file: bool = False):
+    mgr = get_task_manager()
+    from src.status import get_registry
+    reg = get_registry()
+    mgr.update_task(task_id, status="running", progress="Removing...")
+    reg.set_loading("index", f"移除任务 {task_id}")
+    try:
+
+        def _do_remove():
+            from src.api.services.files import remove_file
+            return remove_file(name, keep_file, echo_fn=lambda *a, **k: None)
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _do_remove)
+        mgr.update_task(
+            task_id,
+            status="done",
+            progress="Complete",
+            result=result,
+        )
+        reg.set_ready("index", f"移除任务 {task_id} · {name}")
+    except Exception as e:
+        mgr.update_task(
+            task_id,
+            status="failed",
+            error=str(e),
+        )
+        reg.set_error("index", e, f"移除任务 {task_id}")

@@ -170,7 +170,8 @@ class TestCapabilityFilteredRetrieval:
         mock_retriever = MagicMock()
         with (
             patch("src.vector_store.service.get_vector_store") as mvs,
-            patch("src.vector_store.service._bm25_retriever", None),
+            patch("src.vector_store.service.get_embedding_model", return_value=MagicMock()),
+            patch("src.retrieval.retriever._bm25_retriever", None),
             patch("src.vector_store.service.ENABLE_HYBRID_SEARCH", False),
         ):
             fake_vs = MagicMock()
@@ -187,7 +188,8 @@ class TestCapabilityFilteredRetrieval:
         from src.vector_store.service import VectorStoreService
         with (
             patch("src.vector_store.service.get_vector_store") as mvs,
-            patch("src.vector_store.service._bm25_retriever", None),
+            patch("src.vector_store.service.get_embedding_model", return_value=MagicMock()),
+            patch("src.retrieval.retriever._bm25_retriever", None),
             patch("src.vector_store.service.ENABLE_HYBRID_SEARCH", False),
         ):
             fake_vs = MagicMock()

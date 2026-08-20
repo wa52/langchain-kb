@@ -4,7 +4,7 @@ from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.agent.chat_history import allocate_session_id, save_history, load_history
-from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH
+from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
 _CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]{1,256})\]")
 _EXCERPT_LIMIT = 200
@@ -48,6 +48,51 @@ def _build_messages(query: str, session_id: str | None) -> list[dict]:
                     "content": getattr(m, "content", ""),
                 })
     messages.append({"role": "user", "content": query})
+    return messages
+
+
+def _estimated_tokens(text: str) -> int:
+    """Rough token estimate: CJK ≈ 1 token/char, latin ≈ 1 token/4 chars."""
+    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    other = max(0, len(text) - cjk)
+    return cjk + other // 4
+
+
+def _maybe_compress_history(messages: list[dict]) -> list[dict]:
+    """Keep the history sent to the agent within budget. The current user
+    message is never touched.
+
+    - Too many rounds  -> LLM summary of the old part + recent rounds.
+    - Only over token budget -> drop the oldest user/assistant pairs until
+      the estimated tokens fit (no API cost).
+    Falls back to the raw history on any failure.
+    """
+    if len(messages) < 2:
+        return messages
+    history = messages[:-1]
+    current = messages[-1]
+    user_turns = [m for m in history if m.get("role") == "user"]
+    est = sum(_estimated_tokens(str(m.get("content", ""))) for m in history)
+    if len(user_turns) <= HISTORY_COMPRESS_ROUNDS and est <= HISTORY_MAX_TOKENS:
+        return messages
+    if len(user_turns) > HISTORY_COMPRESS_ROUNDS:
+        from src.resources import ResourceManager
+        rm = ResourceManager.get_instance()
+        llm = rm.llm if (rm.is_ready() and getattr(rm, "llm", None) is not None) else None
+        try:
+            from src.agent.chat_history import compress_history
+            compressed = compress_history(history, llm, keep_rounds=HISTORY_COMPRESS_ROUNDS)
+            if compressed and compressed != history:
+                print(f"  [上下文] 历史过长（{len(user_turns)} 轮 / {est} tokens），压缩为摘要 + 最近 {HISTORY_COMPRESS_ROUNDS} 轮")
+                return compressed + [current]
+        except Exception:
+            pass
+    trimmed = history
+    while len(trimmed) > 2 and sum(_estimated_tokens(str(m.get("content", ""))) for m in trimmed) > HISTORY_MAX_TOKENS:
+        trimmed = trimmed[2:]
+    if len(trimmed) != len(history):
+        print(f"  [上下文] 历史超出 token 预算，截断最早 {len(history) - len(trimmed)} 条消息")
+        return trimmed + [current]
     return messages
 
 
@@ -184,6 +229,7 @@ def build_sources(answer: str) -> list[dict]:
 def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
     t0 = time.time()
     messages = _build_messages(query, session_id)
+    agent_messages = _maybe_compress_history(messages)
     print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
 
     t1 = time.time()
@@ -192,7 +238,7 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
 
     t2 = time.time()
     answer_parts = []
-    for chunk in stream_rag_response(agent, messages):
+    for chunk in stream_rag_response(agent, agent_messages):
         if chunk:
             answer_parts.append(chunk)
     answer = "".join(answer_parts)
@@ -236,6 +282,7 @@ def stream_chat_events(
     t0 = time.time()
 
     messages = _build_messages(query, session_id)
+    agent_messages = _maybe_compress_history(messages)
     agent = _get_agent()
 
     tool_names: list[str] = []
@@ -245,7 +292,7 @@ def stream_chat_events(
             tool_names.append(name)
 
     answer_parts = []
-    for chunk in stream_rag_response(agent, messages, on_tool=_on_tool):
+    for chunk in stream_rag_response(agent, agent_messages, on_tool=_on_tool):
         if stop_event.is_set():
             break
         if chunk:

@@ -115,6 +115,10 @@ GRAPH_PERSIST_DIR = _resolve_dir("GRAPH_PERSIST_DIR", "./data")
 EXPERIENCE_DIRS = [d.strip() for d in os.getenv("EXPERIENCE_DIRS", "").split(";") if d.strip()]
 SYNC_INTERVAL_HOURS = float(os.getenv("SYNC_INTERVAL_HOURS", "24"))
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
+# 会话历史上下文管理：超过轮数或估算 token 预算后，把较早的历史压缩成摘要，
+# 只把最近 keep_rounds 轮 + 摘要发给 agent（完整历史仍原样保存）。
+HISTORY_COMPRESS_ROUNDS = int(os.getenv("HISTORY_COMPRESS_ROUNDS", "10"))
+HISTORY_MAX_TOKENS = int(os.getenv("HISTORY_MAX_TOKENS", "4000"))
 
 
 def ensure_data_dirs():
