@@ -24,11 +24,15 @@ def _bm25_chunk_count() -> int | None:
 
 
 def get_knowledge_stats(rm: ResourceManager) -> dict:
-    from src.vector_store.chroma_client import get_collection_stats
+    from src.ingestion.tracker import list_all_files
 
-    stats = get_collection_stats()
-    chunks = stats.get("count", 0)
-    documents = stats.get("source_count", 0)
+    try:
+        chunks = int(rm.vector_store._collection.count()) if rm.vector_store is not None else 0
+    except Exception:
+        chunks = 0
+    # Tracker lookup is proportional to the number of source files, unlike
+    # scanning metadata for every vector in a large collection.
+    documents = len(list_all_files())
 
     graph_stats = {"entities": 0, "relations": 0}
     kg = rm.graph

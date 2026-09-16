@@ -18,6 +18,7 @@ SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责
 5. 回答时标注信息来源，在引用内容后标注 [来源: 文件名]
 6. 用中文回答
 7. 用户要求联网查资料时，先用 browser MCP 搜索并阅读多个公开来源，整理去重、核实事实后调用 save_research_material 入库，最后重新检索并回答
+8. 只能声称实际工具列表中存在的工具；工具调用失败时说明当前能力不可用，不要声称已经完成未成功的操作
 
 ## 项目引导
 {build_workflow_prompt()}
@@ -62,20 +63,27 @@ def create_rag_agent():
 
     # Load external MCP tools (opencode-style mcp.json). Degrades gracefully:
     # a failure here never blocks the local knowledge tools.
+    external_names: list[str] = []
     try:
         from src.agent.mcp_client import load_mcp_tools, default_mcp_config_path
         external = load_mcp_tools(default_mcp_config_path())
         if external:
             tools.extend(external)
+            external_names = [getattr(t, "name", "external") for t in external]
             print(f"  [MCP] 已加载 {len(external)} 个外部工具")
     except Exception as e:
         print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
 
     _t4 = _time.time()
+    prompt = SYSTEM_PROMPT
+    if external_names:
+        prompt += "\n\n## 当前已加载的外部 MCP\n- " + "\n- ".join(external_names)
+    else:
+        prompt += "\n\n当前没有成功加载外部 MCP；不要声称可以联网或使用浏览器。"
     agent = create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=prompt,
     )
     get_registry().set_ready("agent", "Deep Agent")
     print(f"  [计时] 构建 Deep Agent: {_time.time() - _t4:.2f}s")
@@ -83,6 +91,19 @@ def create_rag_agent():
 
 
 def stream_rag_response(agent, messages: list, on_tool=None):
+    def content_length(value) -> int:
+        if isinstance(value, str):
+            return len(value)
+        if isinstance(value, list):
+            total = 0
+            for item in value:
+                if isinstance(item, dict):
+                    total += len(str(item.get("text", item.get("content", ""))))
+                else:
+                    total += len(str(getattr(item, "text", item)))
+            return total
+        return len(str(value)) if value else 0
+
     tool_called = False
     seen_tool_ids = set()
     for event in agent.stream({"messages": messages}):
@@ -96,7 +117,7 @@ def stream_rag_response(agent, messages: list, on_tool=None):
                     yield content
                 elif mtype == "tool" and not tool_called:
                     tool_called = True
-                    n = len(content) if content else 0
+                    n = content_length(content)
                     yield f"\n  [知识库检索完成 ({n} 字符)]\n\n"
                 if on_tool is not None and mtype == "tool":
                     tid = getattr(msg, "tool_call_id", None) or getattr(msg, "id", None)

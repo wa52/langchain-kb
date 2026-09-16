@@ -8,6 +8,7 @@ history persistence, and session continuation.
 import json
 import threading
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -70,6 +71,20 @@ def _parse_sse(text: str) -> list[tuple[str, dict]]:
         if ev is not None:
             events.append((ev, data))
     return events
+
+
+class TestStreamToolTextLength:
+    def test_counts_text_inside_content_blocks(self):
+        from src.agent.rag_agent import stream_rag_response
+
+        content = [{"type": "text", "text": "检索结果内容"}]
+        # The stream helper receives tool messages from the agent; this test
+        # verifies the list-shaped content path through a minimal fake event.
+        msg = SimpleNamespace(type="tool", content=content, name="retrieve_knowledge")
+        agent = MagicMock()
+        agent.stream.return_value = [{"tools": {"messages": [msg]}}]
+        result = list(stream_rag_response(agent, [], on_tool=None))
+        assert "6 字符" in result[0]
 
 
 class TestChatStreamSSEFraming:

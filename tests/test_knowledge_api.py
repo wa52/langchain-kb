@@ -45,10 +45,7 @@ def client(rm):
 
 class TestKnowledgeStats:
     def test_stats_shape(self, client, rm, monkeypatch):
-        monkeypatch.setattr(
-            "src.vector_store.chroma_client.get_collection_stats",
-            lambda: {"count": 42, "sources": ["doc.md"], "source_count": 1},
-        )
+        monkeypatch.setattr("src.ingestion.tracker.list_all_files", lambda: [{"file_key": "doc.md"}])
         with patch("src.retrieval.retriever._bm25_retriever") as mock_bm25:
             mock_bm25.docs = [1, 2, 3]
             resp = client.get("/api/v1/knowledge/stats")
@@ -61,10 +58,7 @@ class TestKnowledgeStats:
         assert body["index_task"] is None
 
     def test_stats_include_latest_index_task(self, client, rm, monkeypatch):
-        monkeypatch.setattr(
-            "src.vector_store.chroma_client.get_collection_stats",
-            lambda: {"count": 42, "sources": [], "source_count": 0},
-        )
+        monkeypatch.setattr("src.ingestion.tracker.list_all_files", lambda: [])
         from src.api.services.indexing import get_task_manager
         mgr = get_task_manager()
         mgr.update_task(
@@ -81,10 +75,7 @@ class TestKnowledgeStats:
         assert task["result"] == {"chunks_added": 7}
 
     def test_stats_empty_graph_defaults(self, client, rm, monkeypatch):
-        monkeypatch.setattr(
-            "src.vector_store.chroma_client.get_collection_stats",
-            lambda: {"count": 0, "sources": [], "source_count": 0},
-        )
+        monkeypatch.setattr("src.ingestion.tracker.list_all_files", lambda: [])
         rm.graph = None
         resp = client.get("/api/v1/knowledge/stats")
         body = resp.json()

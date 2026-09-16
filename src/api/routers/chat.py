@@ -80,7 +80,10 @@ async def chat_stream(req: ChatStreamRequest, request: Request):
                 else:
                     _put_control(event)
         except Exception as exc:
-            _put_control({"type": "error", "data": {"error": str(exc)}})
+            message = str(exc)
+            if "MCP error" in message or "Invalid arguments for tool" in message:
+                message = "浏览器工具暂时不可用，请稍后重试。"
+            _put_control({"type": "error", "data": {"error": message}})
         finally:
             _put_control(_END)
 
