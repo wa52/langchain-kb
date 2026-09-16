@@ -212,6 +212,35 @@ class TestServerDispatch:
         r2 = tool.invoke({"operation": "read_file", "path": "D:/x.txt"})
         assert r2 == "read D:/x.txt"
 
+    def test_dispatch_omits_null_optional_arguments(self):
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel, Field
+        from src.agent.mcp_client import _server_dispatch_tool
+
+        class ReadArgs(BaseModel):
+            path: str = Field(description="path")
+            head: int | None = None
+            tail: int | None = None
+
+        def read_file(path: str, head: int | None = None, tail: int | None = None) -> str:
+            return f"{path}:{head}:{tail}"
+
+        tool = _server_dispatch_tool(
+            "filesystem",
+            [StructuredTool.from_function(
+                func=read_file,
+                name="read_text_file",
+                description="read file",
+                args_schema=ReadArgs,
+            )],
+        )
+        assert tool.invoke({
+            "operation": "read_text_file",
+            "path": "D:/x.txt",
+            "head": None,
+            "tail": None,
+        }) == "D:/x.txt:None:None"
+
     def test_dispatch_unknown_operation(self):
         from src.agent.mcp_client import _server_dispatch_tool
         tool = _server_dispatch_tool("filesystem", self._fake_server_tools())

@@ -7,6 +7,7 @@ import type {
   SessionSummary,
   SourceItem,
   TaskStatus,
+  TrackedFilesResponse,
   UploadTasks,
 } from "../types/api";
 import { recordApiError } from "../lib/telemetry";
@@ -221,9 +222,27 @@ async function readError(resp: Response, fallback: string): Promise<string> {
 export async function getKnowledgeStats(): Promise<KnowledgeStats> {
   const resp = await apiFetch("/api/v1/knowledge/stats", {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
   });
   if (!resp.ok) throw new Error(`知识库统计请求失败 (${resp.status})`);
   return (await resp.json()) as KnowledgeStats;
+}
+
+export async function listTrackedFiles(): Promise<TrackedFilesResponse> {
+  const resp = await apiFetch("/api/v1/files", {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!resp.ok) throw new Error(`文件列表请求失败 (${resp.status})`);
+  return (await resp.json()) as TrackedFilesResponse;
+}
+
+export async function removeTrackedFile(name: string): Promise<IndexTask> {
+  const resp = await apiFetch(`/api/v1/files/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `移除文件失败 (${resp.status})`));
+  return (await resp.json()) as IndexTask;
 }
 
 export async function indexPath(path: string): Promise<IndexTask> {

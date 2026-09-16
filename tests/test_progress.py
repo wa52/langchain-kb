@@ -68,6 +68,12 @@ class TestRebuildBm25:
         yield
         retriever_mod._bm25_retriever = saved
 
+    @pytest.fixture(autouse=True)
+    def _no_disk_write(self):
+        # Rebuild tests must not overwrite the real chroma_db/bm25_index.pkl.
+        with patch("src.retrieval.retriever._save_bm25_to_disk"):
+            yield
+
     def test_echo_fn_replaces_print(self):
         mock_store = MagicMock()
         mock_store._collection.get.side_effect = [

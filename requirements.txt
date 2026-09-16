@@ -20,3 +20,4 @@ prompt_toolkit>=3.0.0
 fastapi>=0.110.0
 fastapi-mcp>=0.4.0
 uvicorn[standard]>=0.29.0
+lark-oapi>=1.4.8

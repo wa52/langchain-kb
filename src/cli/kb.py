@@ -61,22 +61,27 @@ def serve(host, port, reload, as_json):
 def index(path, rebuild, dry_run, chunk_size, chunk_overlap, incremental, as_json):
     """Index documents into vector store"""
     from config import DATA_DIR, EXTERNAL_DIR
-    from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path
+    from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path, run_rebuild
     if rebuild and dry_run:
         _output("[dry-run] Would drop collection + re-index all files", as_json,
                 data={"dry_run": True, "action": "rebuild"})
         return
-    if rebuild:
-        from src.vector_store.service import VectorStoreService
-        echo_stderr("Dropping existing collection...")
-        VectorStoreService().reset()
     kwargs = {}
     if chunk_size:
         kwargs["chunk_size"] = chunk_size
     if chunk_overlap:
         kwargs["chunk_overlap"] = chunk_overlap
     try:
-        if path:
+        if rebuild:
+            echo_stderr("Dropping existing collection...")
+            count = run_rebuild(
+                DATA_DIR,
+                add_path=path,
+                external_dir=EXTERNAL_DIR,
+                echo_fn=echo_stderr,
+                **kwargs,
+            )
+        elif path:
             if dry_run:
                 _output(f"[dry-run] Would index: {path}", as_json,
                         data={"dry_run": True, "path": path})

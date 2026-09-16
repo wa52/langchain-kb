@@ -1,14 +1,19 @@
 import json
 import pickle
+import os
+import tempfile
 import time
 from pathlib import Path
 from collections import Counter
 from typing import Callable, Optional
+from threading import Lock
 
 import networkx as nx
 
 import config as cfg
 from src.graph_store.extraction import extract_entities, extract_relations
+
+_GRAPH_SAVE_LOCK = Lock()
 
 
 class KnowledgeGraph:
@@ -162,21 +167,40 @@ class KnowledgeGraph:
                 for u, v, edata in self.graph.edges(data=True)
             ],
         }
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
-        try:
-            snapshot = {
-                "graph": self.graph,
-                "counts": dict(self._entity_count),
-                "sources": {k: list(v) for k, v in self._entity_sources.items()},
-            }
-            stmp = self._snapshot.with_suffix(".gpickle.tmp")
-            with open(stmp, "wb") as f:
-                pickle.dump(snapshot, f, protocol=pickle.HIGHEST_PROTOCOL)
-            stmp.replace(self._snapshot)
-        except Exception:
-            self.echo_fn("  [警告] 知识图谱二进制快照保存失败（不影响 JSON）")
+        with _GRAPH_SAVE_LOCK:
+            fd, tmp_name = tempfile.mkstemp(
+                prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_name, self.path)
+            finally:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
+            try:
+                snapshot = {
+                    "graph": self.graph,
+                    "counts": dict(self._entity_count),
+                    "sources": {k: list(v) for k, v in self._entity_sources.items()},
+                }
+                fd, snapshot_tmp = tempfile.mkstemp(
+                    prefix=f".{self._snapshot.name}.", suffix=".tmp",
+                    dir=self._snapshot.parent,
+                )
+                try:
+                    with os.fdopen(fd, "wb") as f:
+                        pickle.dump(snapshot, f, protocol=pickle.HIGHEST_PROTOCOL)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(snapshot_tmp, self._snapshot)
+                finally:
+                    if os.path.exists(snapshot_tmp):
+                        os.unlink(snapshot_tmp)
+            except Exception:
+                self.echo_fn("  [警告] 知识图谱二进制快照保存失败（不影响 JSON）")
 
     def _load(self):
         self.graph = nx.DiGraph()

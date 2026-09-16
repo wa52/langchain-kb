@@ -25,6 +25,7 @@ def rm():
     mock_kg.graph.number_of_edges.return_value = 5
     rm.vector_store = mock_vs
     rm.graph = mock_kg
+    rm.agent = MagicMock()
     return rm
 
 
@@ -141,9 +142,13 @@ class TestIndexDocuments:
         d.mkdir()
         (d / "test.md").write_text("# hello", encoding="utf-8")
 
-        resp = client.post("/api/v1/documents/index", json={
-            "path": str(d),
-        })
+        # The endpoint only creates the task; patch the runner so the real
+        # ingestion pipeline (embedding load + vector write + BM25 rebuild)
+        # does not run against the real chroma_db/data dirs in tests.
+        with patch("src.api.routers.indexing.run_index_task"):
+            resp = client.post("/api/v1/documents/index", json={
+                "path": str(d),
+            })
         assert resp.status_code == 202
         body = resp.json()
         assert body["status"] == "pending"

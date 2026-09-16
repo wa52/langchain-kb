@@ -1,16 +1,183 @@
 import hashlib
+import os
 import shutil
+import time
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
+from threading import RLock
 
-from config import CHUNK_OVERLAP, CHUNK_SIZE
+from config import CHUNK_OVERLAP, CHUNK_SIZE, KNOWLEDGE_HOME
 from src.ingestion.loader import MarkdownLoader, load_files, load_path
 from src.ingestion.splitter import create_splitter
 from src.ingestion.tracker import get_changed_files, update_tracker, remove_from_tracker
-from src.retrieval.retriever import rebuild_bm25
+from src.retrieval.retriever import rebuild_bm25, invalidate_bm25
 from src.vector_store.chroma_client import get_vector_store, reset_vector_store, delete_by_source, add_documents_with_progress
 from src.vector_store.embedding import get_embedding_model
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".jp2", ".webp"}
+_INDEX_WRITE_LOCK = RLock()
+_INDEX_LOCK_PATH = Path(KNOWLEDGE_HOME) / "data" / ".index-write.lock"
+
+
+@contextmanager
+def _cross_process_index_lock(timeout: float = 300.0):
+    """Serialize index mutations across API, CLI and stdio processes."""
+    _INDEX_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_INDEX_LOCK_PATH, "a+b") as lock_file:
+        lock_file.seek(0, os.SEEK_END)
+        if lock_file.tell() == 0:
+            lock_file.write(b"0")
+            lock_file.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, BlockingIOError):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("等待知识库写锁超时")
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                import msvcrt
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _serialized_index_write(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        with _INDEX_WRITE_LOCK, _cross_process_index_lock():
+            return func(*args, **kwargs)
+    return wrapped
+
+
+def _stored_documents(sources: set[str]) -> list:
+    from langchain_core.documents import Document
+
+    collection = get_vector_store()._collection
+    stored = []
+    for source in sources:
+        result = collection.get(where={"source": source}, include=["documents", "metadatas"])
+        if not isinstance(result, dict):
+            continue
+        texts = result.get("documents") or []
+        metadatas = result.get("metadatas") or [{}] * len(texts)
+        stored.extend(
+            Document(page_content=text, metadata=metadata or {"source": source})
+            for text, metadata in zip(texts, metadatas)
+        )
+    return stored
+
+
+def _replace_documents(sources: set[str], chunks: list, echo_fn=print, previous=None):
+    """Replace source chunks and make a best-effort rollback on write failure."""
+    previous = _stored_documents(sources) if previous is None else previous
+    for source in sources:
+        delete_by_source(source)
+    invalidate_bm25()
+    try:
+        add_documents_with_progress(chunks, echo_fn=echo_fn)
+    except Exception:
+        for source in sources:
+            delete_by_source(source)
+        if previous:
+            add_documents_with_progress(previous, echo_fn=echo_fn)
+        invalidate_bm25()
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        raise
+
+
+def _restore_documents(sources: set[str], previous: list, echo_fn=print):
+    for source in sources:
+        delete_by_source(source)
+    if previous:
+        add_documents_with_progress(previous, echo_fn=echo_fn)
+    invalidate_bm25()
+    try:
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+    except Exception as exc:
+        echo_fn(f"  [回滚] BM25 恢复失败: {exc}")
+    try:
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
+    except Exception as exc:
+        echo_fn(f"  [回滚] 图谱恢复失败: {exc}")
+
+
+@contextmanager
+def _replacement_transaction(sources: set[str], chunks: list, echo_fn=print):
+    from src.ingestion.tracker import snapshot_tracker, restore_tracker
+
+    previous = _stored_documents(sources)
+    tracker_snapshot = snapshot_tracker()
+    _replace_documents(sources, chunks, echo_fn=echo_fn, previous=previous)
+    try:
+        yield
+    except Exception:
+        echo_fn("  [回滚] 更新事务失败，恢复旧数据...")
+        _restore_documents(sources, previous, echo_fn=echo_fn)
+        try:
+            restore_tracker(tracker_snapshot)
+        except Exception as exc:
+            echo_fn(f"  [回滚] tracker 恢复失败: {exc}")
+        raise
+
+
+def _rebuild_graph_from_store(echo_fn=print):
+    """Rebuild graph provenance from the post-write vector collection.
+
+    Rebuilding is intentionally used after replacements and removals: graph
+    entities and relations otherwise have no reliable document-level delete
+    semantics.
+    """
+    from langchain_core.documents import Document
+    from config import ENABLE_GRAPH_LLM_EXTRACTION
+    from src.graph_store.graph import KnowledgeGraph
+    from src.graph_store.retriever import set_graph
+
+    store = get_vector_store()
+    documents = []
+    total = store._collection.count()
+    if not isinstance(total, int):
+        total = 0
+    offset = 0
+    while offset < total:
+        batch = store._collection.get(
+            include=["documents", "metadatas"], limit=500, offset=offset
+        )
+        texts = (batch or {}).get("documents") or []
+        if not texts:
+            break
+        metadatas = (batch or {}).get("metadatas") or [{}] * len(texts)
+        documents.extend(
+            Document(page_content=text, metadata=meta or {})
+            for text, meta in zip(texts, metadatas)
+        )
+        offset += len(texts)
+
+    kg = KnowledgeGraph(echo_fn=echo_fn)
+    llm = None
+    if ENABLE_GRAPH_LLM_EXTRACTION:
+        from src.llm import get_llm
+        llm = get_llm(temperature=0)
+    kg.build_from_chunks(documents, llm=llm, echo_fn=echo_fn)
+    kg.save()
+    set_graph(kg)
+    return kg
 
 
 def _file_sha256(path: Path) -> str:
@@ -19,6 +186,13 @@ def _file_sha256(path: Path) -> str:
         for block in iter(lambda: f.read(65536), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _experience_namespace(path: Path) -> str:
+    resolved = str(path.resolve())
+    digest = hashlib.sha256(resolved.casefold().encode("utf-8")).hexdigest()[:10]
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in path.name)
+    return f"experience/{safe_name or 'root'}-{digest}"
 
 
 def _existing_by_size(base_dir: Path) -> dict[int, list[Path]]:
@@ -38,6 +212,7 @@ def _existing_by_size(base_dir: Path) -> dict[int, list[Path]]:
     return result
 
 
+@_serialized_index_write
 def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_overlap: int | None = None, echo_fn: callable = print):
     chunk_size = chunk_size or CHUNK_SIZE
     chunk_overlap = chunk_overlap or CHUNK_OVERLAP
@@ -60,17 +235,45 @@ def run_ingestion(data_dir: str | Path, chunk_size: int | None = None, chunk_ove
 
     rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
-    from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
+    from config import ENABLE_GRAPH
     if ENABLE_GRAPH:
-        from src.graph_store.graph import build_graph_store
-        from src.graph_store.retriever import set_graph
-        kg = build_graph_store()
-        set_graph(kg)
+        _rebuild_graph_from_store(echo_fn=echo_fn)
 
     update_tracker("internal", data_dir)
     return len(chunks)
 
 
+@_serialized_index_write
+def run_rebuild(
+    data_dir: str | Path,
+    *,
+    add_path: str | None = None,
+    external_dir: str | None = None,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    echo_fn: callable = print,
+):
+    """Reset all derived indexes and rebuild while holding the global write lock."""
+    from src.vector_store.service import VectorStoreService
+
+    VectorStoreService(echo_fn=echo_fn).reset()
+    invalidate_bm25()
+    if add_path is not None:
+        from config import EXTERNAL_DIR
+        return run_add_path.__wrapped__(
+            add_path,
+            external_dir or EXTERNAL_DIR,
+            echo_fn=echo_fn,
+        )
+    return run_ingestion.__wrapped__(
+        data_dir,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        echo_fn=echo_fn,
+    )
+
+
+@_serialized_index_write
 def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callable = print):
     data_dirs = [(internal_dir, "internal"), (external_dir, "external")]
     changed, unchanged = get_changed_files(data_dirs)
@@ -80,57 +283,60 @@ def run_incremental_update(internal_dir: str, external_dir: str, echo_fn: callab
 
     echo_fn(f"检测到 {len(changed)} 个文件变更，{len(unchanged)} 个文件未变更")
 
-    # 删除旧 chunks
+    changed_sources: set[str] = set()
     for p in changed:
-        source_name = Path(p).name
-        echo_fn(f"  删除旧数据: {source_name}")
-        delete_by_source(source_name)
+        path = Path(p)
+        for base, _source_type in data_dirs:
+            try:
+                changed_sources.add(str(path.relative_to(Path(base))))
+                break
+            except ValueError:
+                continue
 
     all_docs = []
-    source_map: dict[str, str] = {}
     for dir_path, source_type in data_dirs:
         loader = MarkdownLoader(dir_path, echo_fn=echo_fn)
         for d in loader.load_all():
             source_key = d.metadata.get("source", "")
             if source_key:
                 all_docs.append(d)
-                source_map.setdefault(source_key, source_type)
 
-    changed_names = {Path(p).name for p in changed}
-    changed_docs = [d for d in all_docs if Path(d.metadata.get("source", "")).name in changed_names]
+    changed_docs = [d for d in all_docs if d.metadata.get("source", "") in changed_sources]
 
     if not changed_docs:
         echo_fn("没有需要更新的文档")
         return 0
 
-    splitter = create_splitter()
+    splitter = create_splitter(CHUNK_SIZE, CHUNK_OVERLAP)
     chunks = splitter.split_documents(changed_docs)
     echo_fn(f"  -> {len(chunks)} 个新文档片段")
 
     embeddings = get_embedding_model()
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks, echo_fn=echo_fn)
+    with _replacement_transaction(changed_sources, chunks, echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
-    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
 
-    from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
-    if ENABLE_GRAPH:
-        from src.graph_store.graph import KnowledgeGraph
-        from src.graph_store.retriever import set_graph
-        from src.llm import get_llm
-        kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
-        kg.add_chunks(chunks, llm=llm)
-        kg.save()
-        set_graph(kg)
-
-    update_tracker("internal", internal_dir, changed)
-    update_tracker("external", external_dir, changed)
+        for dir_path, source_type in data_dirs:
+            root = Path(dir_path).resolve()
+            scoped = []
+            for changed_path in changed:
+                try:
+                    Path(changed_path).resolve().relative_to(root)
+                    scoped.append(changed_path)
+                except ValueError:
+                    continue
+            if scoped:
+                update_tracker(source_type, dir_path, scoped)
 
     echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return len(chunks)
 
 
+@_serialized_index_write
 def sync_experience(echo_fn: callable = print) -> dict:
     """Incrementally index the configured experience-library directories.
 
@@ -150,13 +356,17 @@ def sync_experience(echo_fn: callable = print) -> dict:
         echo_fn("EXPERIENCE_DIRS 未配置或目录不存在")
         return {"dirs": 0, "changed": 0, "skipped": 0, "chunks": 0, "graph_chunks": 0}
 
-    data_dirs = [(str(d), "experience") for d in dirs]
+    data_dirs = [
+        (str(d), f"experience:{_experience_namespace(d)}")
+        for d in dirs
+    ]
     changed, unchanged = get_changed_files(data_dirs)
     echo_fn(f"经验库: {len(dirs)} 个目录 · 变更 {len(changed)} · 未变更 {len(unchanged)}")
     if not changed:
         return {"dirs": len(dirs), "changed": 0, "skipped": len(unchanged), "chunks": 0, "graph_chunks": 0}
 
     changed_by_source: dict[str, str] = {}
+    legacy_sources: set[str] = set()
     for d in dirs:
         dabs = d.resolve()
         for p in changed:
@@ -165,14 +375,18 @@ def sync_experience(echo_fn: callable = print) -> dict:
                 rel = str(fp.resolve().relative_to(dabs))
             except ValueError:
                 continue
-            if rel not in changed_by_source:
-                changed_by_source[rel] = p
+            rel = rel.replace("\\", "/")
+            source = f"{_experience_namespace(d)}/{rel}"
+            changed_by_source[source] = p
+            legacy_sources.add(rel)
 
     all_docs = []
     for d in dirs:
         loader = MarkdownLoader(d, echo_fn=echo_fn)
         for doc in loader.load_all():
             if doc.metadata.get("source"):
+                relative_source = doc.metadata["source"].replace("\\", "/")
+                doc.metadata["source"] = f"{_experience_namespace(d)}/{relative_source}"
                 all_docs.append(doc)
 
     changed_docs = [doc for doc in all_docs if doc.metadata["source"] in changed_by_source]
@@ -181,77 +395,59 @@ def sync_experience(echo_fn: callable = print) -> dict:
         return {"dirs": len(dirs), "changed": len(changed), "skipped": len(unchanged),
                 "chunks": 0, "graph_chunks": 0}
 
-    for source in changed_by_source:
-        delete_by_source(source)
-
-    splitter = create_splitter()
+    splitter = create_splitter(CHUNK_SIZE, CHUNK_OVERLAP)
     chunks = splitter.split_documents(changed_docs)
     echo_fn(f"  -> {len(chunks)} 个经验片段")
 
     embeddings = get_embedding_model()
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks, echo_fn=echo_fn)
+    replaced_sources = set(changed_by_source) | legacy_sources
+    with _replacement_transaction(replaced_sources, chunks, echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
-    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
 
-    from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
-    if ENABLE_GRAPH:
-        from src.llm import get_llm
-        kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
-        kg.add_chunks(chunks, llm=llm)
-        kg.save()
-        set_graph(kg)
-
-    for d in dirs:
-        update_tracker("experience", d)
+        for d in dirs:
+            update_tracker(f"experience:{_experience_namespace(d)}", d)
 
     echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return {"dirs": len(dirs), "changed": len(changed), "skipped": len(unchanged),
             "chunks": len(chunks), "graph_chunks": len(chunks)}
 
 
+@_serialized_index_write
 def run_single_file_update(filepath: str, echo_fn: callable = print):
     path = Path(filepath)
     if not path.exists():
         echo_fn(f"文件不存在: {filepath}")
         return 0
 
-    # 先删旧 chunks，再加新 chunks
-    delete_by_source(path.name)
-    echo_fn(f"  删除旧数据: {path.name}")
-
     docs = load_path(path)
     if not docs:
         echo_fn("  -> 未加载到文档")
         return 0
 
-    splitter = create_splitter()
+    splitter = create_splitter(CHUNK_SIZE, CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     echo_fn(f"  -> {path.name}: {len(chunks)} 个片段")
 
     embeddings = get_embedding_model()
     get_vector_store(embeddings)
-    add_documents_with_progress(chunks, echo_fn=echo_fn)
+    with _replacement_transaction({path.name}, chunks, echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
 
-    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
 
-    from config import ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION
-    if ENABLE_GRAPH:
-        from src.graph_store.graph import KnowledgeGraph
-        from src.graph_store.retriever import set_graph
-        from src.llm import get_llm
-        kg = KnowledgeGraph(echo_fn=echo_fn)
-        llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
-        kg.add_chunks(chunks, llm=llm)
-        kg.save()
-        set_graph(kg)
-
-    update_tracker("external", path.parent, [str(path)])
+        update_tracker("external", path.parent, [str(path)])
     echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
     return len(chunks)
 
 
+@_serialized_index_write
 def run_add_path(
     path: str,
     external_dir: str = "./data/external",
@@ -341,7 +537,7 @@ def run_add_path(
         return 0
     echo_fn(f"  -> {len(docs)} documents loaded")
 
-    splitter = create_splitter()
+    splitter = create_splitter(CHUNK_SIZE, CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     echo_fn(f"  -> {len(chunks)} chunks created")
 
@@ -358,6 +554,8 @@ def run_add_path(
     if ENABLE_GRAPH:
         from src.graph_store.graph import KnowledgeGraph
         from src.graph_store.retriever import set_graph
+        from src.graph_store.graph import KnowledgeGraph
+        from src.graph_store.retriever import set_graph
         from src.llm import get_llm
         kg = KnowledgeGraph(echo_fn=echo_fn)
         llm = get_llm(temperature=0) if ENABLE_GRAPH_LLM_EXTRACTION else None
@@ -370,8 +568,10 @@ def run_add_path(
     return len(chunks)
 
 
+@_serialized_index_write
 def run_remove(source_name: str, external_dir: str = "./data/external", keep_file: bool = False, echo_fn: callable = print):
     delete_by_source(source_name)
+    invalidate_bm25()
 
     if not keep_file:
         target_base = Path(external_dir)
@@ -386,7 +586,7 @@ def run_remove(source_name: str, external_dir: str = "./data/external", keep_fil
 
     remove_from_tracker(source_name, source_type="external")
     rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+    from config import ENABLE_GRAPH
+    if ENABLE_GRAPH:
+        _rebuild_graph_from_store(echo_fn=echo_fn)
     echo_fn(f"  -> 已从知识库移除: {source_name}")
-
-
-

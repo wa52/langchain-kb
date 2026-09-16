@@ -88,6 +88,17 @@ export interface KnowledgeStats {
   index_task?: IndexTaskSummary | null;
 }
 
+export interface TrackedFile {
+  source_type: string;
+  file_key: string;
+  hash: string;
+}
+
+export interface TrackedFilesResponse {
+  files: TrackedFile[];
+  total: number;
+}
+
 export interface UploadTasks {
   tasks: IndexTask[];
   saved: string[];

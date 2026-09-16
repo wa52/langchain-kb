@@ -21,3 +21,7 @@ exclude = ["tests*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["data", "chroma_db", "web/node_modules", "web/dist", ".git"]

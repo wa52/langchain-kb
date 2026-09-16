@@ -3,7 +3,7 @@ import time
 from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
-from src.agent.chat_history import allocate_session_id, save_history, load_history
+from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
 _CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]{1,256})\]")
@@ -228,26 +228,28 @@ def build_sources(answer: str) -> list[dict]:
 
 def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
     t0 = time.time()
-    messages = _build_messages(query, session_id)
-    agent_messages = _maybe_compress_history(messages)
-    print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
+    session_id = session_id or allocate_session_id()
+    with session_lock(session_id):
+        messages = _build_messages(query, session_id)
+        agent_messages = _maybe_compress_history(messages)
+        print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
 
-    t1 = time.time()
-    agent = _get_agent()
-    print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
+        t1 = time.time()
+        agent = _get_agent()
+        print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
 
-    t2 = time.time()
-    answer_parts = []
-    for chunk in stream_rag_response(agent, agent_messages):
-        if chunk:
-            answer_parts.append(chunk)
-    answer = "".join(answer_parts)
-    print(f"  [计时] Agent 流式回答: {time.time() - t2:.2f}s")
+        t2 = time.time()
+        answer_parts = []
+        for chunk in stream_rag_response(agent, agent_messages):
+            if chunk:
+                answer_parts.append(chunk)
+        answer = "".join(answer_parts)
+        print(f"  [计时] Agent 流式回答: {time.time() - t2:.2f}s")
 
-    history = _serialize_messages(messages) + [{"role": "assistant", "content": answer}]
-    t3 = time.time()
-    new_session_id = save_history(history, session_id)
-    print(f"  [计时] 保存会话历史: {time.time() - t3:.2f}s")
+        history = _serialize_messages(messages) + [{"role": "assistant", "content": answer}]
+        t3 = time.time()
+        new_session_id = save_history(history, session_id)
+        print(f"  [计时] 保存会话历史: {time.time() - t3:.2f}s")
 
     elapsed_ms = (time.time() - t0) * 1000
     print(f"  [计时] chat_with_rag 总计: {elapsed_ms / 1000:.2f}s")
@@ -278,45 +280,51 @@ def stream_chat_events(
     """
     if session_id is None:
         session_id = allocate_session_id()
-    yield {"type": "message_start", "data": {"session_id": session_id}}
-    t0 = time.time()
+    with session_lock(session_id):
+        yield {"type": "message_start", "data": {"session_id": session_id}}
+        t0 = time.time()
 
-    messages = _build_messages(query, session_id)
-    agent_messages = _maybe_compress_history(messages)
-    agent = _get_agent()
+        messages = _build_messages(query, session_id)
+        agent_messages = _maybe_compress_history(messages)
+        agent = _get_agent()
 
-    tool_names: list[str] = []
+        tool_names: list[str] = []
 
-    def _on_tool(name: str) -> None:
-        if name not in tool_names:
-            tool_names.append(name)
+        def _on_tool(name: str) -> None:
+            if name not in tool_names:
+                tool_names.append(name)
 
-    answer_parts = []
-    for chunk in stream_rag_response(agent, agent_messages, on_tool=_on_tool):
-        if stop_event.is_set():
-            break
-        if chunk:
-            answer_parts.append(chunk)
-            yield {"type": "token", "data": {"text": chunk}}
+        answer_parts = []
+        failed = False
+        new_session_id = session_id
+        try:
+            for chunk in stream_rag_response(agent, agent_messages, on_tool=_on_tool):
+                if stop_event.is_set():
+                    break
+                if chunk:
+                    answer_parts.append(chunk)
+                    yield {"type": "token", "data": {"text": chunk}}
+        except Exception:
+            failed = True
+            raise
+        finally:
+            answer = "".join(answer_parts)
+            interrupted = stop_event.is_set() or failed
+            history = _serialize_messages(messages) + [
+                {"role": "assistant", "content": answer, "interrupted": interrupted}
+            ]
+            new_session_id = save_history(history, session_id)
 
-    answer = "".join(answer_parts)
-    interrupted = stop_event.is_set()
+        if tool_names:
+            yield {"type": "tool", "data": {"tools": tool_names}}
+        elapsed_ms = (time.time() - t0) * 1000
 
-    if tool_names:
-        yield {"type": "tool", "data": {"tools": tool_names}}
-
-    history = _serialize_messages(messages) + [
-        {"role": "assistant", "content": answer, "interrupted": interrupted}
-    ]
-    new_session_id = save_history(history, session_id)
-    elapsed_ms = (time.time() - t0) * 1000
-
-    yield {"type": "sources", "data": {"sources": build_sources(answer)}}
-    yield {
-        "type": "message_end",
-        "data": {
-            "session_id": new_session_id,
-            "elapsed_ms": round(elapsed_ms, 2),
-            "interrupted": interrupted,
-        },
-    }
+        yield {"type": "sources", "data": {"sources": build_sources(answer)}}
+        yield {
+            "type": "message_end",
+            "data": {
+                "session_id": new_session_id,
+                "elapsed_ms": round(elapsed_ms, 2),
+                "interrupted": interrupted,
+            },
+        }

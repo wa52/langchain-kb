@@ -112,7 +112,11 @@ GRAPH_PERSIST_DIR = _resolve_dir("GRAPH_PERSIST_DIR", "./data")
 
 # 定时同步的经验库目录（分号分隔的绝对路径；为空则不启用定时同步）。
 # 由 sync_experience 原位读取，不做整树复制，仅索引新增/变更的 md/txt/pdf。
-EXPERIENCE_DIRS = [d.strip() for d in os.getenv("EXPERIENCE_DIRS", "").split(";") if d.strip()]
+EXPERIENCE_DIRS = [
+    str((KNOWLEDGE_HOME / d.strip()).resolve()) if not Path(d.strip()).is_absolute() else d.strip()
+    for d in os.getenv("EXPERIENCE_DIRS", "").split(";")
+    if d.strip()
+]
 SYNC_INTERVAL_HOURS = float(os.getenv("SYNC_INTERVAL_HOURS", "24"))
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
 # 会话历史上下文管理：超过轮数或估算 token 预算后，把较早的历史压缩成摘要，

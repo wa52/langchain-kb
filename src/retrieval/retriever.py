@@ -2,7 +2,9 @@ import os
 import pickle
 import re
 import time
+import tempfile
 from pathlib import Path
+from threading import Lock
 
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
@@ -13,7 +15,13 @@ from src.vector_store.chroma_client import get_vector_store
 from src.vector_store.embedding import get_embedding_model
 
 _bm25_retriever = None
+_bm25_invalidated = False
+_BM25_SAVE_LOCK = Lock()
 _BM25_PERSIST_PATH = Path(CHROMA_PERSIST_DIR) / "bm25_index.pkl"
+
+
+def _bm25_invalid_path() -> Path:
+    return _BM25_PERSIST_PATH.with_suffix(".invalid")
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
@@ -32,8 +40,26 @@ def _bm25_tokenize(text: str) -> list[str]:
 
 
 def set_bm25_retriever(r):
-    global _bm25_retriever
+    global _bm25_retriever, _bm25_invalidated
     _bm25_retriever = r
+    _bm25_invalidated = False
+
+
+def invalidate_bm25():
+    """Discard both in-memory and persisted BM25 data after collection writes."""
+    global _bm25_retriever, _bm25_invalidated
+    _bm25_retriever = None
+    _bm25_invalidated = True
+    with _BM25_SAVE_LOCK:
+        invalid_path = _bm25_invalid_path()
+        invalid_path.parent.mkdir(parents=True, exist_ok=True)
+        invalid_path.write_text("invalid", encoding="ascii")
+        try:
+            _BM25_PERSIST_PATH.unlink(missing_ok=True)
+        except OSError:
+            # The in-memory invalidation still prevents stale reads in this
+            # process; startup will rebuild if the cache cannot be loaded.
+            pass
 
 
 def get_retriever(k: int | None = None):
@@ -56,7 +82,7 @@ def get_retriever(k: int | None = None):
 
 def _load_bm25_from_disk(expected_count: int | None = None, echo_fn: callable = None) -> bool:
     global _bm25_retriever
-    if not _BM25_PERSIST_PATH.exists():
+    if _bm25_invalid_path().exists() or not _BM25_PERSIST_PATH.exists():
         return False
     try:
         with open(_BM25_PERSIST_PATH, "rb") as f:
@@ -83,10 +109,21 @@ def _load_bm25_from_disk(expected_count: int | None = None, echo_fn: callable = 
 
 def _save_bm25_to_disk(texts: list[str], metadatas: list[dict]):
     _BM25_PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _BM25_PERSIST_PATH.with_suffix(".pkl.tmp")
-    with open(tmp, "wb") as f:
-        pickle.dump({"texts": texts, "metadatas": metadatas}, f)
-    tmp.replace(_BM25_PERSIST_PATH)
+    with _BM25_SAVE_LOCK:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{_BM25_PERSIST_PATH.name}.", suffix=".tmp",
+            dir=_BM25_PERSIST_PATH.parent,
+        )
+        try:
+            with os.fdopen(fd, "wb") as f:
+                pickle.dump({"texts": texts, "metadatas": metadatas}, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, _BM25_PERSIST_PATH)
+            _bm25_invalid_path().unlink(missing_ok=True)
+        finally:
+            if os.path.exists(tmp_name):
+                os.unlink(tmp_name)
 
 
 def _bm25_doc_count(retriever) -> int | None:
@@ -98,7 +135,7 @@ def _bm25_doc_count(retriever) -> int | None:
 
 
 def rebuild_bm25(store, echo_fn: callable = print):
-    global _bm25_retriever
+    global _bm25_retriever, _bm25_invalidated
 
     from src.status import get_registry
     reg = get_registry()
@@ -109,7 +146,8 @@ def rebuild_bm25(store, echo_fn: callable = print):
     except Exception:
         expected_count = None
 
-    if _bm25_retriever is not None:
+    force_rebuild = _bm25_invalidated
+    if _bm25_retriever is not None and not force_rebuild:
         in_mem = _bm25_doc_count(_bm25_retriever)
         # Skip only when the in-memory index still matches the collection;
         # after a data change the index must be rebuilt even in this process.
@@ -120,7 +158,7 @@ def rebuild_bm25(store, echo_fn: callable = print):
         echo_fn("  -> BM25 数据已变更，重建索引")
         _bm25_retriever = None
 
-    if _load_bm25_from_disk(expected_count=expected_count, echo_fn=echo_fn):
+    if not force_rebuild and _load_bm25_from_disk(expected_count=expected_count, echo_fn=echo_fn):
         echo_fn(f"  -> BM25 索引已从磁盘加载 ({_BM25_PERSIST_PATH})")
         n = _bm25_doc_count(_bm25_retriever)
         reg.set_ready("bm25", f"{n} chunks · 磁盘加载" if n is not None else "磁盘加载")
@@ -147,6 +185,7 @@ def rebuild_bm25(store, echo_fn: callable = print):
             offset += batch_size
 
         if not all_texts:
+            _bm25_invalidated = False
             reg.set_ready("bm25", "0 chunks（空语料）")
             return
         docs = [
@@ -161,8 +200,10 @@ def rebuild_bm25(store, echo_fn: callable = print):
         )
         _bm25_retriever.k = TOP_K
         _save_bm25_to_disk(texts, [doc.metadata for doc in docs])
+        _bm25_invalidated = False
         reg.set_ready("bm25", f"{len(docs)} chunks · 全量重建")
         echo_fn(f"  -> BM25 索引构建完成 ({len(docs)} 篇, {time.time()-t0:.1f}s)")
     except Exception as e:
         reg.set_error("bm25", e, "全量重建")
         echo_fn(f"  [BM25] 索引更新失败: {e}")
+        raise

@@ -130,8 +130,15 @@ def _server_dispatch_tool(server_name: str, server_tools: list):
         for pname, pspec in props.items():
             if pname not in param_fields:
                 ftype = pspec.get("type")
-                ann = str if ftype == "string" else (float if ftype == "number" else (int if ftype == "integer" else str))
+                if not ftype and pspec.get("anyOf"):
+                    ftype = next(
+                        (item.get("type") for item in pspec["anyOf"] if item.get("type") != "null"),
+                        None,
+                    )
                 default = pspec.get("default", None)
+                ann = str if ftype == "string" else (float if ftype == "number" else (int if ftype == "integer" else str))
+                if default is None and pspec.get("anyOf"):
+                    ann = ann | None
                 desc = pspec.get("description", "")
                 param_fields[pname] = (ann, Field(default=default, description=desc))
 
@@ -156,7 +163,10 @@ def _server_dispatch_tool(server_name: str, server_tools: list):
             return f"未知操作: {operation}，可用操作: {op_list}"
         # Forward the operation's own parameters only
         allowed = set(op_param_hint.get(operation, []))
-        forwarded = {k: v for k, v in kwargs.items() if k in allowed}
+        # The dispatch schema merges parameters from all operations, so fields
+        # belonging to another operation arrive as None. Do not forward those
+        # synthetic values to the stricter MCP schema.
+        forwarded = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         return _make_sync_compatible(tool).invoke(forwarded)
 
     description = (

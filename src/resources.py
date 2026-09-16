@@ -47,6 +47,7 @@ class ResourceManager:
         if self._initialized:
             logger.warning("ResourceManager already initialized, skipping")
             return
+        self._shutdown_event.clear()
 
         t_start = time.time()
         echo_fn("[ResourceManager] Starting resource manager...")
@@ -241,8 +242,9 @@ async def app_lifespan(app):
     logger.info(f"  Index version:    {rm.get_index_version()}")
     logger.info("=" * 50)
     from src.api.services import sync as sync_service
-    if config.EXPERIENCE_DIRS:
-        rm.start_background_task(sync_service.sync_loop(), name="scheduled-experience-sync")
+    # Keep one lightweight scheduler alive even when no directory is configured
+    # yet, so adding the first sync directory at runtime takes effect.
+    rm.start_background_task(sync_service.sync_loop(), name="scheduled-experience-sync")
     try:
         yield
     finally:

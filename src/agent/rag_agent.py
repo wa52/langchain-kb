@@ -1,7 +1,7 @@
 from deepagents import create_deep_agent
 
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, PRODUCT_NAME
-from src.agent.tools import retrieve_knowledge, retrieve_graph
+from src.agent.tools import retrieve_knowledge, retrieve_graph, save_research_material
 from src.agent.project_workflow import project_workflow, build_workflow_prompt
 from src.vector_store.embedding import get_embedding_model
 from src.vector_store.service import VectorStoreService
@@ -17,6 +17,7 @@ SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责
 4. 如果知识库中没有与问题相关的信息，如实说明"知识库中没有找到相关信息"，不要编造或猜测
 5. 回答时标注信息来源，在引用内容后标注 [来源: 文件名]
 6. 用中文回答
+7. 用户要求联网查资料时，先用 browser MCP 搜索并阅读多个公开来源，整理去重、核实事实后调用 save_research_material 入库，最后重新检索并回答
 
 ## 项目引导
 {build_workflow_prompt()}
@@ -24,6 +25,7 @@ SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责
 ## 可用工具
 - retrieve_knowledge: 搜索知识库中的文档和知识图谱，获取与问题最相关的内容
 - project_workflow: 按工业视觉项目阶段（需求分析→知识研究→方案设计→算法实现→工程开发→项目验证）引导项目推进
+- save_research_material: 将联网检索后整理好的研究资料和来源加入知识库
 """
 
 
@@ -54,7 +56,7 @@ def create_rag_agent():
     model = get_llm(temperature=0)
     print(f"  [计时] 初始化 LLM: {_time.time() - _t3:.2f}s")
 
-    tools = [retrieve_knowledge, project_workflow]
+    tools = [retrieve_knowledge, project_workflow, save_research_material]
     if ENABLE_GRAPH:
         tools.append(retrieve_graph)
 

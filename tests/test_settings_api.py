@@ -128,7 +128,7 @@ class TestGraphModeToggle:
         original = config.ENABLE_GRAPH_LLM_EXTRACTION
         try:
             with (
-                patch("dotenv.find_dotenv", return_value=str(tmp_path / ".env")),
+                patch("config.KNOWLEDGE_HOME", tmp_path),
                 patch("dotenv.set_key") as mock_set_key,
             ):
                 resp = client.post("/api/v1/settings/graph-mode", json={"enabled": True})
@@ -151,7 +151,7 @@ class TestGraphModeToggle:
         original = config.ENABLE_GRAPH_LLM_EXTRACTION
         try:
             with (
-                patch("dotenv.find_dotenv", return_value=str(tmp_path / ".env")),
+                patch("config.KNOWLEDGE_HOME", tmp_path),
                 patch("dotenv.set_key") as mock_set_key,
             ):
                 resp = client.post("/api/v1/settings/graph-mode", json={"enabled": False})

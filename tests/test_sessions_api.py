@@ -78,6 +78,10 @@ class TestGetSession:
         resp = client.get("/api/v1/sessions/nonexistent")
         assert resp.status_code == 404
 
+    def test_invalid_session_id_rejected(self, client):
+        resp = client.get("/api/v1/sessions/bad$id")
+        assert resp.status_code == 400
+
 
 class TestDeleteSession:
     def test_delete_existing(self, sample_sessions):

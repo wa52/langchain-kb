@@ -45,6 +45,7 @@ def _enter_pipeline_patches(stack: ExitStack, dirs: list[str]):
 class TestSyncExperience:
     def test_first_run_indexes_new_files(self, experience_dir, tmp_path):
         from src.ingestion.pipeline import sync_experience
+        from src.ingestion.pipeline import _experience_namespace
         from src.ingestion.tracker import get_changed_files
 
         with ExitStack() as stack:
@@ -58,7 +59,8 @@ class TestSyncExperience:
         added = add_docs.call_args.args[0]
         assert len(added) == result["chunks"]
         # tracker recorded both files -> next run sees no changes
-        changed, _ = get_changed_files([(str(experience_dir), "experience")])
+        source_type = f"experience:{_experience_namespace(experience_dir)}"
+        changed, _ = get_changed_files([(str(experience_dir), source_type)])
         assert changed == []
 
     def test_no_changes_skips(self, experience_dir, tmp_path):
@@ -75,6 +77,7 @@ class TestSyncExperience:
 
     def test_modified_file_reindexed_by_full_source(self, experience_dir, tmp_path):
         from src.ingestion.pipeline import sync_experience
+        from src.ingestion.pipeline import _experience_namespace
         from src.ingestion.tracker import get_changed_files
 
         with ExitStack() as stack:
@@ -91,9 +94,14 @@ class TestSyncExperience:
         assert result["chunks"] > 0
         # old chunks deleted by full relative source, not basename
         deleted_sources = [c.args[0] for c in delete_src.call_args_list]
-        assert str(Path("failure_database") / "curl_json.md") in deleted_sources
+        source = (
+            f"{_experience_namespace(experience_dir)}/"
+            "failure_database/curl_json.md"
+        )
+        assert source in deleted_sources
         # tracker sees the change as processed
-        changed, _ = get_changed_files([(str(experience_dir), "experience")])
+        source_type = f"experience:{_experience_namespace(experience_dir)}"
+        changed, _ = get_changed_files([(str(experience_dir), source_type)])
         assert changed == []
 
     def test_unconfigured_returns_zero(self, tmp_path):

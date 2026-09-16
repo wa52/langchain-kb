@@ -251,6 +251,33 @@ class TestChatStreamErrors:
         assert errors
         assert "llm unavailable" in errors[0][1]["error"]
 
+    def test_stream_error_persists_partial_answer_as_interrupted(self, client):
+        saved = []
+
+        def partial_stream(agent, messages, on_tool=None):
+            yield "partial"
+            raise RuntimeError("llm unavailable")
+
+        with (
+            patch("src.api.services.chat.stream_rag_response", side_effect=partial_stream),
+            patch("src.api.services.chat.save_history",
+                  side_effect=lambda history, session_id: saved.append(history) or session_id),
+            patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
+            patch("src.api.services.chat.load_history", return_value=None),
+        ):
+            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+
+        assert resp.status_code == 200
+        assert saved[-1][-1] == {
+            "role": "assistant", "content": "partial", "interrupted": True
+        }
+
+    def test_invalid_session_id_is_rejected(self, client):
+        resp = client.post("/api/v1/chat/stream", json={
+            "query": "hi", "session_id": "../outside"
+        })
+        assert resp.status_code == 422
+
 
 class TestChatStreamContinuation:
     def test_loads_history_for_session(self, client):

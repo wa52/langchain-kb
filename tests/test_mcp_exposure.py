@@ -71,27 +71,19 @@ class TestToolDiscovery:
         tools = resp.json()["result"]["tools"]
         names = sorted(t["name"] for t in tools)
         assert names == [
-            "add_sync_dir",
             "answer_with_knowledge",
-            "delete_session",
             "get_index_status",
-            "get_sync_status",
-            "list_files",
-            "list_sessions",
-            "remove_file",
-            "remove_sync_dir",
-            "run_sync",
             "search_knowledge",
-            "set_graph_extraction_mode",
-            "start_index_task",
             "system_status",
-            "upload_documents",
         ]
 
     async def test_excluded_tools_not_in_list(self, session):
         forbidden = {"health_check", "index_document", "delete_document",
-                      "reset_vector_store", "rebuild_all_indexes",
-                      "change_model_config", "execute_script"}
+                       "reset_vector_store", "rebuild_all_indexes",
+                       "change_model_config", "execute_script",
+                       "start_index_task", "upload_documents", "remove_file",
+                       "delete_session", "set_graph_extraction_mode",
+                       "add_sync_dir", "remove_sync_dir", "run_sync"}
         ac = session["client"]
         sid = session["session_id"]
         headers = {"mcp-session-id": sid, "Accept": "application/json"}
@@ -247,7 +239,7 @@ class TestIndexToolCall:
         mgr = get_task_manager()
         # Order-independent: other tests may have left tasks (e.g. a pending
         # "/some/path" from test_api_routes) in this module-level singleton.
-        mgr._tasks.clear()
+        mgr.clear()
         tid = mgr.create_task("/some/path")
         mgr.update_task(tid, status="running", progress="50%")
 
@@ -272,6 +264,7 @@ class TestIndexToolCall:
         assert tid in text
         assert "running" in text
         assert "50%" in text
+        mgr.clear()
 
 
 class TestSystemStatusToolCall:

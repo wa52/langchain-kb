@@ -19,7 +19,7 @@ class TestSlashCompleter:
 
     def test_slash_shows_all(self):
         result = _completions("/")
-        assert len(result) == 14
+        assert len(result) == 15
         assert all(c.text.startswith("/") for c in result)
 
     def test_slash_a_filters(self):

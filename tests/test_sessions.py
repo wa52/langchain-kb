@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -179,6 +181,92 @@ class TestAllocateSessionId:
             a = ch.allocate_session_id()
             b = ch.allocate_session_id()
         assert a != b
+
+
+class TestSessionPersistenceSafety:
+
+    def test_rejects_path_traversal_session_id(self, tmp_path):
+        import src.agent.chat_history as ch
+        with patch.object(ch, "HISTORY_DIR", tmp_path):
+            with pytest.raises(ValueError, match="非法会话 ID"):
+                ch.save_history([], "../outside")
+            with pytest.raises(ValueError, match="非法会话 ID"):
+                ch.load_history(r"..\outside")
+
+    def test_save_is_atomic_and_leaves_no_temp_file(self, tmp_path):
+        import src.agent.chat_history as ch
+        messages = [{"role": "user", "content": "hello"}]
+        with patch.object(ch, "HISTORY_DIR", tmp_path):
+            session_id = ch.save_history(messages, "session_safe")
+        assert session_id == "session_safe"
+        assert json.loads((tmp_path / "session_safe.json").read_text(encoding="utf-8")) == messages
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_delete_waits_for_active_session_transaction(self, tmp_path):
+        import src.agent.chat_history as ch
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def active_writer():
+            with ch.session_lock("session_busy"):
+                entered.set()
+                release.wait(timeout=2)
+                ch.save_history([{"role": "user", "content": "done"}], "session_busy")
+
+        with patch.object(ch, "HISTORY_DIR", tmp_path):
+            writer = threading.Thread(target=active_writer)
+            writer.start()
+            assert entered.wait(timeout=1)
+            deleted = []
+            deleter = threading.Thread(
+                target=lambda: deleted.append(ch.delete_history("session_busy"))
+            )
+            deleter.start()
+            time.sleep(0.05)
+            assert deleter.is_alive()
+            release.set()
+            writer.join(timeout=2)
+            deleter.join(timeout=2)
+
+        assert deleted == [True]
+        assert not (tmp_path / "session_busy.json").exists()
+
+    def test_session_lock_creates_reusable_file_lock(self, tmp_path):
+        import src.agent.chat_history as ch
+
+        with patch.object(ch, "HISTORY_DIR", tmp_path):
+            with ch.session_lock("session_filelock"):
+                lock_file = tmp_path / ".session_filelock.lock"
+                assert lock_file.exists()
+                entry = ch._SESSION_FILE_LOCKS["session_filelock"]
+                assert entry[1] == 1
+                # nested acquisition keeps a single OS lock with refcount 2
+                with ch.session_lock("session_filelock"):
+                    assert ch._SESSION_FILE_LOCKS["session_filelock"][1] == 2
+                assert ch._SESSION_FILE_LOCKS["session_filelock"][1] == 1
+            assert "session_filelock" not in ch._SESSION_FILE_LOCKS
+
+
+class TestTrackerSnapshotRestore:
+
+    def test_restore_reverts_tracker_changes(self, tmp_path):
+        import src.ingestion.tracker as tr
+
+        orig = tr.TRACKER_FILE
+        tr.TRACKER_FILE = str(tmp_path / "file_tracker.json")
+        try:
+            tr.update_tracker("external", tmp_path, [])
+            snapshot = tr.snapshot_tracker()
+            (tmp_path / "new.md").write_text("内容", encoding="utf-8")
+            tr.update_tracker("external", tmp_path, [str(tmp_path / "new.md")])
+            registry = tr._load_tracker()["external"]
+            assert "new.md" in registry
+            tr.restore_tracker(snapshot)
+            registry = tr._load_tracker()["external"]
+            assert "new.md" not in registry
+        finally:
+            tr.TRACKER_FILE = orig
 
 
 class TestSessionsCommandDisplay:

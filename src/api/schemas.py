@@ -52,14 +52,16 @@ class SearchResponse(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000, examples=["什么是知识库？"])
     session_id: str | None = Field(
-        default=None, description="会话 ID，用于延续历史对话"
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
+        description="会话 ID，用于延续历史对话",
     )
 
 
 class ChatStreamRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000, examples=["什么是知识库？"])
     session_id: str | None = Field(
-        default=None, description="会话 ID，用于延续历史对话"
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
+        description="会话 ID，用于延续历史对话",
     )
     capability: str | None = Field(
         default=None, description="能力域过滤（第一阶段保留字段）"

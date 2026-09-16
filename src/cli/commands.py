@@ -1,10 +1,11 @@
 import os
+from pathlib import Path
 
 import click
-from dotenv import find_dotenv, set_key
+from dotenv import set_key
 
 from config import DATA_DIR, EXTERNAL_DIR, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, EMBEDDING_MODEL, LLM_MODEL, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_HYBRID_SEARCH, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, ENABLE_GRAPH_LLM_EXTRACTION, MAX_CONTEXT_TOKENS, PRODUCT_NAME
-from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_single_file_update, run_add_path, run_remove
+from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_single_file_update, run_add_path, run_remove, run_rebuild
 
 
 def echo(msg: str = "", end: str = "\n"):
@@ -55,9 +56,7 @@ def rebuild():
     confirm = click.confirm("这将清空现有数据库，确定继续？")
     if not confirm:
         return
-    from src.vector_store.service import VectorStoreService
-    VectorStoreService().reset()
-    run_ingestion(DATA_DIR, echo_fn=echo)
+    run_rebuild(DATA_DIR, echo_fn=echo)
     echo("==> 索引重建完成")
 
 
@@ -249,12 +248,11 @@ def mode(mode):
         current = "LLM" if cfg.ENABLE_GRAPH_LLM_EXTRACTION else "jieba"
         echo(f"当前抽取模式: {current}")
         return
-    dotenv_path = find_dotenv()
-    if not dotenv_path:
-        echo("错误: 未找到 .env 文件")
-        return
+    dotenv_path = Path(cfg.KNOWLEDGE_HOME) / ".env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.touch(exist_ok=True)
     is_llm = mode == "llm"
-    set_key(dotenv_path, "ENABLE_GRAPH_LLM_EXTRACTION", "true" if is_llm else "false")
+    set_key(str(dotenv_path), "ENABLE_GRAPH_LLM_EXTRACTION", "true" if is_llm else "false")
     os.environ["ENABLE_GRAPH_LLM_EXTRACTION"] = "true" if is_llm else "false"
     cfg.ENABLE_GRAPH_LLM_EXTRACTION = is_llm
     echo(f"切换到 {mode.upper()} 抽取模式（立即生效）")

@@ -1,0 +1,35 @@
+import time
+
+
+def retrieve_documents(query: str, k: int, capability: str | None = None):
+    """Application boundary for Agent-oriented hybrid retrieval."""
+    from src.vector_store.service import VectorStoreService
+
+    retriever = VectorStoreService().get_retriever(k=k, capability=capability)
+    return retriever.invoke(query)
+
+
+def retrieve_graph(query: str) -> str:
+    """Application boundary for graph lookup."""
+    from src.graph_store.service import GraphService
+
+    return GraphService().search(query)
+
+
+def search_documents(resource_manager, query: str, top_k: int) -> tuple[list[dict], float]:
+    """Application use case for scored API/CLI search results."""
+    t0 = time.time()
+    docs_with_scores = resource_manager.vector_store.similarity_search_with_relevance_scores(
+        query, k=top_k
+    )
+    results = []
+    for doc, score in docs_with_scores:
+        chunk_id = doc.id or doc.metadata.get("chunk_id", "")
+        results.append({
+            "source": doc.metadata.get("source", "unknown"),
+            "chunk_id": chunk_id,
+            "score": round(float(score), 4),
+            "content": doc.page_content[:500],
+        })
+    elapsed_ms = (time.time() - t0) * 1000
+    return results, round(elapsed_ms, 2)

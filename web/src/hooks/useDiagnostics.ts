@@ -66,13 +66,13 @@ export function useDiagnostics(): UseDiagnosticsResult {
     [task],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
       cancelledRef.current = true;
       if (pollTimer.current) window.clearTimeout(pollTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   return { task, running, error, run, repair };
 }

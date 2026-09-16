@@ -136,15 +136,14 @@ class TestIndex:
         assert "处理 1 个" in result.output
         assert "跳过 2 个" in result.output
 
-    def test_index_force_file_deletes_source(self):
+    def test_index_force_file_replaces_source(self):
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("src.vector_store.chroma_client.delete_by_source") as mock_del,
-            patch("src.ingestion.pipeline.run_single_file_update", return_value=2),
+            patch("src.ingestion.pipeline.run_single_file_update", return_value=2) as mock_upd,
         ):
             result = runner.invoke(app, ["index", "docs/rag.md", "--force"])
         assert result.exit_code == 0
-        mock_del.assert_called_once_with("rag.md")
+        mock_upd.assert_called_once()
 
     def test_index_json_no_extra_text(self):
         with patch("src.ingestion.pipeline.run_add_path", return_value=10):

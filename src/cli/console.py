@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+from pathlib import Path
 
 from config import (
     DATA_DIR, EXTERNAL_DIR,
@@ -10,9 +11,8 @@ from config import (
 )
 from src.agent.chat_history import save_history, load_history, list_sessions, compress_history
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
-from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path, run_remove
+from src.ingestion.pipeline import run_ingestion, run_incremental_update, run_add_path, run_remove, run_rebuild
 from src.vector_store.service import VectorStoreService
-from src.graph_store.service import GraphService
 from src.llm import get_llm
 from src.cli.commands import echo as _cli_echo
 
@@ -28,6 +28,7 @@ _agent_result = None
 
 _COMMANDS_NO_AGENT_NEEDED = frozenset({
     "/help", "/exit", "/clear", "/sessions", "/mode", "/config", "/files",
+    "/status",
 })
 
 
@@ -52,8 +53,8 @@ def echo(msg: str = "", end: str = "\n"):
 
 SLASH_COMMANDS = [
     "/help", "/new", "/sessions", "/resume", "/add", "/files",
-    "/remove", "/mode", "/ingest", "/rebuild", "/stats", "/config",
-    "/clear", "/exit",
+    "/remove", "/mode", "/ingest", "/rebuild", "/stats", "/status",
+    "/config", "/clear", "/exit",
 ]
 
 
@@ -92,6 +93,8 @@ def _load_agent_background():
         llm = get_llm(temperature=0)
         _agent_result = (agent, llm)
     except Exception as e:
+        from src.status import get_registry
+        get_registry().set_error("agent", e, "构建 RAG Agent")
         _agent_result = e
     finally:
         _agent_ready.set()
@@ -111,6 +114,61 @@ def _sync_agent_state(state: dict) -> bool:
     return False
 
 
+def _loaded_stats_snapshot() -> tuple[object, object]:
+    """Read-only chunk/entity counts from already-initialized resources.
+
+    Never constructs Chroma/KnowledgeGraph/embedding singletons: status must
+    stay usable (and cheap) before the agent finishes loading."""
+    chunk_count = "?"
+    entity_count = "?"
+    try:
+        from src.resources import ResourceManager
+        rm = ResourceManager.get_instance()
+        if rm.is_ready():
+            if rm.vector_store is not None:
+                chunk_count = rm.vector_store._collection.count()
+            if rm.graph is not None:
+                entity_count = rm.graph.graph.number_of_nodes()
+    except Exception:
+        pass
+    if chunk_count == "?":
+        try:
+            from src.vector_store import chroma_client
+            if chroma_client._vector_store is not None:
+                chunk_count = chroma_client._vector_store._collection.count()
+        except Exception:
+            pass
+    if entity_count == "?":
+        try:
+            from src.graph_store import retriever as graph_retriever
+            if graph_retriever._kg is not None:
+                entity_count = graph_retriever._kg.graph.number_of_nodes()
+        except Exception:
+            pass
+    return chunk_count, entity_count
+
+
+def _status_command() -> str:
+    """渲染系统组件状态（ASCII，控制台在 Agent 加载完成前也可用）。"""
+    from src.status import snapshot_status
+    labels = {
+        "pending": "[--]", "loading": "[..]", "ready": "[OK]",
+        "error": "[ER]", "disabled": "[off]",
+    }
+    lines = ["=" * 46, "系统状态监控", "=" * 46]
+    snap = snapshot_status()
+    for name in ("embedding", "llm", "vector_store", "bm25", "graph", "agent", "index"):
+        c = snap.get(name) or {}
+        state = labels.get(c.get("state", "pending"), "[--]")
+        dur = f" {c.get('duration_ms', 0) / 1000:.1f}s" if c.get("duration_ms") else ""
+        err = f"  {c.get('error')}" if c.get("error") else ""
+        lines.append(f"  {name:<14} {state:<5} {c.get('detail', '')}{dur}{err}")
+    chunk_count, entity_count = _loaded_stats_snapshot()
+    lines.append(f"  向量总数:        {chunk_count}")
+    lines.append(f"  图谱实体:        {entity_count}")
+    return "\n".join(lines)
+
+
 def get_status_bar(state: dict) -> str:
     mode = "LLM" if ENABLE_GRAPH_LLM_EXTRACTION else "jieba"
     session_id = state.get("session_id")
@@ -124,15 +182,7 @@ def get_status_bar(state: dict) -> str:
         file_count = len(all_files)
     except Exception:
         file_count = "?"
-    try:
-        stats = VectorStoreService().get_stats()
-        chunk_count = stats.get("count", "?")
-    except Exception:
-        chunk_count = "?"
-    try:
-        entity_count = GraphService().get_entity_count()
-    except Exception:
-        entity_count = "?"
+    chunk_count, entity_count = _loaded_stats_snapshot()
     bar = (
         "╔══════════════════════════════════════════════════════════╗\n"
         f"║  {PRODUCT_NAME}    {file_count} 文件 · {chunk_count} 块 · {entity_count} 实体 · {mode} 模式  ║\n"
@@ -195,6 +245,7 @@ def _do_handle_command(line: str, state: dict) -> str | None:
             "  /ingest             全量导入",
             "  /rebuild            重建索引",
             "  /stats              知识库统计",
+            "  /status             系统组件状态监控",
             "  /config             当前配置",
             "  /clear              清屏",
             "  /exit               退出",
@@ -256,17 +307,17 @@ def _do_handle_command(line: str, state: dict) -> str | None:
 
     if cmd == "/mode":
         import config as cfg
-        from dotenv import find_dotenv, set_key
+        from dotenv import set_key
         if not arg:
             current = "LLM" if cfg.ENABLE_GRAPH_LLM_EXTRACTION else "jieba"
             return f"当前抽取模式: {current}"
         if arg not in ("llm", "jieba"):
             return "用法: /mode [llm|jieba]"
-        dotenv_path = find_dotenv()
-        if not dotenv_path:
-            return "错误: 未找到 .env 文件"
+        dotenv_path = Path(cfg.KNOWLEDGE_HOME) / ".env"
+        dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+        dotenv_path.touch(exist_ok=True)
         is_llm = arg == "llm"
-        set_key(dotenv_path, "ENABLE_GRAPH_LLM_EXTRACTION", "true" if is_llm else "false")
+        set_key(str(dotenv_path), "ENABLE_GRAPH_LLM_EXTRACTION", "true" if is_llm else "false")
         os.environ["ENABLE_GRAPH_LLM_EXTRACTION"] = "true" if is_llm else "false"
         cfg.ENABLE_GRAPH_LLM_EXTRACTION = is_llm
         return f"切换到 {arg.upper()} 抽取模式（立即生效）"
@@ -280,8 +331,7 @@ def _do_handle_command(line: str, state: dict) -> str | None:
         confirm = _get_user_input("这将清空现有数据库，确定继续？(y/n) ")
         if confirm.lower() != "y":
             return "已取消"
-        VectorStoreService().reset()
-        count = run_ingestion(DATA_DIR, echo_fn=echo)
+        count = run_rebuild(DATA_DIR, echo_fn=echo)
         return f"重建完成，导入 {count} 个片段"
 
     if cmd == "/stats":
@@ -302,6 +352,9 @@ def _do_handle_command(line: str, state: dict) -> str | None:
             if len(stats["sources"]) > 30:
                 lines.append(f"    ... 还有 {len(stats['sources']) - 30} 个文件")
         return "\n".join(lines)
+
+    if cmd == "/status":
+        return _status_command()
 
     if cmd == "/config":
         lines = [

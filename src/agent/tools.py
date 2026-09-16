@@ -1,5 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
+from pathlib import Path
 
 from langchain.tools import tool
 
@@ -26,9 +28,8 @@ def _get_rerank_llm():
 
 
 def _search(query, k, capability=None):
-    from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever(k=k, capability=capability)
-    return retriever.invoke(query)
+    from src.application.knowledge import retrieve_documents
+    return retrieve_documents(query, k, capability=capability)
 
 
 def _grade_parallel(query, docs, llm):
@@ -107,9 +108,9 @@ def retrieve_knowledge(query: str, capability: str | None = None) -> str:
 
     if ENABLE_GRAPH:
         try:
-            from src.graph_store.service import GraphService
+            from src.application.knowledge import retrieve_graph
             _t0 = time.time()
-            graph_result = GraphService().search(query)
+            graph_result = retrieve_graph(query)
             _timing("知识图谱检索", _t0)
             if graph_result != "未找到相关的图谱信息。":
                 result += f"\n\n【知识图谱关联】\n{graph_result}"
@@ -123,8 +124,37 @@ def retrieve_knowledge(query: str, capability: str | None = None) -> str:
 @tool
 def retrieve_graph(query: str) -> str:
     """搜索知识图谱中与问题相关的实体和关系。当你想了解某个概念或实体之间的关联关系时使用此工具。"""
-    from src.graph_store.service import GraphService
-    return GraphService().search(query)
+    from src.application.knowledge import retrieve_graph as search_graph
+    return search_graph(query)
+
+
+@tool
+def save_research_material(title: str, content: str, sources: str = "") -> str:
+    """保存联网检索后整理出的研究资料，并加入知识库。
+
+    先用 browser MCP 搜索和阅读公开资料，再把去重、核实后的结论传入本工具；
+    不会把未经整理的网页 HTML 直接写入知识库。
+    """
+    title = title.strip()
+    content = content.strip()
+    if len(title) < 2 or len(content) < 80:
+        return "无法入库：标题至少 2 个字符，整理后的资料至少 80 个字符。"
+    if len(content) > 200_000:
+        return "无法入库：整理后的资料超过 200 KB 限制。"
+
+    started = time.time()
+    source_id = sha256((title + "\n" + content).encode("utf-8")).hexdigest()[:16]
+    from config import EXTERNAL_DIR
+    target = Path(EXTERNAL_DIR) / f"research_{source_id}.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source_block = f"\n\n## 参考来源\n{sources.strip()}" if sources.strip() else ""
+    target.write_text(f"# {title}\n\n{content}{source_block}\n", encoding="utf-8")
+
+    _t_index = time.time()
+    from src.ingestion.pipeline import run_add_path
+    chunks = run_add_path(str(target), external_dir=str(Path(EXTERNAL_DIR)), echo_fn=print)
+    _timing("网页内容入库", _t_index)
+    return f"已将研究资料加入知识库：{title}（{chunks} 个片段，总耗时 {time.time() - started:.2f}s）"
 
 
 def _compress_document(text: str, query: str, llm) -> str:

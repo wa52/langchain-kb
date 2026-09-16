@@ -39,12 +39,13 @@ def _save_status(status: dict):
 
 
 def _persist_dirs(dirs: list[str]):
-    from dotenv import find_dotenv, set_key
+    from dotenv import set_key
 
     value = ";".join(dirs)
-    dotenv_path = find_dotenv()
-    if dotenv_path:
-        set_key(dotenv_path, "EXPERIENCE_DIRS", value)
+    dotenv_path = Path(config.KNOWLEDGE_HOME) / ".env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.touch(exist_ok=True)
+    set_key(str(dotenv_path), "EXPERIENCE_DIRS", value)
     os.environ["EXPERIENCE_DIRS"] = value
     config.EXPERIENCE_DIRS = list(dirs)
 

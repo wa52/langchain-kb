@@ -1,0 +1,226 @@
+"""Feishu (Lark) bot backed by the knowledge-base RAG API.
+
+Runs as a standalone process using the official ``lark-oapi`` SDK in
+long-connection (WebSocket) mode, so no public URL / ngrok is required.
+Text messages are forwarded to ``POST /api/v1/chat``; the answer is sent
+back in the same chat thread. Each Feishu user keeps their own
+conversation history (send ``/new`` to reset).
+
+``lark_oapi`` is imported lazily so this module (and its message-handling
+logic) stays importable without the SDK installed, e.g. under pytest.
+"""
+
+import json
+import logging
+import os
+import threading
+
+import httpx
+
+from config import KNOWLEDGE_HOME  # noqa: F401  (loads .env on import)
+from src.feishu.session_map import SessionStore
+
+log = logging.getLogger("feishu-bot")
+
+KB_API_BASE = os.getenv("KB_API_BASE", "http://127.0.0.1:8000")
+CHAT_URL = f"{KB_API_BASE}/api/v1/chat"
+RESET_WORDS = {"/new", "/新会话"}
+
+
+def _message_text(event) -> str | None:
+    message = event.event.message
+    if message is None or message.message_type != "text" or not message.content:
+        return None
+    try:
+        return json.loads(message.content).get("text", "").strip()
+    except Exception:
+        return None
+
+
+def _sender_key(event) -> str:
+    sender = event.event.sender
+    if sender is not None:
+        sender_id = getattr(sender, "sender_id", None)
+        open_id = getattr(sender_id, "open_id", None)
+        if open_id:
+            return open_id
+    return event.event.message.chat_id
+
+
+def ask_knowledge_base(query: str, session_id: str | None) -> tuple[str, str | None]:
+    """Call the knowledge-base chat API; return (answer, new_session_id)."""
+    payload: dict = {"query": query}
+    if session_id:
+        payload["session_id"] = session_id
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(CHAT_URL, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    return str(data.get("answer", "")), data.get("conversation_id")
+
+
+def process_incoming_message(
+    store: SessionStore,
+    reply_fn,
+    message_id: str,
+    chat_id: str,
+    chat_type: str,
+    text: str | None,
+    sender_key: str,
+    ask_fn=ask_knowledge_base,
+) -> None:
+    """Handle one Feishu message: reset session, call KB, or send a hint.
+
+    ``reply_fn(message_id, chat_id, chat_type, text)`` is the transport-
+    independent reply hook, so tests can inject a spy.
+    """
+    if not text:
+        reply_fn(message_id, chat_id, chat_type, "目前仅支持文本消息，请直接发送文字提问。")
+        return
+    if text in RESET_WORDS:
+        store.clear(sender_key)
+        reply_fn(message_id, chat_id, chat_type, "已开启新会话，你可以开始提问了。")
+        return
+    session_id = store.get(sender_key)
+    try:
+        answer, new_session_id = ask_fn(text, session_id)
+    except Exception:
+        log.exception("knowledge base call failed")
+        reply_fn(message_id, chat_id, chat_type, "知识库暂时不可用，请稍后再试。")
+        return
+    if new_session_id:
+        store.set(sender_key, new_session_id)
+    if not answer:
+        reply_fn(message_id, chat_id, chat_type, "没有找到相关内容，换个问法试试？")
+        return
+    reply_fn(message_id, chat_id, chat_type, answer)
+
+
+class FeishuBot:
+    def __init__(self, app_id: str, app_secret: str, store: SessionStore | None = None):
+        import lark_oapi as lark
+
+        self.store = store or SessionStore()
+        self.client = lark.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        handler = (
+            lark.EventDispatcherHandler.builder("", "")
+            .register_p2_im_message_receive_v1(self._on_message)
+            .build()
+        )
+        self.ws_client = lark.ws.Client(
+            app_id,
+            app_secret,
+            event_handler=handler,
+            log_level=lark.LogLevel.INFO,
+        )
+
+    def _on_message(self, event) -> None:
+        message = event.event.message
+        if message is None:
+            return
+        text = _message_text(event)
+        log.info(
+            "received message id=%s chat_type=%s msg_type=%s text=%r sender=%s",
+            message.message_id,
+            message.chat_type,
+            message.message_type,
+            text,
+            _sender_key(event),
+        )
+        threading.Thread(
+            target=process_incoming_message,
+            args=(
+                self.store,
+                self._reply,
+                message.message_id,
+                message.chat_id,
+                message.chat_type,
+                text,
+                _sender_key(event),
+            ),
+            daemon=True,
+        ).start()
+
+    def _reply(self, message_id: str, chat_id: str, chat_type: str, text: str) -> None:
+        import lark_oapi as lark
+        from lark_oapi.api.im.v1 import (
+            CreateMessageRequest,
+            CreateMessageRequestBody,
+            ReplyMessageRequest,
+            ReplyMessageRequestBody,
+        )
+
+        content = json.dumps({"text": text}, ensure_ascii=False)
+        try:
+            if chat_type == "p2p":
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                response = self.client.im.v1.message.create(request)
+            else:
+                request = (
+                    ReplyMessageRequest.builder()
+                    .message_id(message_id)
+                    .request_body(
+                        ReplyMessageRequestBody.builder()
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                response = self.client.im.v1.message.reply(request)
+            if not response.success():
+                log.error(
+                    "send failed code=%s msg=%s log_id=%s",
+                    response.code,
+                    response.msg,
+                    response.get_log_id(),
+                )
+            else:
+                log.info("reply sent message_id=%s", message_id)
+        except Exception:
+            log.exception("failed to send reply")
+
+    def start(self) -> None:
+        self.ws_client.start()
+
+
+def get_feishu_credentials() -> tuple[str, str]:
+    """Read Feishu credentials, preferring the repo `.env` file.
+
+    A user/machine-level `FEISHU_APP_ID` env var (e.g. a bridge assistant)
+    would otherwise override `.env` because load_dotenv() does not overwrite
+    existing variables. We read the file directly so the knowledge-base app
+    in `.env` always wins.
+    """
+    from dotenv import dotenv_values
+
+    from config import KNOWLEDGE_HOME
+
+    values = dotenv_values(KNOWLEDGE_HOME / ".env")
+    app_id = (values.get("FEISHU_APP_ID") or os.getenv("FEISHU_APP_ID") or "").strip()
+    app_secret = (values.get("FEISHU_APP_SECRET") or os.getenv("FEISHU_APP_SECRET") or "").strip()
+    return app_id, app_secret
+
+
+def run_feishu_bot() -> None:
+    app_id, app_secret = get_feishu_credentials()
+    if not app_id or not app_secret:
+        raise SystemExit("FEISHU_APP_ID / FEISHU_APP_SECRET 未配置（请写入 .env）")
+    log.info("Feishu bot connecting via long connection (app_id=%s) ...", app_id)
+    FeishuBot(app_id, app_secret).start()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    run_feishu_bot()

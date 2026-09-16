@@ -39,6 +39,18 @@ _TEMPLATE = """<!DOCTYPE html>
   .brand { font-weight: 700; font-size: 17px; }
   nav { display: flex; gap: 12px; flex-wrap: wrap; }
   nav a { text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  .sys-status {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .sys-status .chip { display: inline-flex; align-items: center; gap: 4px; }
+  .sys-status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.ready { background: var(--ok); }
+  .dot.loading { background: var(--primary); animation: pulse 1.2s infinite; }
+  .dot.error { background: var(--danger); }
+  .dot.pending { background: var(--muted); }
+  .dot.disabled { background: var(--border); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .layout {
     display: grid; grid-template-columns: 280px minmax(0, 1fr);
     gap: 16px;
@@ -149,9 +161,11 @@ _TEMPLATE = """<!DOCTYPE html>
     <nav>
       <a href="/docs">API 文档</a>
       <a href="/mcp">MCP</a>
+      <a href="/api/v1/status">运行状态</a>
       <a href="/api/v1/health">健康检查</a>
     </nav>
   </header>
+  <div id="sys-status" class="sys-status" aria-live="polite"></div>
 
   <main class="layout">
     <section class="panel sessions-panel" id="sessions-view" aria-labelledby="sessions-title">
@@ -398,6 +412,29 @@ _TEMPLATE = """<!DOCTYPE html>
   }
 
   loadSessions();
+
+  var statusEl = document.getElementById("sys-status");
+  var STATE_LABEL = { ready: "就绪", loading: "加载中", error: "错误", pending: "待启动", disabled: "关闭" };
+  function refreshStatus() {
+    if (!statusEl) return;
+    fetch("/api/v1/status").then(function (resp) {
+      if (!resp.ok) throw new Error(String(resp.status));
+      return resp.json();
+    }).then(function (data) {
+      var chips = [];
+      chips.push('<span class="chip">整体: ' + (STATE_LABEL[data.status] || data.status) + '</span>');
+      Object.keys(data.components || {}).forEach(function (name) {
+        var c = data.components[name];
+        chips.push('<span class="chip"><span class="dot ' + c.state + '"></span>' + name +
+          (c.duration_ms != null ? ' ' + (c.duration_ms / 1000).toFixed(1) + 's' : '') + '</span>');
+      });
+      statusEl.innerHTML = chips.join('');
+    }).catch(function () {
+      statusEl.textContent = "运行状态不可用";
+    });
+  }
+  refreshStatus();
+  setInterval(refreshStatus, 10000);
 })();
 </script>
 </body>

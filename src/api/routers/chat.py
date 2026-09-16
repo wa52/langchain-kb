@@ -26,7 +26,10 @@ def _sse(event: dict) -> str:
     response_model=ChatResponse,
     operation_id="answer_with_knowledge",
     summary="与 RAG 助手对话",
-    description="发送用户消息给 RAG Agent，Agent 使用检索增强生成返回答案。支持会话历史延续。",
+    description=(
+        "发送用户消息给 RAG Agent，Agent 使用检索增强生成返回答案。支持会话历史延续。"
+        "边界说明：本操作不修改知识库与配置；唯一持久化是写入对话会话历史（JSON）。"
+    ),
 )
 def chat(req: ChatRequest):
     answer, session_id, elapsed_ms = chat_with_rag(req.query, req.session_id)
@@ -51,6 +54,8 @@ def chat(req: ChatRequest):
 )
 async def chat_stream(req: ChatStreamRequest, request: Request):
     stop = threading.Event()
+    # Backpressure pauses the producer rather than dropping answer text or
+    # allowing an unbounded queue to consume memory for a slow client.
     q: "queue.Queue[object]" = queue.Queue(maxsize=256)
 
     def _put_control(item):
@@ -60,22 +65,18 @@ async def chat_stream(req: ChatStreamRequest, request: Request):
         ``error`` / ``message_end`` / ``_END`` sentinel must still reach the
         consumer or the stream would hang waiting forever.
         """
-        try:
-            q.put_nowait(item)
-        except queue.Full:
+        while not stop.is_set():
             try:
-                q.put(item, timeout=2)
+                q.put(item, timeout=0.1)
+                return
             except queue.Full:
-                pass
+                continue
 
     def producer():
         try:
             for event in stream_chat_events(req.query, req.session_id, stop):
                 if event["type"] == "token":
-                    try:
-                        q.put_nowait(event)
-                    except queue.Full:
-                        pass
+                    _put_control(event)
                 else:
                     _put_control(event)
         except Exception as exc:

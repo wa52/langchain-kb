@@ -20,6 +20,7 @@ def rm():
     rm.vector_store = MagicMock()
     rm.graph = MagicMock()
     rm.llm = MagicMock()
+    rm.agent = MagicMock()
     return rm
 
 

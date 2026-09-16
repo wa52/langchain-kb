@@ -363,7 +363,6 @@ def index(
         run_add_path, run_incremental_update, run_single_file_update,
     )
     from src.ingestion.tracker import get_changed_files
-    from src.vector_store.chroma_client import delete_by_source
 
     target = Path(path)
     if not target.exists():
@@ -396,8 +395,6 @@ def index(
             elif target.is_dir():
                 processed = run_add_path(str(target), str(EXTERNAL_DIR), echo_fn=echo)
             else:
-                if force:
-                    delete_by_source(target.name)
                 processed = run_single_file_update(str(target), echo_fn=echo)
         except Exception as e:
             error = e

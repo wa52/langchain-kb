@@ -21,11 +21,16 @@ export function KnowledgePage() {
   const {
     stats,
     statsError,
+    statsLoading,
+    files,
+    filesError,
     tasks,
     indexing,
     actionError,
     startPath,
     startUpload,
+    removeFile,
+    reindexFile,
   } = useKnowledge();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pathInput, setPathInput] = useState("");
@@ -33,6 +38,7 @@ export function KnowledgePage() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [syncDirInput, setSyncDirInput] = useState("");
+  const [fileFilter, setFileFilter] = useState("");
   const sync = useSync();
 
   useEffect(() => {
@@ -61,6 +67,9 @@ export function KnowledgePage() {
   const chunks = stats?.chunks ?? null;
   const bm25 = stats?.bm25_chunks ?? null;
   const bm25Synced = chunks !== null && bm25 !== null ? chunks === bm25 : null;
+  const visibleFiles = files.filter((file) =>
+    `${file.source_type} ${file.file_key}`.toLowerCase().includes(fileFilter.trim().toLowerCase()),
+  );
 
   async function submitPath(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -80,14 +89,18 @@ export function KnowledgePage() {
     <div className="page">
       <div className="card">
         <h2>知识库概览</h2>
-        <dl className="kv">
+        {statsLoading && !stats ? <p className="muted overview-state">正在读取知识库统计…</p> : null}
+        {!statsLoading && statsError && !stats ? (
+          <p className="msg-error" role="alert">{statsError}</p>
+        ) : null}
+        <dl className={statsLoading && !stats ? "kv is-loading" : "kv"}>
           <dt>documents</dt>
-          <dd>{stats?.documents ?? "—"}</dd>
+          <dd>{stats ? stats.documents : statsLoading ? "…" : "—"}</dd>
           <dt>chunks</dt>
-          <dd>{stats?.chunks ?? "—"}</dd>
+          <dd>{stats ? stats.chunks : statsLoading ? "…" : "—"}</dd>
           <dt>bm25</dt>
           <dd>
-            {bm25 ?? "—"}{" "}
+            {bm25 ?? (statsLoading ? "…" : "—")}{" "}
             <span className="muted">
               {bm25Synced === null ? "" : bm25Synced ? "（已同步）" : "（未同步）"}
             </span>
@@ -96,7 +109,7 @@ export function KnowledgePage() {
           <dd>
             {stats
               ? `${stats.graph.entities} 实体 / ${stats.graph.relations} 关系`
-              : "—"}
+              : statsLoading ? "读取中" : "—"}
           </dd>
         </dl>
         {stats?.index_task ? (
@@ -108,10 +121,69 @@ export function KnowledgePage() {
             {stats.index_task.error ? ` · ${stats.index_task.error}` : ""}
           </p>
         ) : null}
-        {statsError ? (
+        {statsError && stats ? (
           <p className="msg-error" role="alert" style={{ marginTop: 10 }}>
             {statsError}
           </p>
+        ) : null}
+      </div>
+
+      <div className="card">
+        <div className="section-heading">
+          <div>
+            <h3>已索引资料</h3>
+            <p className="muted" style={{ fontSize: 13 }}>
+              {files.length ? `${files.length} 个文件` : "查看和管理已进入知识库的文件"}
+            </p>
+          </div>
+          <input
+            className="file-filter"
+            type="search"
+            value={fileFilter}
+            onChange={(e) => setFileFilter(e.target.value)}
+            placeholder="搜索文件"
+            aria-label="搜索已索引文件"
+          />
+        </div>
+        {filesError ? <p className="msg-error" role="alert">{filesError}</p> : null}
+        {!filesError && !files.length && !statsLoading ? (
+          <p className="muted file-empty">还没有已索引文件，请先添加资料。</p>
+        ) : null}
+        {visibleFiles.length ? (
+          <ul className="tracked-file-list">
+            {visibleFiles.map((file) => (
+              <li key={`${file.source_type}:${file.file_key}`}>
+                <div className="tracked-file-info">
+                  <strong>{file.file_key}</strong>
+                  <span className="muted">{file.source_type}</span>
+                </div>
+                <div className="tracked-file-actions">
+                  <button
+                    type="button"
+                    className="link-btn"
+                    disabled={indexing}
+                    onClick={() => void reindexFile(file.file_key)}
+                  >
+                    重新索引
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn danger-link"
+                    disabled={indexing}
+                    onClick={() => {
+                      if (window.confirm(`确定从知识库移除“${file.file_key}”？`)) {
+                        void removeFile(file.file_key);
+                      }
+                    }}
+                  >
+                    移除
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : fileFilter && !filesError ? (
+          <p className="muted file-empty">没有匹配的文件。</p>
         ) : null}
       </div>
 

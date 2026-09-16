@@ -11,7 +11,8 @@ def grade_document(question: str, document: str, llm) -> bool:
     try:
         prompt = GRADING_PROMPT.format(question=question, document=document[:1000])
         response = llm.invoke(prompt)
-        result = response.content.strip()
-        return "相关" in result
+        result = response.content.strip().replace(" ", "")
+        # Match the complete verdict; "不相关" also contains "相关".
+        return result.startswith("相关") and not result.startswith("不相关")
     except Exception:
         return True

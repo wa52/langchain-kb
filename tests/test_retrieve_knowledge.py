@@ -57,6 +57,13 @@ def fresh_store():
     reset_vector_store()
 
 
+@pytest.fixture(autouse=True)
+def no_real_bm25_write():
+    """rebuild_bm25(vs) 用内存测试库时不得覆写真实的 chroma_db/bm25_index.pkl。"""
+    with patch("src.retrieval.retriever._save_bm25_to_disk"):
+        yield
+
+
 PATCH_GRADING = patch("src.agent.tools.ENABLE_GRADING", False)
 PATCH_REWRITE = patch("src.agent.tools.ENABLE_REWRITE", False)
 PATCH_COMPRESSION = patch("src.agent.tools.ENABLE_CONTEXT_COMPRESSION", False)

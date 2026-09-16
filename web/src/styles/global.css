@@ -280,6 +280,93 @@ button.primary:not(:disabled):hover {
   font-size: 13px;
 }
 
+.overview-state {
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.kv.is-loading {
+  opacity: 0.7;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.file-filter {
+  width: min(240px, 42%);
+  min-height: 36px;
+}
+
+.tracked-file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tracked-file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--grid-line);
+}
+
+.tracked-file-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tracked-file-info strong {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tracked-file-info span {
+  font-size: 12px;
+}
+
+.tracked-file-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.danger-link {
+  color: var(--danger);
+}
+
+.file-empty {
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .section-heading,
+  .tracked-file-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .file-filter {
+    width: 100%;
+  }
+
+  .tracked-file-actions {
+    justify-content: flex-end;
+  }
+}
+
 
 .switch {
   position: relative;

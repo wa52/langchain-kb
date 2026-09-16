@@ -95,12 +95,15 @@ class TestIndexTaskDedup:
             tf.write("# test")
             path = tf.name
         try:
-            resp1 = c.post("/api/v1/documents/index", json={"path": path})
-            assert resp1.status_code == 202
-            resp2 = c.post("/api/v1/documents/index", json={"path": path})
-            assert resp2.status_code == 409
-            body = resp2.json()
-            assert "detail" in body
+            # Patch the task runner: only the dedup/task logic is under test;
+            # the real ingestion pipeline must not run against real data dirs.
+            with patch("src.api.routers.indexing.run_index_task"):
+                resp1 = c.post("/api/v1/documents/index", json={"path": path})
+                assert resp1.status_code == 202
+                resp2 = c.post("/api/v1/documents/index", json={"path": path})
+                assert resp2.status_code == 409
+                body = resp2.json()
+                assert "detail" in body
         finally:
             os.unlink(path)
 

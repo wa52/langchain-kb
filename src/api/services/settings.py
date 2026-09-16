@@ -82,12 +82,13 @@ def set_graph_extraction_mode(enabled: bool) -> dict:
     ``ENABLE_GRAPH_LLM_EXTRACTION`` and updates the in-process config so the
     change takes effect for the next index run without a restart.
     """
-    from dotenv import find_dotenv, set_key
+    from dotenv import set_key
 
     value = "true" if enabled else "false"
-    dotenv_path = find_dotenv()
-    if dotenv_path:
-        set_key(dotenv_path, "ENABLE_GRAPH_LLM_EXTRACTION", value)
+    dotenv_path = Path(config.KNOWLEDGE_HOME) / ".env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.touch(exist_ok=True)
+    set_key(str(dotenv_path), "ENABLE_GRAPH_LLM_EXTRACTION", value)
     os.environ["ENABLE_GRAPH_LLM_EXTRACTION"] = value
     config.ENABLE_GRAPH_LLM_EXTRACTION = enabled
     return {"ok": True, "graph_llm_extraction": enabled}

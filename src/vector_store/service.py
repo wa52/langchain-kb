@@ -5,7 +5,8 @@ from src.vector_store.chroma_client import (
     delete_by_source as _delete_by_source,
     add_documents_with_progress,
 )
-from src.retrieval.retriever import rebuild_bm25 as _rebuild_bm25, _bm25_retriever
+import src.retrieval.retriever as _retriever_mod
+from src.retrieval.retriever import rebuild_bm25 as _rebuild_bm25
 from src.vector_store.embedding import get_embedding_model
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 
@@ -26,9 +27,12 @@ class VectorStoreService:
             search_type="mmr",
             search_kwargs=search_kwargs,
         )
-        if ENABLE_HYBRID_SEARCH and _bm25_retriever is not None:
+        # Read the BM25 global at call time: a module-level `from ... import`
+        # would bind None at import time and never see the index rebuilt later.
+        bm25 = _retriever_mod._bm25_retriever
+        if ENABLE_HYBRID_SEARCH and bm25 is not None:
             return EnsembleRetriever(
-                retrievers=[vector_retriever, _bm25_retriever],
+                retrievers=[vector_retriever, bm25],
                 weights=[0.5, 0.5],
             )
         return vector_retriever
@@ -48,6 +52,9 @@ class VectorStoreService:
         return get_collection_stats()
 
     def reset(self):
+        from src.retrieval.retriever import invalidate_bm25
+
+        invalidate_bm25()
         reset_vector_store()
         vs = get_vector_store()
         vs.delete_collection()

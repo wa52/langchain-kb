@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getSession, streamChat } from "../api/client";
 import {
@@ -97,6 +97,7 @@ export function useChat(): UseChatResult {
     (rawQuery: string) => {
       const query = rawQuery.trim();
       if (!query || streaming) return;
+      abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
       const runSeq = ++runSeqRef.current;
@@ -112,26 +113,40 @@ export function useChat(): UseChatResult {
       recordRunStart();
 
       void (async () => {
+        const isCurrentRun = () => runSeq === runSeqRef.current;
         try {
           await streamChat(
             { query, session_id: sessionId },
             {
               onStart: (sid) => {
+                if (!isCurrentRun()) return;
                 if (sid) streamSessionRef.current = sid;
               },
-              onToken: (text) => appendToken(assistantId, text),
-              onSources: (sources) => setSources(assistantId, sources),
-              onTool: (tools) => recordRunTools(tools),
+              onToken: (text) => {
+                if (!isCurrentRun()) return;
+                appendToken(assistantId, text);
+              },
+              onSources: (sources) => {
+                if (!isCurrentRun()) return;
+                setSources(assistantId, sources);
+              },
+              onTool: (tools) => {
+                if (!isCurrentRun()) return;
+                recordRunTools(tools);
+              },
               onEnd: (sid, interrupted) => {
+                if (!isCurrentRun()) return;
                 streamSessionRef.current = sid;
                 setSessionId(sid);
                 finish(assistantId, interrupted);
               },
               onError: (message) => {
+                if (!isCurrentRun()) return;
                 setError(message);
                 fail(assistantId, message);
               },
               onEvent: (type, payload) => {
+                if (!isCurrentRun()) return;
                 recordStreamEvent(type);
                 if (type === "sources" && isRecord(payload) && Array.isArray(payload.sources)) {
                   recordRunSources(payload.sources as Array<{ hit_chain?: string[] }>);
@@ -147,11 +162,10 @@ export function useChat(): UseChatResult {
             abort.signal,
           );
         } catch (err) {
+          if (!isCurrentRun()) return;
           if (abort.signal.aborted) {
-            if (runSeq === runSeqRef.current) {
-              if (streamSessionRef.current) setSessionId(streamSessionRef.current);
-              finish(assistantId, true);
-            }
+            if (streamSessionRef.current) setSessionId(streamSessionRef.current);
+            finish(assistantId, true);
           } else {
             const message = err instanceof Error ? err.message : String(err);
             setError(message);
@@ -169,11 +183,15 @@ export function useChat(): UseChatResult {
   );
 
   const stop = useCallback(() => {
+    // Only abort the request: the run's catch path reconciles the
+    // server-allocated session id from streamSessionRef before cleanup.
     abortRef.current?.abort();
   }, []);
 
   const newChat = useCallback(() => {
     abortRef.current?.abort();
+    abortRef.current = null;
+    streamSessionRef.current = null;
     runSeqRef.current++;
     setMessages([makeGreeting()]);
     setSessionId(null);
@@ -183,8 +201,18 @@ export function useChat(): UseChatResult {
 
   const loadSession = useCallback(async (summary: SessionSummary) => {
     abortRef.current?.abort();
-    runSeqRef.current++;
-    const detail = await getSession(summary.id);
+    abortRef.current = null;
+    streamSessionRef.current = null;
+    const runSeq = ++runSeqRef.current;
+    setStreaming(false);
+    let detail;
+    try {
+      detail = await getSession(summary.id);
+    } catch (err) {
+      if (runSeq !== runSeqRef.current) return;
+      throw err;
+    }
+    if (runSeq !== runSeqRef.current) return;
     const msgs: ChatMessage[] = (detail.messages ?? [])
       .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "human" || m.role === "ai")
       .map((m) => {
@@ -202,6 +230,14 @@ export function useChat(): UseChatResult {
     setError(null);
     setStreaming(false);
   }, []);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      runSeqRef.current++;
+    },
+    [],
+  );
 
   return { messages, streaming, error, sessionId, send, stop, newChat, loadSession };
 }

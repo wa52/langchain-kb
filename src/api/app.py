@@ -86,17 +86,6 @@ def create_app() -> FastAPI:
             "answer_with_knowledge",
             "get_index_status",
             "system_status",
-            "start_index_task",
-            "upload_documents",
-            "remove_file",
-            "list_files",
-            "list_sessions",
-            "delete_session",
-            "set_graph_extraction_mode",
-            "get_sync_status",
-            "add_sync_dir",
-            "remove_sync_dir",
-            "run_sync",
         ],
         name=PRODUCT_NAME,
         description=f"Knowledge operations for the {PRODUCT_NAME_EN}",
@@ -131,7 +120,7 @@ def create_app() -> FastAPI:
             status_code=500,
             content=ErrorResponse(
                 error="Internal server error",
-                detail=str(exc),
+                detail=None,
             ).model_dump(),
         )
 

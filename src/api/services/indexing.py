@@ -1,49 +1,64 @@
 import asyncio
 import uuid
 from datetime import datetime, timezone
+from threading import Lock
 
 
 class IndexTaskManager:
     def __init__(self):
         self._tasks: dict[str, dict] = {}
+        self._lock = Lock()
 
     def create_task(self, path: str) -> str:
-        for t in self._tasks.values():
-            if t["path"] == path and t["status"] in ("pending", "running"):
-                raise ValueError(f"Task already exists for path: {path}")
-        task_id = str(uuid.uuid4())
-        self._tasks[task_id] = {
-            "task_id": task_id,
-            "status": "pending",
-            "path": path,
-            "progress": None,
-            "result": None,
-            "error": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        return task_id
+        with self._lock:
+            for t in self._tasks.values():
+                if t["path"] == path and t["status"] in ("pending", "running"):
+                    raise ValueError(f"Task already exists for path: {path}")
+            task_id = str(uuid.uuid4())
+            self._tasks[task_id] = {
+                "task_id": task_id,
+                "status": "pending",
+                "path": path,
+                "progress": None,
+                "result": None,
+                "error": None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._prune_finished()
+            return task_id
+
+    def _prune_finished(self, keep: int = 200):
+        finished = [t for t in self._tasks.values() if t["status"] not in ("pending", "running")]
+        for task in sorted(finished, key=lambda t: t["created_at"])[:-keep]:
+            self._tasks.pop(task["task_id"], None)
 
     def get_task(self, task_id: str) -> dict | None:
-        return self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
+            return dict(task) if task else None
 
     def update_task(self, task_id: str, **kwargs):
-        if task_id in self._tasks:
-            self._tasks[task_id].update(kwargs)
+        with self._lock:
+            if task_id in self._tasks:
+                self._tasks[task_id].update(kwargs)
 
     def has_active_task(self, path: str) -> bool:
-        return any(
-            t["path"] == path and t["status"] in ("pending", "running")
-            for t in self._tasks.values()
-        )
+        with self._lock:
+            return any(
+                t["path"] == path and t["status"] in ("pending", "running")
+                for t in self._tasks.values()
+            )
 
     def latest_task(self) -> dict | None:
-        if not self._tasks:
-            return None
-        return max(self._tasks.values(), key=lambda t: t["created_at"])
+        with self._lock:
+            if not self._tasks:
+                return None
+            return dict(max(self._tasks.values(), key=lambda t: t["created_at"]))
 
     def clear(self) -> None:
         """Drop all tracked tasks (used by tests for isolation)."""
-        self._tasks.clear()
+        with self._lock:
+            self._tasks.clear()
 
 
 _task_manager = IndexTaskManager()
