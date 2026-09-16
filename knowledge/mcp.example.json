@@ -26,7 +26,8 @@
         "-y",
         "chrome-devtools-mcp@latest",
         "--headless",
-        "--no-usage-statistics"
+        "--no-usage-statistics",
+        "--no-page-id-routing"
       ],
       "enabled": false
     },
