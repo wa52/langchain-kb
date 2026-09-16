@@ -4,6 +4,7 @@ import inspect
 from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
+from src.agent.harness import verify_agent_run
 from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
@@ -57,11 +58,15 @@ def _agent_messages(agent, messages: list[dict], session_id: str) -> list[dict]:
     return messages
 
 
-def _stream_with_callbacks(agent, messages, on_tool, on_interrupt):
+def _stream_with_callbacks(agent, messages, on_tool, on_interrupt, on_tool_result=None, stream_input=None):
     kwargs = {"on_tool": on_tool}
     try:
         if "on_interrupt" in inspect.signature(stream_rag_response).parameters:
             kwargs["on_interrupt"] = on_interrupt
+        if "on_tool_result" in inspect.signature(stream_rag_response).parameters:
+            kwargs["on_tool_result"] = on_tool_result
+        if stream_input is not None and "stream_input" in inspect.signature(stream_rag_response).parameters:
+            kwargs["stream_input"] = stream_input
     except (TypeError, ValueError):
         pass
     return stream_rag_response(agent, messages, **kwargs)
@@ -324,6 +329,7 @@ def stream_chat_events(
 
         tool_names: list[str] = []
         interrupt_payload = []
+        tool_results: list[dict] = []
 
         def _on_tool(name: str) -> None:
             if name not in tool_names:
@@ -332,11 +338,16 @@ def stream_chat_events(
         def _on_interrupt(value) -> None:
             interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
 
+        def _on_tool_result(result: dict) -> None:
+            tool_results.append(result)
+
         answer_parts = []
         failed = False
         new_session_id = session_id
         try:
-            for chunk in _stream_with_callbacks(agent, agent_messages, _on_tool, _on_interrupt):
+            for chunk in _stream_with_callbacks(
+                agent, agent_messages, _on_tool, _on_interrupt, _on_tool_result
+            ):
                 if stop_event.is_set():
                     break
                 if chunk:
@@ -357,6 +368,10 @@ def stream_chat_events(
                 assistant_message["tools"] = list(tool_names)
             if interrupt_payload:
                 assistant_message["pending_approval"] = True
+            if tool_results or interrupt_payload:
+                assistant_message["verification"] = verify_agent_run(
+                    answer, tool_results, bool(interrupt_payload)
+                )
             history = _serialize_messages(messages) + [assistant_message]
             new_session_id = save_history(history, session_id)
 
@@ -367,6 +382,11 @@ def stream_chat_events(
             }
         if tool_names:
             yield {"type": "tool", "data": {"tools": tool_names}}
+        if tool_results or interrupt_payload:
+            yield {
+                "type": "verification",
+                "data": verify_agent_run(answer, tool_results, bool(interrupt_payload)),
+            }
         elapsed_ms = (time.time() - t0) * 1000
 
         yield {"type": "sources", "data": {"sources": build_sources(answer)}}
@@ -381,7 +401,13 @@ def stream_chat_events(
         }
 
 
-def resume_chat_events(session_id: str, decision: str, message: str | None, stop_event) -> Iterator[dict]:
+def resume_chat_events(
+    session_id: str,
+    decision: str,
+    message: str | None,
+    stop_event,
+    decisions: list[str] | None = None,
+) -> Iterator[dict]:
     """Resume an interrupted Deep Agent thread after an approval decision."""
     from langgraph.types import Command
 
@@ -389,6 +415,7 @@ def resume_chat_events(session_id: str, decision: str, message: str | None, stop
         agent = _bind_agent_thread(_get_agent(), session_id)
         tool_names: list[str] = []
         interrupt_payload = []
+        tool_results: list[dict] = []
 
         def _on_tool(name: str) -> None:
             if name not in tool_names:
@@ -397,20 +424,17 @@ def resume_chat_events(session_id: str, decision: str, message: str | None, stop
         def _on_interrupt(value) -> None:
             interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
 
-        command = Command(
-            resume={
-                "decisions": [
-                    {"type": decision, **({"message": message} if message else {})}
-                ]
-            }
-        )
+        def _on_tool_result(result: dict) -> None:
+            tool_results.append(result)
+
+        selected = decisions or [decision]
+        command = Command(resume={"decisions": [
+            {"type": item, **({"message": message} if message else {})}
+            for item in selected
+        ]})
         parts: list[str] = []
-        for chunk in stream_rag_response(
-            agent,
-            [],
-            on_tool=_on_tool,
-            on_interrupt=_on_interrupt,
-            stream_input=command,
+        for chunk in _stream_with_callbacks(
+            agent, [], _on_tool, _on_interrupt, _on_tool_result, stream_input=command
         ):
             if stop_event.is_set():
                 break
@@ -426,12 +450,21 @@ def resume_chat_events(session_id: str, decision: str, message: str | None, stop
             assistant["tools"] = tool_names
         if interrupt_payload:
             assistant["pending_approval"] = True
+        if tool_results or interrupt_payload:
+            assistant["verification"] = verify_agent_run(
+                answer, tool_results, bool(interrupt_payload)
+            )
         save_history(history + [assistant], session_id)
         yield {"type": "token", "data": {"text": answer}}
         if interrupt_payload:
             yield {
                 "type": "approval_required",
                 "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupt_payload]},
+            }
+        if tool_results or interrupt_payload:
+            yield {
+                "type": "verification",
+                "data": verify_agent_run(answer, tool_results, bool(interrupt_payload)),
             }
         yield {
             "type": "message_end",

@@ -7,6 +7,7 @@ from src.vector_store.embedding import get_embedding_model
 from src.vector_store.service import VectorStoreService
 from src.vector_store.chroma_client import get_vector_store
 from src.llm import get_llm
+from src.agent.harness import ToolRecoveryMiddleware
 
 SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责基于知识库回答工业视觉项目相关的问题，并能引导用户完成完整的工业视觉项目。除非用户直接询问，否则不要主动说明你使用了什么底层模型，也不要自称 Claude、GPT 或其他特定模型。
 
@@ -94,6 +95,7 @@ def create_rag_agent():
         system_prompt=prompt,
         checkpointer=checkpointer,
         interrupt_on=interrupt_on,
+        middleware=[ToolRecoveryMiddleware()],
     )
     if checkpoint_connection is not None:
         agent._checkpoint_connection = checkpoint_connection
@@ -129,7 +131,7 @@ def close_agent_checkpoint(agent) -> None:
         agent._checkpoint_connection = None
 
 
-def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, stream_input=None):
+def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, on_tool_result=None, stream_input=None):
     def content_length(value) -> int:
         if isinstance(value, str):
             return len(value)
@@ -170,3 +172,9 @@ def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, 
                     if tid is not None:
                         seen_tool_ids.add(tid)
                     on_tool(getattr(msg, "name", "") or "tool")
+                    if on_tool_result is not None:
+                        on_tool_result({
+                            "name": getattr(msg, "name", "") or "tool",
+                            "status": getattr(msg, "status", None) or "success",
+                            "content": content,
+                        })

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ErrorResponse(BaseModel):
@@ -70,8 +70,22 @@ class ChatStreamRequest(BaseModel):
 
 class ChatResumeRequest(BaseModel):
     session_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
-    decision: str = Field(pattern=r"^(approve|reject)$")
+    decision: str | None = Field(default=None, pattern=r"^(approve|reject)$")
     message: str | None = Field(default=None, max_length=2000)
+    decisions: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        description="按 interrupt 中 action 顺序提交 approve/reject 决策",
+    )
+
+    @model_validator(mode="after")
+    def normalize_decisions(self):
+        decisions = self.decisions or ([self.decision] if self.decision else [])
+        if not decisions or any(item not in {"approve", "reject"} for item in decisions):
+            raise ValueError("必须提供 decision 或 decisions，且只能是 approve/reject")
+        self.decisions = decisions
+        self.decision = decisions[0]
+        return self
 
 
 class ChatStreamSource(BaseModel):

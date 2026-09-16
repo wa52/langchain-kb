@@ -22,7 +22,9 @@ _END = object()
 )
 def chat_resume(req: ChatResumeRequest):
     stop = threading.Event()
-    events = list(resume_chat_events(req.session_id, req.decision, req.message, stop))
+    events = list(resume_chat_events(
+        req.session_id, req.decision, req.message, stop, decisions=req.decisions
+    ))
     return {"session_id": req.session_id, "events": events}
 
 
@@ -60,7 +62,7 @@ def chat(req: ChatRequest):
     summary="流式对话",
     description=(
         "POST + fetch readable stream，SSE 事件：message_start / token / "
-        "tool / sources / message_end / error。客户端可通过中断请求停止生成，"
+        "tool / verification / approval_required / sources / message_end / error。客户端可通过中断请求停止生成，"
         "已产生的半截回答会保存到会话历史并标记 interrupted=true。"
     ),
 )
