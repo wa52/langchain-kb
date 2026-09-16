@@ -68,6 +68,12 @@ class ChatStreamRequest(BaseModel):
     )
 
 
+class ChatResumeRequest(BaseModel):
+    session_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    decision: str = Field(pattern=r"^(approve|reject)$")
+    message: str | None = Field(default=None, max_length=2000)
+
+
 class ChatStreamSource(BaseModel):
     source: str
     chunk_id: str = ""

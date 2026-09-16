@@ -1,5 +1,6 @@
 import re
 import time
+import inspect
 from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
@@ -33,6 +34,37 @@ def _get_agent():
     except Exception:
         pass
     return agent
+
+
+def _bind_agent_thread(agent, session_id: str):
+    """Bind a conversation id to the compiled agent's checkpoint config."""
+    try:
+        return agent.with_config({"configurable": {"thread_id": session_id}})
+    except (AttributeError, TypeError):
+        # Test doubles and legacy custom runnables may not implement with_config.
+        return agent
+
+
+def _agent_messages(agent, messages: list[dict], session_id: str) -> list[dict]:
+    """Avoid replaying messages when the Agent already has this thread state."""
+    try:
+        state = agent.get_state({"configurable": {"thread_id": session_id}})
+        values = getattr(state, "values", None) or {}
+        if values.get("messages"):
+            return messages[-1:]
+    except (AttributeError, KeyError, TypeError, ValueError):
+        pass
+    return messages
+
+
+def _stream_with_callbacks(agent, messages, on_tool, on_interrupt):
+    kwargs = {"on_tool": on_tool}
+    try:
+        if "on_interrupt" in inspect.signature(stream_rag_response).parameters:
+            kwargs["on_interrupt"] = on_interrupt
+    except (TypeError, ValueError):
+        pass
+    return stream_rag_response(agent, messages, **kwargs)
 
 
 def _build_messages(query: str, session_id: str | None) -> list[dict]:
@@ -235,7 +267,8 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
         print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
 
         t1 = time.time()
-        agent = _get_agent()
+        agent = _bind_agent_thread(_get_agent(), session_id)
+        agent_messages = _agent_messages(agent, agent_messages, session_id)
         print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
 
         t2 = time.time()
@@ -286,19 +319,24 @@ def stream_chat_events(
 
         messages = _build_messages(query, session_id)
         agent_messages = _maybe_compress_history(messages)
-        agent = _get_agent()
+        agent = _bind_agent_thread(_get_agent(), session_id)
+        agent_messages = _agent_messages(agent, agent_messages, session_id)
 
         tool_names: list[str] = []
+        interrupt_payload = []
 
         def _on_tool(name: str) -> None:
             if name not in tool_names:
                 tool_names.append(name)
 
+        def _on_interrupt(value) -> None:
+            interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
+
         answer_parts = []
         failed = False
         new_session_id = session_id
         try:
-            for chunk in stream_rag_response(agent, agent_messages, on_tool=_on_tool):
+            for chunk in _stream_with_callbacks(agent, agent_messages, _on_tool, _on_interrupt):
                 if stop_event.is_set():
                     break
                 if chunk:
@@ -310,11 +348,23 @@ def stream_chat_events(
         finally:
             answer = "".join(answer_parts)
             interrupted = stop_event.is_set() or failed
-            history = _serialize_messages(messages) + [
-                {"role": "assistant", "content": answer, "interrupted": interrupted}
-            ]
+            assistant_message = {
+                "role": "assistant",
+                "content": answer,
+                "interrupted": interrupted,
+            }
+            if tool_names:
+                assistant_message["tools"] = list(tool_names)
+            if interrupt_payload:
+                assistant_message["pending_approval"] = True
+            history = _serialize_messages(messages) + [assistant_message]
             new_session_id = save_history(history, session_id)
 
+        if interrupt_payload:
+            yield {
+                "type": "approval_required",
+                "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupt_payload]},
+            }
         if tool_names:
             yield {"type": "tool", "data": {"tools": tool_names}}
         elapsed_ms = (time.time() - t0) * 1000
@@ -326,5 +376,68 @@ def stream_chat_events(
                 "session_id": new_session_id,
                 "elapsed_ms": round(elapsed_ms, 2),
                 "interrupted": interrupted,
+                "waiting_approval": bool(interrupt_payload),
+            },
+        }
+
+
+def resume_chat_events(session_id: str, decision: str, message: str | None, stop_event) -> Iterator[dict]:
+    """Resume an interrupted Deep Agent thread after an approval decision."""
+    from langgraph.types import Command
+
+    with session_lock(session_id):
+        agent = _bind_agent_thread(_get_agent(), session_id)
+        tool_names: list[str] = []
+        interrupt_payload = []
+
+        def _on_tool(name: str) -> None:
+            if name not in tool_names:
+                tool_names.append(name)
+
+        def _on_interrupt(value) -> None:
+            interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
+
+        command = Command(
+            resume={
+                "decisions": [
+                    {"type": decision, **({"message": message} if message else {})}
+                ]
+            }
+        )
+        parts: list[str] = []
+        for chunk in stream_rag_response(
+            agent,
+            [],
+            on_tool=_on_tool,
+            on_interrupt=_on_interrupt,
+            stream_input=command,
+        ):
+            if stop_event.is_set():
+                break
+            if chunk:
+                parts.append(chunk)
+
+        answer = "".join(parts)
+        history = load_history(session_id) or []
+        if history and history[-1].get("pending_approval"):
+            history.pop()
+        assistant = {"role": "assistant", "content": answer, "interrupted": bool(stop_event.is_set())}
+        if tool_names:
+            assistant["tools"] = tool_names
+        if interrupt_payload:
+            assistant["pending_approval"] = True
+        save_history(history + [assistant], session_id)
+        yield {"type": "token", "data": {"text": answer}}
+        if interrupt_payload:
+            yield {
+                "type": "approval_required",
+                "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupt_payload]},
+            }
+        yield {
+            "type": "message_end",
+            "data": {
+                "session_id": session_id,
+                "interrupted": bool(stop_event.is_set()),
+                "waiting_approval": bool(interrupt_payload),
             },
         }

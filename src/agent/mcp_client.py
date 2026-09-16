@@ -183,16 +183,25 @@ def _server_dispatch_tool(server_name: str, server_tools: list):
     )
 
 
-def load_mcp_tools(config_path, tool_name_prefix: bool = True) -> list:
-    """Load external MCP tools for the agent, one dispatch tool per server.
+def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list:
+    """Load external MCP tools for the agent.
 
-    Returns a list of LangChain BaseTools (one per enabled MCP server). On any
-    failure (missing config, server unreachable), returns [] so the agent still
-    builds with local tools.
+    ``direct`` exposes every MCP operation as an individual Agent tool. The
+    legacy ``dispatch`` mode exposes one operation router per server. The mode
+    defaults to ``MCP_TOOL_MODE`` and then to ``direct``.
+
+    Each server is loaded independently so one unavailable server does not hide
+    tools from other enabled servers. Missing config and total load failures
+    still degrade to an empty list so local tools remain available.
     """
     connections = _to_connections(config_path)
     if not connections:
         return []
+
+    mode = (tool_mode or os.getenv("MCP_TOOL_MODE", "direct")).strip().lower()
+    if mode not in {"direct", "dispatch"}:
+        print(f"  [MCP] 忽略无效 MCP_TOOL_MODE={mode!r}，使用 direct")
+        mode = "direct"
 
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -202,15 +211,22 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True) -> list:
             connections,
             tool_name_prefix=tool_name_prefix,
         )
-        result = []
-        for server_name in connections:
-            server_tools = asyncio.run(client.get_tools(server_name=server_name))
-            if server_tools:
-                result.append(_server_dispatch_tool(server_name, server_tools))
-        return result
     except Exception as e:
-        print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
+        print(f"  [MCP] 外部工具客户端加载失败（不影响本地工具）: {e}")
         return []
+
+    result = []
+    for server_name in connections:
+        try:
+            server_tools = asyncio.run(client.get_tools(server_name=server_name))
+            if mode == "dispatch":
+                if server_tools:
+                    result.append(_server_dispatch_tool(server_name, server_tools))
+            else:
+                result.extend(_make_sync_compatible(tool) for tool in server_tools)
+        except Exception as e:
+            print(f"  [MCP] 跳过服务器 {server_name}（不影响其他 MCP）: {e}")
+    return result
 
 
 def default_mcp_config_path() -> str:

@@ -37,6 +37,13 @@ class VectorStoreService:
             )
         return vector_retriever
 
+    def similarity_search_with_scores(self, query: str, k: int) -> list:
+        """Run a direct scored vector search for the application layer."""
+        from src.resources import ResourceManager
+        managed = ResourceManager.get_instance().vector_store
+        store = managed if managed is not None else get_vector_store()
+        return store.similarity_search_with_relevance_scores(query, k=k)
+
     def add_documents(self, chunks: list):
         add_documents_with_progress(chunks, echo_fn=self._echo_fn)
 

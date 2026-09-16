@@ -432,9 +432,8 @@ def search(
     """检索知识片段（可用 --capability 按能力域过滤；建议优先使用 Web 检索）"""
     try:
         if capability:
-            from src.vector_store.service import VectorStoreService
-            retriever = VectorStoreService().get_retriever(k=top_k, capability=capability)
-            docs = retriever.invoke(query)
+            from src.application.knowledge import retrieve_documents
+            docs = retrieve_documents(query, top_k, capability=capability)
             results = []
             for doc in docs:
                 meta = doc.metadata or {}

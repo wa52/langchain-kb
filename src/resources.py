@@ -134,6 +134,12 @@ class ResourceManager:
 
         self._ensemble_retriever = None
         self._cached_k = None
+        if self.agent is not None:
+            try:
+                from src.agent.rag_agent import close_agent_checkpoint
+                close_agent_checkpoint(self.agent)
+            except Exception as exc:
+                logger.warning("Failed to close agent checkpoint: %s", exc)
         self.embedding_model = None
         self.vector_store = None
         self.llm = None

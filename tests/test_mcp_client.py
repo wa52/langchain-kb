@@ -79,8 +79,9 @@ class TestLoadTools:
             instance = MockClient.return_value
             instance.get_tools = fake_get_tools
             tools = load_mcp_tools(sample_config)
-        # 2 个 enabled server → 2 个收敛工具
-        assert len(tools) == 2
+        # 2 个 enabled server，每个返回两个 operation tool。
+        assert len(tools) == 4
+        assert {tool.name for tool in tools} == {"list_directory", "read_file"}
 
     def test_load_failure_returns_empty(self, sample_config):
         from unittest.mock import patch
@@ -257,7 +258,7 @@ class TestServerDispatch:
 
 class TestLoadToolsConverged:
     def test_load_returns_one_tool_per_server(self, sample_config):
-        """每个 server 的工具收敛为 1 个调度工具。"""
+        """dispatch 模式保留每个 server 一个调度工具的兼容行为。"""
         from unittest.mock import patch
         from src.agent.mcp_client import load_mcp_tools
 
@@ -269,13 +270,31 @@ class TestLoadToolsConverged:
         with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
             instance = MockClient.return_value
             instance.get_tools = fake_get_tools
-            tools = load_mcp_tools(sample_config)
+            tools = load_mcp_tools(sample_config, tool_mode="dispatch")
 
         # sample_config 有 2 个 enabled server → 2 个收敛工具
         assert len(tools) == 2
         names = [getattr(t, "name", str(t)) for t in tools]
         assert "filesystem" in names
         assert "remote_svc" in names
+
+    def test_one_server_failure_does_not_hide_other_servers(self, sample_config):
+        from unittest.mock import patch
+        from src.agent.mcp_client import load_mcp_tools
+
+        fake_tools = TestServerDispatch()._fake_server_tools()
+
+        async def fake_get_tools(server_name=None):
+            if server_name == "filesystem":
+                raise RuntimeError("filesystem unavailable")
+            return fake_tools
+
+        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
+            instance = MockClient.return_value
+            instance.get_tools = fake_get_tools
+            tools = load_mcp_tools(sample_config)
+
+        assert len(tools) == 2
 
     def test_agent_tools_unaffected(self):
         """本地工具仍保留。"""

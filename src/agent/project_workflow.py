@@ -97,9 +97,8 @@ def _resolve_stage(stage: str) -> dict | None:
 
 def _search_for_stage(query: str, capability: int, k: int = 5) -> list[dict]:
     """Retrieve capability-scoped knowledge for a stage (real vector search)."""
-    from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever(k=k, capability=str(capability))
-    docs = retriever.invoke(query)
+    from src.application.knowledge import retrieve_documents
+    docs = retrieve_documents(query, k, capability=str(capability))
     return [
         {"source": d.metadata.get("source", "unknown"),
          "content": d.page_content[:500]}

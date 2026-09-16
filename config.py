@@ -123,9 +123,14 @@ MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
 # 只把最近 keep_rounds 轮 + 摘要发给 agent（完整历史仍原样保存）。
 HISTORY_COMPRESS_ROUNDS = int(os.getenv("HISTORY_COMPRESS_ROUNDS", "10"))
 HISTORY_MAX_TOKENS = int(os.getenv("HISTORY_MAX_TOKENS", "4000"))
+_checkpoint_path = Path(os.getenv("CHECKPOINT_DB_PATH", "./data/agent_checkpoints.sqlite"))
+CHECKPOINT_DB_PATH = str(
+    _checkpoint_path if _checkpoint_path.is_absolute() else KNOWLEDGE_HOME / _checkpoint_path
+)
 
 
 def ensure_data_dirs():
     """Create the knowledge-base directory skeleton if missing (idempotent)."""
     for d in (DATA_DIR, Path(EXTERNAL_DIR), Path(CHROMA_PERSIST_DIR)):
         d.mkdir(parents=True, exist_ok=True)
+    Path(CHECKPOINT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)

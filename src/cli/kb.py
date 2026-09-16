@@ -105,9 +105,8 @@ def index(path, rebuild, dry_run, chunk_size, chunk_overlap, incremental, as_jso
 @click.option("--json", "as_json", is_flag=True, help="JSON output")
 def search(query, top_k, as_json):
     """Search knowledge base"""
-    from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever(k=top_k)
-    docs = retriever.invoke(query)
+    from src.application.knowledge import retrieve_documents
+    docs = retrieve_documents(query, top_k)
     if as_json:
         results = []
         for d in docs:

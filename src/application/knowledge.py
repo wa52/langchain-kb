@@ -5,7 +5,12 @@ def retrieve_documents(query: str, k: int, capability: str | None = None):
     """Application boundary for Agent-oriented hybrid retrieval."""
     from src.vector_store.service import VectorStoreService
 
-    retriever = VectorStoreService().get_retriever(k=k, capability=capability)
+    service = VectorStoreService()
+    retriever = (
+        service.get_retriever(k=k, capability=capability)
+        if capability is not None
+        else service.get_retriever(k=k)
+    )
     return retriever.invoke(query)
 
 
@@ -16,12 +21,11 @@ def retrieve_graph(query: str) -> str:
     return GraphService().search(query)
 
 
-def search_documents(resource_manager, query: str, top_k: int) -> tuple[list[dict], float]:
+def search_documents(query: str, top_k: int) -> tuple[list[dict], float]:
     """Application use case for scored API/CLI search results."""
     t0 = time.time()
-    docs_with_scores = resource_manager.vector_store.similarity_search_with_relevance_scores(
-        query, k=top_k
-    )
+    from src.vector_store.service import VectorStoreService
+    docs_with_scores = VectorStoreService().similarity_search_with_scores(query, top_k)
     results = []
     for doc, score in docs_with_scores:
         chunk_id = doc.id or doc.metadata.get("chunk_id", "")

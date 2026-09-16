@@ -111,6 +111,19 @@ class TestChatStreamSSEFraming:
         assert end["interrupted"] is False
         assert isinstance(end["elapsed_ms"], (int, float))
 
+    def test_resume_endpoint_returns_agent_events(self, client):
+        with patch(
+            "src.api.routers.chat.resume_chat_events",
+            return_value=iter([{"type": "message_end", "data": {"session_id": "sess_1"}}]),
+        ) as resume:
+            resp = client.post(
+                "/api/v1/chat/resume",
+                json={"session_id": "sess_1", "decision": "approve"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["events"][0]["type"] == "message_end"
+        resume.assert_called_once()
+
     def test_sources_are_extracted_from_answer(self, client):
         with _patch_stream(["根据资料 [来源: guide.md] 说明。"]):
             resp = client.post("/api/v1/chat/stream", json={"query": "hi"})

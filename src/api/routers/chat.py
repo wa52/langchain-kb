@@ -6,12 +6,24 @@ import threading
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, CitationItem
-from src.api.services.chat import chat_with_rag, extract_sources, stream_chat_events
+from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, ChatResumeRequest, CitationItem
+from src.api.services.chat import chat_with_rag, extract_sources, stream_chat_events, resume_chat_events
 
 router = APIRouter()
 
 _END = object()
+
+
+@router.post(
+    "/chat/resume",
+    operation_id="resume_chat",
+    summary="恢复等待审批的 Agent 运行",
+    description="使用同一 session_id 恢复被危险工具审批中断的 Agent 运行。",
+)
+def chat_resume(req: ChatResumeRequest):
+    stop = threading.Event()
+    events = list(resume_chat_events(req.session_id, req.decision, req.message, stop))
+    return {"session_id": req.session_id, "events": events}
 
 
 def _sse(event: dict) -> str:

@@ -64,11 +64,13 @@ def create_rag_agent():
     # Load external MCP tools (opencode-style mcp.json). Degrades gracefully:
     # a failure here never blocks the local knowledge tools.
     external_names: list[str] = []
+    external_tools = []
     try:
         from src.agent.mcp_client import load_mcp_tools, default_mcp_config_path
         external = load_mcp_tools(default_mcp_config_path())
         if external:
             tools.extend(external)
+            external_tools = external
             external_names = [getattr(t, "name", "external") for t in external]
             print(f"  [MCP] 已加载 {len(external)} 个外部工具")
     except Exception as e:
@@ -80,17 +82,54 @@ def create_rag_agent():
         prompt += "\n\n## 当前已加载的外部 MCP\n- " + "\n- ".join(external_names)
     else:
         prompt += "\n\n当前没有成功加载外部 MCP；不要声称可以联网或使用浏览器。"
+    checkpointer, checkpoint_connection = _create_checkpointer()
+    interrupt_on = {name: True for name in ("write_file", "edit_file", "execute")}
+    for tool in external_tools:
+        name = getattr(tool, "name", "").lower()
+        if any(word in name for word in ("write", "delete", "remove", "move", "rename", "execute", "run")):
+            interrupt_on[getattr(tool, "name")] = True
     agent = create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=prompt,
+        checkpointer=checkpointer,
+        interrupt_on=interrupt_on,
     )
+    if checkpoint_connection is not None:
+        agent._checkpoint_connection = checkpoint_connection
     get_registry().set_ready("agent", "Deep Agent")
     print(f"  [计时] 构建 Deep Agent: {_time.time() - _t4:.2f}s")
     return agent
 
 
-def stream_rag_response(agent, messages: list, on_tool=None):
+def _create_checkpointer():
+    """Create the durable saver, with an explicit in-memory fallback."""
+    from config import CHECKPOINT_DB_PATH
+    try:
+        import sqlite3
+        from pathlib import Path
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        Path(CHECKPOINT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(CHECKPOINT_DB_PATH, check_same_thread=False)
+        saver = SqliteSaver(connection)
+        saver.setup()
+        return saver, connection
+    except Exception as exc:
+        from langgraph.checkpoint.memory import MemorySaver
+        print(f"  [Agent] SQLite checkpoint 不可用，降级为内存模式: {exc}")
+        return MemorySaver(), None
+
+
+def close_agent_checkpoint(agent) -> None:
+    """Close the SQLite connection owned by an Agent, if one exists."""
+    connection = getattr(agent, "_checkpoint_connection", None)
+    if connection is not None:
+        connection.close()
+        agent._checkpoint_connection = None
+
+
+def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, stream_input=None):
     def content_length(value) -> int:
         if isinstance(value, str):
             return len(value)
@@ -106,7 +145,12 @@ def stream_rag_response(agent, messages: list, on_tool=None):
 
     tool_called = False
     seen_tool_ids = set()
-    for event in agent.stream({"messages": messages}):
+    input_value = stream_input if stream_input is not None else {"messages": messages}
+    for event in agent.stream(input_value):
+        if "__interrupt__" in event:
+            if on_interrupt is not None:
+                on_interrupt(event["__interrupt__"])
+            continue
         for node_name, value in event.items():
             if not isinstance(value, dict) or "messages" not in value:
                 continue

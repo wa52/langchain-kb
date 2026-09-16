@@ -51,15 +51,25 @@ data/projects/PCB缺陷检测/
 ```
 
 ### 🔌 外部 MCP 集成
-Agent 可调用外部 MCP server 工具，每个 server 收敛为 **1 个工具入口**：
+Agent 可调用外部 MCP server 工具。默认情况下，每个 MCP operation 都作为独立工具暴露：
 
 ```
-retrieve_knowledge   ← 本地知识检索
-project_workflow     ← 本地项目引导
-filesystem           ← 外部 MCP（含 read_file / write_file / list_directory 等操作）
+retrieve_knowledge          ← 本地知识检索
+project_workflow            ← 本地项目引导
+filesystem_read_file       ← 外部 MCP operation
+filesystem_write_file      ← 外部 MCP operation
+filesystem_list_directory  ← 外部 MCP operation
 ```
 
 添加新 MCP server 只需编辑 `mcp.json`，无需改代码。
+如需兼容旧版“每个 server 一个入口”的行为，设置 `MCP_TOOL_MODE=dispatch`。
+
+Agent 会将运行 checkpoint 保存到 `CHECKPOINT_DB_PATH` 指定的 SQLite 文件（默认
+`<KNOWLEDGE_HOME>/data/agent_checkpoints.sqlite`），服务重启后可继续读取同一会话的
+Agent 状态。安装依赖失败时会降级为进程内 checkpoint，并在启动日志中提示。
+写入、删除、移动和执行类工具会暂停等待人工审批；流式接口发送
+`approval_required` 事件后，可调用 `POST /api/v1/chat/resume`，提交同一
+`session_id` 和 `approve`/`reject` 决策继续运行。
 
 ### 🌐 多端入口
 | 入口 | 说明 |
@@ -227,15 +237,16 @@ knowledge doctor                             # 健康检查
 - `local`：stdio 启动（command + args）
 - `remote`：Streamable HTTP（url + 可选 headers）
 
-每个 server 在 agent 工具集中收敛为 **1 个工具**（如 `filesystem`），
-调用时通过 `operation` 参数指定具体操作：
+默认每个 server 的 MCP operation 都会作为独立 Agent 工具暴露，工具名带 server 前缀，
+避免不同 server 的同名 operation 冲突：
 
 ```
-filesystem(operation="filesystem_list_directory", path="D:/")
-filesystem(operation="filesystem_read_file", path="D:/x.txt")
+filesystem_list_directory(path="D:/")
+filesystem_read_file(path="D:/x.txt")
 ```
 
-> 工具参数 schema 自动从 MCP server 提取，LLM 能正确传参。
+工具参数 schema 和描述直接从对应 MCP operation 提取，LLM 可以按 operation 选择和传参。
+兼容模式示例：`filesystem(operation="filesystem_read_file", path="D:/x.txt")`。
 
 ---
 

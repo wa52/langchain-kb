@@ -95,9 +95,8 @@ def remove(name, keep_file):
 @click.argument("query")
 def search(query):
     """检索知识库（不调用 LLM，仅搜索）"""
-    from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever()
-    docs = retriever.invoke(query)
+    from src.application.knowledge import retrieve_documents
+    docs = retrieve_documents(query, 5)
     if not docs:
         echo("未找到相关文档")
         return
@@ -223,8 +222,8 @@ def stats():
 @click.argument("query")
 def graph_search(query):
     """搜索知识图谱"""
-    from src.graph_store.service import GraphService
-    result = GraphService().search(query)
+    from src.application.knowledge import retrieve_graph
+    result = retrieve_graph(query)
     echo(result)
 
 

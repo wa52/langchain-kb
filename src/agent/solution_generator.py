@@ -9,9 +9,8 @@ from src.capability.model import CAPABILITY_DOMAINS
 
 def _search_capability(capability: int, query: str, k: int = 5) -> list[dict]:
     """Retrieve knowledge for a capability domain (real vector search)."""
-    from src.vector_store.service import VectorStoreService
-    retriever = VectorStoreService().get_retriever(k=k, capability=str(capability))
-    docs = retriever.invoke(query)
+    from src.application.knowledge import retrieve_documents
+    docs = retrieve_documents(query, k, capability=str(capability))
     return [
         {"source": d.metadata.get("source", "unknown"),
          "content": d.page_content[:500]}

@@ -364,7 +364,7 @@ Chat 流式输出采用 **POST + fetch readable stream**，事件使用 SSE 文�
 | 项 | 说明 |
 |----|------|
 | 功能定位 | 让 Agent 调用外部 MCP Server 工具 |
-| 主要能力 | 解析 opencode 风格 `mcp.json`（local stdio / remote streamable-http）；每 server 收敛为 1 个分发工具（`operation` 路由 + 动态 schema）；异步工具同步化桥接；失败优雅降级 |
+| 主要能力 | 解析 opencode 风格 `mcp.json`（local stdio / remote streamable-http）；默认将每个 MCP operation 暴露为独立工具；可通过 `MCP_TOOL_MODE=dispatch` 使用每 server 一个分发工具；危险工具审批与 checkpoint resume；异步工具同步化桥接；失败优雅降级 |
 | 触发入口 | 配置 `<KNOWLEDGE_HOME>/mcp.json` 后自动随 Agent 加载 |
 | 支撑模块 | `agent` |
 | 关键文件 | `src/agent/mcp_client.py` |
@@ -675,7 +675,7 @@ embedding 模型 → 向量库 → BM25 → LLM，然后 `create_deep_agent(mode
 | `retrieve_knowledge` | 主检索工具：混合检索 → LLM 评分过滤（全不相关自动重写）→ 上下文压缩 → 图谱关联拼接 |
 | `retrieve_graph` | 纯图谱检索 |
 | `project_workflow` | 按 6 阶段引导项目（能力域过滤检索） |
-| 外部 MCP 工具 | 每个 server 收敛为 1 个分发工具（`operation` 参数路由） |
+| 外部 MCP 工具 | 默认每个 MCP operation 一个独立工具（带 server 前缀）；兼容模式下每个 server 一个 `operation` 分发工具 |
 
 **检索编排**（`tools.py`）：`retrieve_knowledge` 内部使用 `ThreadPoolExecutor` 并发评分/压缩
 （上限 5 workers）；评分/压缩使用的 LLM 由 `RERANK_LLM` 决定云端 DeepSeek 或本地 Ollama。
