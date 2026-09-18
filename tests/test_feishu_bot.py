@@ -71,19 +71,18 @@ class TestMessageDeduper:
 
 
 class TestFeishuWelcome:
-    def test_p2p_welcome_is_sent_once_per_chat(self):
+    def test_p2p_entered_event_does_not_send_unsolicited_message(self):
         from types import SimpleNamespace
         from src.feishu.bot import FeishuBot
 
         bot = FeishuBot.__new__(FeishuBot)
-        bot._welcome_deduper = _MessageDeduper(ttl=3600)
         bot._reply = Mock()
         event = SimpleNamespace(event=SimpleNamespace(chat_id="chat_1"))
 
         bot._on_p2p_chat_entered(event)
         bot._on_p2p_chat_entered(event)
 
-        bot._reply.assert_called_once()
+        bot._reply.assert_not_called()
 
 
 class FakeClient:

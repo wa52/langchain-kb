@@ -247,15 +247,11 @@ class FeishuBot:
             FEISHU_MAX_CONCURRENCY + FEISHU_QUEUE_SIZE
         )
         self._deduper = _MessageDeduper()
-        self._welcome_deduper = _MessageDeduper(ttl=3600.0)
         self._sender_locks: dict[str, threading.Lock] = {}
         self._sender_locks_guard = threading.Lock()
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(self._on_message)
-            .register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(
-                self._on_p2p_chat_entered
-            )
             .build()
         )
         self.ws_client = lark.ws.Client(
@@ -329,16 +325,8 @@ class FeishuBot:
             self._capacity.release()
 
     def _on_p2p_chat_entered(self, event) -> None:
-        """Greet a user when the bot is opened in a new private chat."""
-        chat = getattr(event, "event", None)
-        chat_id = getattr(chat, "chat_id", None)
-        if chat_id and not self._welcome_deduper.seen(chat_id):
-            self._reply(
-                "",
-                chat_id,
-                "p2p",
-                "你好，我是知识库助手。请直接发送问题，我会结合知识库回答；发送 /new 可开启新会话。",
-            )
+        """Intentionally do nothing; the bot only replies after a user message."""
+        return
 
     def _reply(self, message_id: str, chat_id: str, chat_type: str, text: str) -> None:
         import lark_oapi as lark
