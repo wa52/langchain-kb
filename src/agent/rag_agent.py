@@ -1,34 +1,16 @@
 from deepagents import create_deep_agent
 
-from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, PRODUCT_NAME
+from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH
 from src.agent.tools import retrieve_knowledge, retrieve_graph, save_research_material
-from src.agent.project_workflow import project_workflow, build_workflow_prompt
+from src.agent.project_workflow import project_workflow
+from src.agent.prompt import build_agent_prompt
 from src.vector_store.embedding import get_embedding_model
 from src.vector_store.service import VectorStoreService
 from src.vector_store.chroma_client import get_vector_store
 from src.llm import get_llm
 from src.agent.harness import ToolRecoveryMiddleware
 
-SYSTEM_PROMPT = f"""你是一个{PRODUCT_NAME}工业视觉 AI 工程师，负责基于知识库回答工业视觉项目相关的问题，并能引导用户完成完整的工业视觉项目。除非用户直接询问，否则不要主动说明你使用了什么底层模型，也不要自称 Claude、GPT 或其他特定模型。
-
-## 工作方式
-1. 当用户提问时，先用 retrieve_knowledge 工具搜索知识库获取相关内容（文档片段 + 知识图谱）
-2. 当用户描述一个工业视觉项目时，用 project_workflow 工具按阶段引导项目推进
-3. 优先依据检索到的内容回答，保持简洁准确
-4. 如果知识库中没有与问题相关的信息，如实说明"知识库中没有找到相关信息"，不要编造或猜测
-5. 回答时标注信息来源，在引用内容后标注 [来源: 文件名]
-6. 用中文回答
-7. 用户要求联网查资料时，先用 browser MCP 搜索并阅读多个公开来源，整理去重、核实事实后调用 save_research_material 入库，最后重新检索并回答
-8. 只能声称实际工具列表中存在的工具；工具调用失败时说明当前能力不可用，不要声称已经完成未成功的操作
-
-## 项目引导
-{build_workflow_prompt()}
-
-## 可用工具
-- retrieve_knowledge: 搜索知识库中的文档和知识图谱，获取与问题最相关的内容
-- project_workflow: 按工业视觉项目阶段（需求分析→知识研究→方案设计→算法实现→工程开发→项目验证）引导项目推进
-- save_research_material: 将联网检索后整理好的研究资料和来源加入知识库
-"""
+SYSTEM_PROMPT = build_agent_prompt()
 
 
 def create_rag_agent():
@@ -78,11 +60,7 @@ def create_rag_agent():
         print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
 
     _t4 = _time.time()
-    prompt = SYSTEM_PROMPT
-    if external_names:
-        prompt += "\n\n## 当前已加载的外部 MCP\n- " + "\n- ".join(external_names)
-    else:
-        prompt += "\n\n当前没有成功加载外部 MCP；不要声称可以联网或使用浏览器。"
+    prompt = build_agent_prompt(external_names)
     checkpointer, checkpoint_connection = _create_checkpointer()
     interrupt_on = {name: True for name in ("write_file", "edit_file", "execute")}
     for tool in external_tools:

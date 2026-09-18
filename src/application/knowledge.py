@@ -3,6 +3,16 @@ import time
 
 def retrieve_documents(query: str, k: int, capability: str | None = None):
     """Application boundary for Agent-oriented hybrid retrieval."""
+    if capability is None:
+        try:
+            from src.resources import ResourceManager
+            manager = ResourceManager.get_instance()
+            if manager.is_ready():
+                return manager.get_retriever(k=k).invoke(query)
+        except RuntimeError:
+            # CLI/tests may call retrieval before the managed API lifecycle.
+            pass
+
     from src.vector_store.service import VectorStoreService
 
     service = VectorStoreService()

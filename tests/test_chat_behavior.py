@@ -12,6 +12,14 @@ def reset_singleton():
     ResourceManager._instance = None
 
 
+@pytest.fixture(autouse=True)
+def force_legacy_tests_through_agent_path():
+    """This module tests the Agent seam; routing has its own test module."""
+    from src.agent.query_router import QueryRoute
+    with patch("src.api.services.chat.route_query", return_value=QueryRoute.AGENT):
+        yield
+
+
 @pytest.fixture
 def rm():
     from src.resources import ResourceManager

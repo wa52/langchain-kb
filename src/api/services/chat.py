@@ -5,6 +5,7 @@ from typing import Iterator
 
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.agent.harness import verify_agent_run
+from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, route_query
 from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
@@ -78,7 +79,13 @@ def _build_messages(query: str, session_id: str | None) -> list[dict]:
         saved = load_history(session_id)
         for m in saved or []:
             if isinstance(m, dict):
-                messages.append({"role": m.get("role", ""), "content": m.get("content", "")})
+                message = {"role": m.get("role", ""), "content": m.get("content", "")}
+                # Routing metadata is kept in persistence, but stripped again
+                # before messages are passed to a model.
+                for key in ("route", "tools"):
+                    if key in m:
+                        message[key] = m[key]
+                messages.append(message)
             else:
                 messages.append({
                     "role": getattr(m, "type", getattr(m, "role", "")),
@@ -86,6 +93,60 @@ def _build_messages(query: str, session_id: str | None) -> list[dict]:
                 })
     messages.append({"role": "user", "content": query})
     return messages
+
+
+def _get_direct_llm():
+    """Reuse the initialized model without constructing the RAG Agent."""
+    try:
+        from src.resources import ResourceManager
+        rm = ResourceManager.get_instance()
+        if rm.is_ready() and getattr(rm, "llm", None) is not None:
+            return rm.llm
+    except Exception:
+        pass
+    from src.llm import get_llm
+    return get_llm(temperature=0)
+
+
+def _direct_messages(messages: list[dict]) -> list[dict]:
+    return [
+        {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
+        *_model_messages(messages),
+    ]
+
+
+def _model_messages(messages: list[dict]) -> list[dict]:
+    """Remove service-only metadata before invoking LangChain models/agents."""
+    return [
+        {"role": message.get("role", ""), "content": message.get("content", "")}
+        for message in messages
+    ]
+
+
+def _trim_direct_history(messages: list[dict]) -> list[dict]:
+    """Bound direct-chat context locally without paying for an LLM summary."""
+    if len(messages) < 2:
+        return messages
+    history = list(messages[:-1])
+    current = messages[-1]
+    while len(history) > 2 and sum(
+        _estimated_tokens(str(message.get("content", ""))) for message in history
+    ) > HISTORY_MAX_TOKENS:
+        history = history[2:]
+    return history + [current]
+
+
+def _direct_answer(messages: list[dict]) -> str:
+    response = _get_direct_llm().invoke(_direct_messages(messages))
+    content = getattr(response, "content", response)
+    return str(content or "").strip()
+
+
+def _stream_direct_answer(messages: list[dict]):
+    for chunk in _get_direct_llm().stream(_direct_messages(messages)):
+        content = getattr(chunk, "content", chunk)
+        if content:
+            yield str(content)
 
 
 def _estimated_tokens(text: str) -> int:
@@ -268,10 +329,21 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
     session_id = session_id or allocate_session_id()
     with session_lock(session_id):
         messages = _build_messages(query, session_id)
-        agent_messages = _maybe_compress_history(messages)
         print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
 
+        route = route_query(query, messages[:-1])
+        if route == QueryRoute.DIRECT:
+            t_direct = time.time()
+            answer = _direct_answer(_trim_direct_history(messages))
+            history = _serialize_messages(messages) + [
+                {"role": "assistant", "content": answer, "route": QueryRoute.DIRECT}
+            ]
+            new_session_id = save_history(history, session_id)
+            print(f"  [路由] direct，无 RAG 检索 ({time.time() - t_direct:.2f}s)")
+            return answer, new_session_id, round((time.time() - t0) * 1000, 2)
+
         t1 = time.time()
+        agent_messages = _model_messages(_maybe_compress_history(messages))
         agent = _bind_agent_thread(_get_agent(), session_id)
         agent_messages = _agent_messages(agent, agent_messages, session_id)
         print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
@@ -284,7 +356,9 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
         answer = "".join(answer_parts)
         print(f"  [计时] Agent 流式回答: {time.time() - t2:.2f}s")
 
-        history = _serialize_messages(messages) + [{"role": "assistant", "content": answer}]
+        history = _serialize_messages(messages) + [
+            {"role": "assistant", "content": answer, "route": QueryRoute.AGENT}
+        ]
         t3 = time.time()
         new_session_id = save_history(history, session_id)
         print(f"  [计时] 保存会话历史: {time.time() - t3:.2f}s")
@@ -323,7 +397,44 @@ def stream_chat_events(
         t0 = time.time()
 
         messages = _build_messages(query, session_id)
-        agent_messages = _maybe_compress_history(messages)
+        route = route_query(query, messages[:-1])
+        if route == QueryRoute.DIRECT:
+            answer_parts: list[str] = []
+            failed = False
+            try:
+                for chunk in _stream_direct_answer(_trim_direct_history(messages)):
+                    if stop_event.is_set():
+                        break
+                    answer_parts.append(chunk)
+                    yield {"type": "token", "data": {"text": chunk}}
+            except Exception:
+                failed = True
+                raise
+            finally:
+                answer = "".join(answer_parts)
+                interrupted = stop_event.is_set() or failed
+                history = _serialize_messages(messages) + [{
+                    "role": "assistant",
+                    "content": answer,
+                    "interrupted": interrupted,
+                    "route": QueryRoute.DIRECT,
+                }]
+                new_session_id = save_history(history, session_id)
+            elapsed_ms = (time.time() - t0) * 1000
+            yield {"type": "sources", "data": {"sources": []}}
+            yield {
+                "type": "message_end",
+                "data": {
+                    "session_id": new_session_id,
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "interrupted": interrupted,
+                    "waiting_approval": False,
+                    "route": QueryRoute.DIRECT,
+                },
+            }
+            return
+
+        agent_messages = _model_messages(_maybe_compress_history(messages))
         agent = _bind_agent_thread(_get_agent(), session_id)
         agent_messages = _agent_messages(agent, agent_messages, session_id)
 
@@ -363,6 +474,7 @@ def stream_chat_events(
                 "role": "assistant",
                 "content": answer,
                 "interrupted": interrupted,
+                "route": QueryRoute.AGENT,
             }
             if tool_names:
                 assistant_message["tools"] = list(tool_names)
@@ -397,6 +509,7 @@ def stream_chat_events(
                 "elapsed_ms": round(elapsed_ms, 2),
                 "interrupted": interrupted,
                 "waiting_approval": bool(interrupt_payload),
+                "route": QueryRoute.AGENT,
             },
         }
 

@@ -16,7 +16,7 @@ from src.vector_store.chroma_client import (
     set_vector_store,
     reset_vector_store,
 )
-from src.agent.tools import retrieve_knowledge
+from src.agent.tools import clear_retrieval_cache, retrieve_knowledge
 from src.retrieval.retriever import rebuild_bm25
 
 SAMPLE_DOCS = [
@@ -49,11 +49,13 @@ SAMPLE_DOCS = [
 
 @pytest.fixture(autouse=True)
 def fresh_store():
+    clear_retrieval_cache()
     reset_vector_store()
     embeddings = get_embedding_model()
     store = Chroma(embedding_function=embeddings, collection_name=f"test_{uuid.uuid4().hex[:8]}")
     set_vector_store(store)
     yield
+    clear_retrieval_cache()
     reset_vector_store()
 
 

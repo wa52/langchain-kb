@@ -150,6 +150,9 @@ def set_llm_config(provider: str, model: str, base_url: str, api_key: str | None
     # Drop the cached client and agent so the next request uses the new API.
     get_llm.cache_clear()
     rm = ResourceManager.get_instance()
+    # Bump the answer-cache generation so an in-flight response from the old
+    # model can never become a hit for the new model configuration.
+    rm.invalidate_answer_cache()
     with rm._agent_lock:
         if rm.agent is not None:
             try:

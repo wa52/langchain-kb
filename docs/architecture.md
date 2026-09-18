@@ -760,12 +760,19 @@ knowledge index ./docs  /  /add  /  API POST /documents/index
 knowledge chat "问题" / Web / API / MCP / 飞书
   → chat_with_rag(query, session_id)
       → 加载历史（JSON）+ 追加用户消息
+      → QueryRouter（本地确定性规则，不额外调用分类 LLM）
+          ├─ DIRECT：普通对话/通用问答/文本处理
+          │    └─ 复用 LLM 直接流式回答；不构建 Agent、不检索、不做 LLM 历史摘要
+          └─ AGENT：知识库/来源/工业视觉/外部最新资料
       → create_rag_agent() 或复用 ResourceManager 缓存
-      → agent.stream({"messages": [...]})  ← Deep Agent
+      → agent.stream({"messages": [...]})  ← Deep Agent（仅 AGENT 路径）
           ├─ 调用 retrieve_knowledge(query)
+          │    ├─ 复用 ResourceManager 的 Retriever，不重复读取/构建 RAG 文件索引
           │    ├─ 混合检索：Chroma MMR + BM25 → Ensemble(0.5, 0.5)
           │    ├─ 并发 LLM 评分过滤（全不相关 → 查询重写再检索）
           │    ├─ 并发 LLM 上下文压缩（保留事实/来源）
+          │    ├─ 相同查询复用检索/评分/压缩缓存；并发相同查询合并为一次执行
+          │    ├─ 索引或模型配置变化后递增版本并自动使缓存失效
           │    └─ 知识图谱检索结果拼接（可选）
           ├─ 调用 project_workflow / retrieve_graph / 外部 MCP 工具（按需）
           └─ LLM 生成回答（标注 [来源: 文件名]）

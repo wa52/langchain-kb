@@ -207,7 +207,18 @@ class ResourceManager:
     def invalidate_retriever_cache(self):
         self._ensemble_retriever = None
         self._cached_k = None
+        self.invalidate_answer_cache()
+
+    def invalidate_answer_cache(self):
+        """Invalidate cached grounded answers without rebuilding vector/BM25 state."""
         self._index_version += 1
+        # Cached rerank/compression results belong to the previous index.
+        # Import lazily to avoid making ResourceManager depend on Agent setup.
+        try:
+            from src.agent.tools import clear_retrieval_cache
+            clear_retrieval_cache()
+        except ImportError:
+            pass
 
     def get_index_version(self) -> int:
         return self._index_version

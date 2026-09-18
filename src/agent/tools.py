@@ -1,7 +1,9 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 
 from langchain.tools import tool
 
@@ -12,6 +14,7 @@ from src.llm import get_llm
 
 _TIMING_ENABLED = True
 _MAX_CONCURRENT_RERANK = 5
+_RETRIEVAL_LOCKS_GUARD = Lock()
 
 
 def _timing(name: str, t0: float):
@@ -89,9 +92,17 @@ def _compress(docs, query, llm):
     return "\n\n---\n\n".join(results)
 
 
-@tool
-def retrieve_knowledge(query: str, capability: str | None = None) -> str:
-    """搜索知识库中与问题最相关的内容。capability 可选能力域编号（1-7），用于限定检索范围。当你需要从已有的知识库文档中查找信息时使用此工具。"""
+def _index_version() -> int:
+    try:
+        from src.resources import ResourceManager
+        return ResourceManager.get_instance().get_index_version()
+    except Exception:
+        return 0
+
+
+@lru_cache(maxsize=128)
+def _retrieve_knowledge_cached(query: str, capability: str | None, index_version: int) -> str:
+    """Cache the expensive retrieve/rerank/compress result until the index changes."""
     _t_all = time.time()
     llm = _get_rerank_llm() if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
 
@@ -121,9 +132,46 @@ def retrieve_knowledge(query: str, capability: str | None = None) -> str:
     return result if result else "未找到相关信息。"
 
 
+@lru_cache(maxsize=256)
+def _retrieval_lock(query: str, capability: str | None, index_version: int) -> Lock:
+    """Return a per-query lock so concurrent cache misses collapse into one run."""
+    return Lock()
+
+
+def _get_retrieval_lock(query: str, capability: str | None, index_version: int) -> Lock:
+    # functools.lru_cache may execute the wrapped factory twice on concurrent
+    # misses, so serialize lock creation itself.
+    with _RETRIEVAL_LOCKS_GUARD:
+        return _retrieval_lock(query, capability, index_version)
+
+
+def clear_retrieval_cache() -> None:
+    """Drop cached evidence after indexing or configuration changes."""
+    _retrieve_knowledge_cached.cache_clear()
+
+
+@tool
+def retrieve_knowledge(query: str, capability: str | None = None) -> str:
+    """检索本地知识库，适用于需要文档事实、来源、工业视觉技术或项目经验的问题。
+
+    不要用于寒暄、通用写作、翻译或仅依赖用户已提供内容的任务。
+    query 应是精炼且可独立理解的检索问题；capability 可选能力域编号 1-7。
+    返回带 `[来源: 文件名]` 的证据片段；相同查询会复用缓存，索引更新后自动失效。
+    """
+    normalized = " ".join(query.strip().split())
+    if not normalized:
+        return "未找到相关信息。"
+    index_version = _index_version()
+    with _get_retrieval_lock(normalized, capability, index_version):
+        return _retrieve_knowledge_cached(normalized, capability, index_version)
+
+
 @tool
 def retrieve_graph(query: str) -> str:
-    """搜索知识图谱中与问题相关的实体和关系。当你想了解某个概念或实体之间的关联关系时使用此工具。"""
+    """查询知识图谱中的实体关系，仅用于概念关联、依赖链或上下游关系问题。
+
+    普通文档问答不要调用本工具，应优先使用 retrieve_knowledge。
+    """
     from src.application.knowledge import retrieve_graph as search_graph
     return search_graph(query)
 
