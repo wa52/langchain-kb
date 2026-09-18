@@ -6,6 +6,10 @@ import re
 import socket
 import subprocess
 import sys
+import threading
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Literal
 
@@ -284,6 +288,23 @@ def _stop_service(as_json: bool):
         _data_console().print(f"已停止服务进程 {pid}")
 
 
+def _open_browser_when_ready(url: str, stop_event: threading.Event, timeout: float = 180.0):
+    """Open the Web UI only after the API health endpoint returns 200."""
+    health_url = f"{url}/api/v1/health"
+    deadline = time.monotonic() + timeout
+    while not stop_event.is_set() and time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(health_url, timeout=1.0) as response:
+                if response.status == 200:
+                    import webbrowser
+
+                    webbrowser.open(f"{url}/")
+                    return
+        except (OSError, urllib.error.URLError):
+            pass
+        stop_event.wait(0.5)
+
+
 def _serve(host, port, reload, as_json, open_browser=False, stop=False):
     import uvicorn
 
@@ -330,9 +351,14 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
     try:
         _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
         _PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        browser_stop = threading.Event()
         if open_browser and not as_json:
-            import webbrowser
-            webbrowser.open(f"{url}/")
+            threading.Thread(
+                target=_open_browser_when_ready,
+                args=(url, browser_stop),
+                name="knowledge-web-browser",
+                daemon=True,
+            ).start()
         # Reload needs an import string; passing an app object silently disables
         # Uvicorn's supervisor. Backend auto-reload is enabled for this local
         # Web/API launcher, regardless of the legacy flag value.
@@ -355,6 +381,8 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
             ],
         )
     finally:
+        if "browser_stop" in locals():
+            browser_stop.set()
         try:
             if _PID_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 _PID_FILE.unlink(missing_ok=True)

@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import threading
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch, MagicMock, ANY
 
@@ -554,21 +556,21 @@ class TestWebCommand:
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
-            patch("webbrowser.open") as mock_open,
+            patch("src.cli.knowledge._open_browser_when_ready") as mock_open,
         ):
             result = runner.invoke(app, ["web"])
         assert result.exit_code == 0
-        mock_open.assert_called_once_with("http://127.0.0.1:8000/")
+        mock_open.assert_called_once()
 
     def test_web_open_calls_browser(self):
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
-            patch("webbrowser.open") as mock_open,
+            patch("src.cli.knowledge._open_browser_when_ready") as mock_open,
         ):
             result = runner.invoke(app, ["web", "--open"])
         assert result.exit_code == 0
-        mock_open.assert_called_once_with("http://127.0.0.1:8000/")
+        mock_open.assert_called_once()
 
     def test_web_open_skipped_in_json(self):
         with (
@@ -589,6 +591,35 @@ class TestWebCommand:
             result = runner.invoke(app, ["web", "--no-open"])
         assert result.exit_code == 0
         mock_open.assert_not_called()
+
+    def test_browser_opens_only_after_health_is_ready(self):
+        from src.cli.knowledge import _open_browser_when_ready
+
+        stop_event = threading.Event()
+        responses = iter([urllib.error.URLError("not ready"), 200])
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(*args, **kwargs):
+            response = next(responses)
+            if isinstance(response, Exception):
+                raise response
+            return Response()
+
+        with (
+            patch("src.cli.knowledge.urllib.request.urlopen", side_effect=fake_urlopen),
+            patch("webbrowser.open") as mock_open,
+        ):
+            _open_browser_when_ready("http://127.0.0.1:8000", stop_event, timeout=2)
+
+        mock_open.assert_called_once_with("http://127.0.0.1:8000/")
 
     def test_web_port_busy_exit_75(self):
         with (
