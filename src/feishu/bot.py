@@ -247,6 +247,7 @@ class FeishuBot:
             FEISHU_MAX_CONCURRENCY + FEISHU_QUEUE_SIZE
         )
         self._deduper = _MessageDeduper()
+        self._welcome_deduper = _MessageDeduper(ttl=3600.0)
         self._sender_locks: dict[str, threading.Lock] = {}
         self._sender_locks_guard = threading.Lock()
         handler = (
@@ -331,7 +332,7 @@ class FeishuBot:
         """Greet a user when the bot is opened in a new private chat."""
         chat = getattr(event, "event", None)
         chat_id = getattr(chat, "chat_id", None)
-        if chat_id:
+        if chat_id and not self._welcome_deduper.seen(chat_id):
             self._reply(
                 "",
                 chat_id,

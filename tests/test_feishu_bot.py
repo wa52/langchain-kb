@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from unittest.mock import Mock
 
 from src.feishu.bot import (
     _MessageDeduper,
@@ -67,6 +68,22 @@ class TestMessageDeduper:
         deduper.seen("msg_2")
         deduper.seen("msg_3")
         assert deduper.seen("msg_1") is False
+
+
+class TestFeishuWelcome:
+    def test_p2p_welcome_is_sent_once_per_chat(self):
+        from types import SimpleNamespace
+        from src.feishu.bot import FeishuBot
+
+        bot = FeishuBot.__new__(FeishuBot)
+        bot._welcome_deduper = _MessageDeduper(ttl=3600)
+        bot._reply = Mock()
+        event = SimpleNamespace(event=SimpleNamespace(chat_id="chat_1"))
+
+        bot._on_p2p_chat_entered(event)
+        bot._on_p2p_chat_entered(event)
+
+        bot._reply.assert_called_once()
 
 
 class FakeClient:
