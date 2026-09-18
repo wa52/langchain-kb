@@ -512,6 +512,72 @@ button.primary:not(:disabled):hover {
   border-bottom: 1px solid var(--grid-line);
 }
 
+.mcp-master-row,
+.mcp-server-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.mcp-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mcp-description,
+.mcp-target,
+.mcp-config-path {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.mcp-runtime-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+.mcp-runtime-status .msg-error {
+  margin-left: 8px;
+}
+
+.mcp-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.mcp-server-row {
+  padding: 11px 12px;
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.mcp-server-main {
+  min-width: 0;
+}
+
+.mcp-kind {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--grid-line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.mcp-target {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-help {
   font-size: 13px;
   margin: -2px 0 14px;

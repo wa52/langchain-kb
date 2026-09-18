@@ -65,7 +65,14 @@ class TestServe:
         with patch("uvicorn.run") as mock_run:
             result = runner.invoke(kb, ["serve", "--host", "0.0.0.0", "--port", "8080"])
         assert result.exit_code == 0
-        mock_run.assert_called_once_with(ANY, host="0.0.0.0", port=8080, log_level="info")
+        mock_run.assert_called_once_with(
+            "src.api.app:app",
+            host="0.0.0.0",
+            port=8080,
+            reload=True,
+            reload_dirs=ANY,
+            log_level="info",
+        )
 
     def test_serve_default_host_port(self):
         with patch("uvicorn.run"):
@@ -245,11 +252,14 @@ class TestDoctor:
     def test_doctor_runs_checks(self):
         with (
             patch("pathlib.Path.exists", return_value=True),
+            patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key"}),
             patch("src.vector_store.embedding.get_embedding_model"),
             patch("src.vector_store.chroma_client.get_vector_store"),
             patch("src.graph_store.service.GraphService") as mock_gs,
+            patch("src.llm.get_llm") as mock_llm,
         ):
             mock_gs.return_value.get_entity_count.return_value = 10
+            mock_llm.return_value.invoke.return_value = "ok"
             result = runner.invoke(kb, ["doctor"])
         assert result.exit_code == 0
         assert "OK" in result.output

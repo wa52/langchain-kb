@@ -31,6 +31,30 @@ def _spa_index() -> FileResponse:
     return FileResponse(WEB_DIST / "index.html")
 
 
+def _mount_http_mcp(app: FastAPI) -> None:
+    """Mount FastAPI-MCP without allowing an optional adapter to kill Web startup."""
+    app.state.mcp = None
+    app.state.mcp_error = None
+    try:
+        from fastapi_mcp import FastApiMCP
+        mounted = FastApiMCP(
+            app,
+            include_operations=[
+                "search_knowledge",
+                "answer_with_knowledge",
+                "get_index_status",
+                "system_status",
+            ],
+            name=PRODUCT_NAME,
+            description=f"Knowledge operations for the {PRODUCT_NAME_EN}",
+        )
+        mounted.mount_http()
+        app.state.mcp = mounted
+    except Exception as exc:
+        app.state.mcp_error = str(exc)
+        logger.error("HTTP MCP disabled because the adapter failed to initialize: %s", exc)
+
+
 def create_app() -> FastAPI:
     from config import ensure_data_dirs
     ensure_data_dirs()
@@ -78,19 +102,7 @@ def create_app() -> FastAPI:
             name="web-assets",
         )
 
-    from fastapi_mcp import FastApiMCP
-    app.state.mcp = FastApiMCP(
-        app,
-        include_operations=[
-            "search_knowledge",
-            "answer_with_knowledge",
-            "get_index_status",
-            "system_status",
-        ],
-        name=PRODUCT_NAME,
-        description=f"Knowledge operations for the {PRODUCT_NAME_EN}",
-    )
-    app.state.mcp.mount_http()
+    _mount_http_mcp(app)
 
     if _web_dist_available():
 

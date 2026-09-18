@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -8,6 +8,8 @@ from src.application.settings import (
     list_provider_models,
     set_graph_extraction_mode,
     set_llm_config,
+    set_mcp_enabled,
+    set_mcp_server_enabled,
 )
 
 router = APIRouter()
@@ -30,6 +32,15 @@ class LlmModelsRequest(BaseModel):
     api_key: str | None = None
 
 
+class McpEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class McpServerEnabledRequest(BaseModel):
+    name: str
+    enabled: bool
+
+
 @router.get(
     "/settings",
     response_model=SettingsResponse,
@@ -40,8 +51,10 @@ class LlmModelsRequest(BaseModel):
         "不返回任何 API Key、Token 或密码明文。"
     ),
 )
-def settings():
+def settings(request: Request):
     view = get_settings_view()
+    view["mcp_http_available"] = request.app.state.mcp is not None
+    view["mcp_http_error"] = request.app.state.mcp_error
     return JSONResponse(
         content=view,
         headers={"Cache-Control": "no-store"},
@@ -92,3 +105,30 @@ def llm_models(req: LlmModelsRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(content={"models": models}, headers={"Cache-Control": "no-store"})
+
+
+@router.post(
+    "/settings/mcp",
+    operation_id="set_mcp_enabled",
+    summary="启用或停用外部 MCP 工具",
+    description="保存全局 MCP 开关并丢弃当前 Agent；下一次 Agent 请求按新配置重建。",
+)
+def mcp_enabled(req: McpEnabledRequest):
+    return JSONResponse(
+        content=set_mcp_enabled(req.enabled),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post(
+    "/settings/mcp/server",
+    operation_id="set_mcp_server_enabled",
+    summary="启用或停用单个 MCP Server",
+    description="原子更新 mcp.json 中已有 Server 的 enabled 字段，并热重载 Agent。",
+)
+def mcp_server_enabled(req: McpServerEnabledRequest):
+    try:
+        result = set_mcp_server_enabled(req.name, req.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(content=result, headers={"Cache-Control": "no-store"})

@@ -100,6 +100,7 @@ LAN_TOKEN = os.getenv("LAN_TOKEN", "")
 MCP_CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "") or str(
     KNOWLEDGE_HOME / "mcp.json"
 )
+MCP_ENABLED = os.getenv("MCP_ENABLED", "true").lower() == "true"
 
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://huggingface.co")
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT

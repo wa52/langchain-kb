@@ -17,3 +17,11 @@ def set_graph_extraction_mode(enabled: bool):
 
 def set_llm_config(provider: str, model: str, base_url: str, api_key: str | None = None):
     return _module().set_llm_config(provider, model, base_url, api_key)
+
+
+def set_mcp_enabled(enabled: bool):
+    return _module().set_mcp_enabled(enabled)
+
+
+def set_mcp_server_enabled(name: str, enabled: bool):
+    return _module().set_mcp_server_enabled(name, enabled)

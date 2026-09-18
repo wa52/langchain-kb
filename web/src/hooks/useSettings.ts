@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getSettings, setGraphExtractionMode, setLlmConfig } from "../api/client";
+import {
+  getSettings,
+  setGraphExtractionMode,
+  setLlmConfig,
+  setMcpEnabled as saveMcpEnabled,
+  setMcpServerEnabled as saveMcpServerEnabled,
+} from "../api/client";
 import type { AppSettings } from "../types/api";
 
 export interface UseSettingsResult {
@@ -11,6 +17,8 @@ export interface UseSettingsResult {
   reload: () => void;
   setGraphMode: (enabled: boolean) => Promise<boolean>;
   setLlm: (input: { provider: string; model: string; base_url: string; api_key?: string }) => Promise<boolean>;
+  setMcpEnabled: (enabled: boolean) => Promise<boolean>;
+  setMcpServerEnabled: (name: string, enabled: boolean) => Promise<boolean>;
 }
 
 export function useSettings(): UseSettingsResult {
@@ -71,5 +79,45 @@ export function useSettings(): UseSettingsResult {
     }
   }, [reload]);
 
-  return { settings, error, actionError, saving, reload, setGraphMode, setLlm };
+  const setMcpEnabled = useCallback(async (enabled: boolean) => {
+    setSaving(true);
+    setActionError(null);
+    try {
+      await saveMcpEnabled(enabled);
+      reload();
+      return true;
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [reload]);
+
+  const setMcpServerEnabled = useCallback(async (name: string, enabled: boolean) => {
+    setSaving(true);
+    setActionError(null);
+    try {
+      await saveMcpServerEnabled(name, enabled);
+      reload();
+      return true;
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [reload]);
+
+  return {
+    settings,
+    error,
+    actionError,
+    saving,
+    reload,
+    setGraphMode,
+    setLlm,
+    setMcpEnabled,
+    setMcpServerEnabled,
+  };
 }

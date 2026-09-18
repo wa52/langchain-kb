@@ -147,8 +147,7 @@ class TestChatToolCall:
         sid = session["session_id"]
 
         with (
-            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
-            patch("src.api.services.chat.stream_rag_response", return_value=["Hello ", "world"]),
+            patch("src.api.services.chat._direct_answer", return_value="Hello world"),
             patch("src.api.services.chat.save_history", return_value="sess_123"),
         ):
             headers = {"mcp-session-id": sid, "Accept": "application/json"}
@@ -187,7 +186,8 @@ class TestOpenAPISchema:
                      "get_index_status", "system_status", "knowledge_stats",
                      "run_diagnostics", "get_diagnostics_status", "repair_diagnostics",
                      "list_sessions", "get_session", "delete_session",
-                     "get_settings", "set_graph_extraction_mode",
+                     "get_settings", "set_graph_extraction_mode", "set_llm_config",
+                     "list_llm_models", "set_mcp_enabled", "set_mcp_server_enabled",
                      "get_sync_status", "add_sync_dir", "remove_sync_dir", "run_sync",
                      "list_files", "remove_file"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"

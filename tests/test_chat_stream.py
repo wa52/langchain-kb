@@ -305,7 +305,8 @@ class TestChatStreamErrors:
 
         assert resp.status_code == 200
         assert saved[-1][-1] == {
-            "role": "assistant", "content": "partial", "interrupted": True
+            "role": "assistant", "content": "partial", "interrupted": True,
+            "route": "agent",
         }
 
     def test_invalid_session_id_is_rejected(self, client):

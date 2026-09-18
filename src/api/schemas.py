@@ -217,6 +217,13 @@ class KnowledgeStatsResponse(BaseModel):
     index_task: IndexTaskSummary | None = None
 
 
+class McpServerSummary(BaseModel):
+    name: str
+    type: str
+    enabled: bool
+    target: str
+
+
 class SettingsResponse(BaseModel):
     knowledge_home: str
     data_dir: str
@@ -247,4 +254,7 @@ class SettingsResponse(BaseModel):
     max_context_tokens: int
     mcp_config_path: str
     mcp_enabled: bool
+    mcp_servers: list[McpServerSummary]
+    mcp_http_available: bool
+    mcp_http_error: str | None
     lan_protection: bool

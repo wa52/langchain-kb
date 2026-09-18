@@ -812,6 +812,7 @@ project_desc（一句话需求）
 | `RERANK_LLM` | `deepseek` | 评分/压缩用模型；`local` 切 Ollama |
 | `LOCAL_LLM_BASE` / `LOCAL_LLM_MODEL` | 11434 / qwen3.5:4b | Ollama 端点 |
 | `MCP_CONFIG_PATH` | `<HOME>/mcp.json` | 外部 MCP 配置 |
+| `MCP_ENABLED` | `true` | 外部 MCP 总开关；Web 设置页可热切换 |
 | `ENABLE_*` | 全开 | grading/rewrite/hybrid_search/context_compression/graph 开关 |
 | `ENABLE_GRAPH_LLM_EXTRACTION` | false | 图谱抽取模式（jieba/LLM） |
 | `MAX_CONTEXT_TOKENS` | 1000 | 压缩后上下文上限 |

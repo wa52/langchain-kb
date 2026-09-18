@@ -4,8 +4,10 @@ Exposes configuration state to the web client without ever leaking
 secrets: API keys, tokens and passwords are reduced to a yes/no flag.
 """
 
+import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -109,10 +111,97 @@ def get_settings_view() -> dict:
         "max_context_tokens": config.MAX_CONTEXT_TOKENS,
         # MCP
         "mcp_config_path": config.MCP_CONFIG_PATH,
-        "mcp_enabled": Path(config.MCP_CONFIG_PATH).is_file(),
+        "mcp_enabled": config.MCP_ENABLED,
+        "mcp_servers": list_mcp_servers(),
         # Access protection (LAN token; loopback is always exempt)
         "lan_protection": bool((config.LAN_TOKEN or "").strip()),
     }
+
+
+def list_mcp_servers() -> list[dict]:
+    """Return a secret-free summary of configured external MCP servers."""
+    from src.agent.mcp_client import parse_mcp_config
+
+    servers = parse_mcp_config(config.MCP_CONFIG_PATH)
+    result = []
+    for name, value in sorted(servers.items()):
+        if not isinstance(value, dict):
+            continue
+        server_type = str(value.get("type") or "local").lower()
+        if server_type == "remote":
+            target = _mask_base_url(str(value.get("url") or ""))
+        else:
+            command = value.get("command") or []
+            target = str(command[0]) if isinstance(command, list) and command else ""
+        result.append({
+            "name": str(name),
+            "type": server_type,
+            "enabled": bool(value.get("enabled", True)),
+            "target": target,
+        })
+    return result
+
+
+def _drop_agent_for_mcp_reload() -> None:
+    from src.resources import ResourceManager
+
+    manager = ResourceManager.get_instance()
+    with manager._agent_lock:
+        if manager.agent is not None:
+            try:
+                from src.agent.rag_agent import close_agent_checkpoint
+                close_agent_checkpoint(manager.agent)
+            except Exception:
+                pass
+        manager.agent = None
+
+
+def set_mcp_enabled(enabled: bool) -> dict:
+    """Persist the global external-MCP switch and reload the Agent lazily."""
+    from dotenv import set_key
+
+    value = "true" if enabled else "false"
+    dotenv_path = Path(config.KNOWLEDGE_HOME) / ".env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.touch(exist_ok=True)
+    set_key(str(dotenv_path), "MCP_ENABLED", value)
+    os.environ["MCP_ENABLED"] = value
+    config.MCP_ENABLED = enabled
+    _drop_agent_for_mcp_reload()
+    return {"ok": True, "mcp_enabled": enabled, "servers": list_mcp_servers()}
+
+
+def set_mcp_server_enabled(name: str, enabled: bool) -> dict:
+    """Toggle one existing server in mcp.json and reload the Agent lazily."""
+    path = Path(config.MCP_CONFIG_PATH)
+    if not path.is_file():
+        raise ValueError("MCP 配置文件不存在")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("MCP 配置文件无法读取或不是有效 JSON") from exc
+    if not isinstance(document, dict):
+        raise ValueError("MCP 配置必须是 JSON 对象")
+    servers = document.get("mcp", document)
+    if not isinstance(servers, dict) or name not in servers or not isinstance(servers[name], dict):
+        raise ValueError(f"MCP Server 不存在：{name}")
+    servers[name]["enabled"] = enabled
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+    _drop_agent_for_mcp_reload()
+    return {"ok": True, "name": name, "enabled": enabled, "servers": list_mcp_servers()}
 
 
 def set_llm_config(provider: str, model: str, base_url: str, api_key: str | None) -> dict:

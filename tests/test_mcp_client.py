@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -92,8 +94,8 @@ class TestCommandEnvironment:
 
 
 class TestLoadTools:
-    def test_load_returns_tools(self, sample_config):
-        from unittest.mock import patch
+    def test_load_returns_tools(self, sample_config, monkeypatch):
+        from unittest.mock import MagicMock
         from src.agent.mcp_client import load_mcp_tools
 
         fake_tools = TestServerDispatch()._fake_server_tools()
@@ -101,21 +103,23 @@ class TestLoadTools:
         async def fake_get_tools(server_name=None):
             return fake_tools
 
-        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
-            instance = MockClient.return_value
-            instance.get_tools = fake_get_tools
-            tools = load_mcp_tools(sample_config)
+        mock_client = MagicMock()
+        mock_client.return_value.get_tools = fake_get_tools
+        module = types.ModuleType("langchain_mcp_adapters.client")
+        module.MultiServerMCPClient = mock_client
+        monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", module)
+        tools = load_mcp_tools(sample_config)
         # 2 个 enabled server，每个返回两个 operation tool。
         assert len(tools) == 4
         assert {tool.name for tool in tools} == {"list_directory", "read_file"}
 
-    def test_load_failure_returns_empty(self, sample_config):
-        from unittest.mock import patch
+    def test_load_failure_returns_empty(self, sample_config, monkeypatch):
         from src.agent.mcp_client import load_mcp_tools
 
-        with patch("langchain_mcp_adapters.client.MultiServerMCPClient",
-                   side_effect=RuntimeError("boom")):
-            tools = load_mcp_tools(sample_config)
+        module = types.ModuleType("langchain_mcp_adapters.client")
+        module.MultiServerMCPClient = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+        monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", module)
+        tools = load_mcp_tools(sample_config)
         assert tools == []
 
 
@@ -283,9 +287,9 @@ class TestServerDispatch:
 
 
 class TestLoadToolsConverged:
-    def test_load_returns_one_tool_per_server(self, sample_config):
+    def test_load_returns_one_tool_per_server(self, sample_config, monkeypatch):
         """dispatch 模式保留每个 server 一个调度工具的兼容行为。"""
-        from unittest.mock import patch
+        from unittest.mock import MagicMock
         from src.agent.mcp_client import load_mcp_tools
 
         fake_tools = TestServerDispatch()._fake_server_tools()
@@ -293,10 +297,12 @@ class TestLoadToolsConverged:
         async def fake_get_tools(server_name=None):
             return fake_tools
 
-        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
-            instance = MockClient.return_value
-            instance.get_tools = fake_get_tools
-            tools = load_mcp_tools(sample_config, tool_mode="dispatch")
+        mock_client = MagicMock()
+        mock_client.return_value.get_tools = fake_get_tools
+        module = types.ModuleType("langchain_mcp_adapters.client")
+        module.MultiServerMCPClient = mock_client
+        monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", module)
+        tools = load_mcp_tools(sample_config, tool_mode="dispatch")
 
         # sample_config 有 2 个 enabled server → 2 个收敛工具
         assert len(tools) == 2
@@ -304,8 +310,8 @@ class TestLoadToolsConverged:
         assert "filesystem" in names
         assert "remote_svc" in names
 
-    def test_one_server_failure_does_not_hide_other_servers(self, sample_config):
-        from unittest.mock import patch
+    def test_one_server_failure_does_not_hide_other_servers(self, sample_config, monkeypatch):
+        from unittest.mock import MagicMock
         from src.agent.mcp_client import load_mcp_tools
 
         fake_tools = TestServerDispatch()._fake_server_tools()
@@ -315,10 +321,12 @@ class TestLoadToolsConverged:
                 raise RuntimeError("filesystem unavailable")
             return fake_tools
 
-        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient:
-            instance = MockClient.return_value
-            instance.get_tools = fake_get_tools
-            tools = load_mcp_tools(sample_config)
+        mock_client = MagicMock()
+        mock_client.return_value.get_tools = fake_get_tools
+        module = types.ModuleType("langchain_mcp_adapters.client")
+        module.MultiServerMCPClient = mock_client
+        monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", module)
+        tools = load_mcp_tools(sample_config)
 
         assert len(tools) == 2
 

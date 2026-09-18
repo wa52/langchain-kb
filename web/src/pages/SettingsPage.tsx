@@ -47,7 +47,16 @@ const PROVIDERS: Record<string, { label: string; baseUrl: string; models: string
 };
 
 export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => void }) {
-  const { settings, error, actionError, saving, setGraphMode, setLlm } = useSettings();
+  const {
+    settings,
+    error,
+    actionError,
+    saving,
+    setGraphMode,
+    setLlm,
+    setMcpEnabled,
+    setMcpServerEnabled,
+  } = useSettings();
   const [provider, setProvider] = useState("deepseek");
   const [model, setModel] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -269,8 +278,62 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
         <Row k="最大上下文 Token" v={s.max_context_tokens} />
       </Section>
 
+      <section className="card settings-section">
+        <h3>MCP</h3>
+        <div className="mcp-master-row">
+          <div>
+            <div className="mcp-title">外部 MCP 工具</div>
+            <div className="muted mcp-description">
+              关闭后 Agent 不加载下方 Server；切换会立即丢弃 Agent 缓存，下次提问自动重建。
+            </div>
+          </div>
+          <button
+            type="button"
+            className="switch"
+            role="switch"
+            aria-checked={s.mcp_enabled}
+            aria-label="启用外部 MCP"
+            disabled={saving}
+            onClick={() => void setMcpEnabled(!s.mcp_enabled)}
+          >
+            <span className="knob" />
+          </button>
+        </div>
+        <div className="mcp-runtime-status">
+          <span className={`dot ${s.mcp_http_available ? "ready" : "error"}`} />
+          HTTP MCP：{s.mcp_http_available ? "可用" : "不可用"}
+          {s.mcp_http_error ? <span className="msg-error">{s.mcp_http_error}</span> : null}
+        </div>
+        <div className="mcp-list" aria-label="MCP Server 列表">
+          {s.mcp_servers.length ? s.mcp_servers.map((server) => (
+            <div className="mcp-server-row" key={server.name}>
+              <div className="mcp-server-main">
+                <div className="mcp-title">
+                  {server.name}
+                  <span className="mcp-kind">{server.type}</span>
+                </div>
+                <div className="muted mono mcp-target">{server.target || "未配置目标"}</div>
+              </div>
+              <button
+                type="button"
+                className="switch"
+                role="switch"
+                aria-checked={server.enabled}
+                aria-label={`${server.enabled ? "停用" : "启用"} ${server.name}`}
+                disabled={saving || !s.mcp_enabled}
+                onClick={() => void setMcpServerEnabled(server.name, !server.enabled)}
+              >
+                <span className="knob" />
+              </button>
+            </div>
+          )) : <p className="muted">尚未配置 MCP Server。</p>}
+        </div>
+        <p className="muted mcp-config-path">配置文件：<span className="mono">{s.mcp_config_path}</span></p>
+        {actionError ? <p className="msg-error" role="alert">{actionError}</p> : null}
+      </section>
+
       <Section
-        title="扩展与安全"
+        title="安全"
         footer={
           onOpenTokenDialog && s.lan_protection ? (
             <button
@@ -284,8 +347,6 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
           ) : null
         }
       >
-        <Row k="MCP 配置" v={s.mcp_config_path} />
-        <Row k="MCP 已启用" v={s.mcp_enabled} />
         <Row k="局域网访问保护" v={s.lan_protection} />
       </Section>
     </div>

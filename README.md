@@ -55,6 +55,8 @@ data/projects/PCB缺陷检测/
 ### 🔌 外部 MCP 集成
 Agent 可调用外部 MCP server 工具。默认情况下，每个 MCP operation 都作为独立工具暴露：
 
+Web“设置 → MCP”可热切换全部外部 MCP，并逐个启用/停用 `mcp.json` 中的 Server；切换后下一次 Agent 请求自动按新配置重建。
+
 ```
 retrieve_knowledge          ← 本地知识检索
 project_workflow            ← 本地项目引导

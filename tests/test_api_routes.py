@@ -105,8 +105,7 @@ class TestSearch:
 class TestChat:
     def test_chat_returns_answer(self, client):
         with (
-            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()) as mock_agent,
-            patch("src.api.services.chat.stream_rag_response", return_value=["Hello ", "world"]),
+            patch("src.api.services.chat._direct_answer", return_value="Hello world"),
             patch("src.api.services.chat.save_history", return_value="sess_123"),
         ):
             resp = client.post("/api/v1/chat", json={"query": "hi"})
@@ -119,8 +118,7 @@ class TestChat:
 
     def test_chat_with_session_id(self, client):
         with (
-            patch("src.api.services.chat.create_rag_agent", return_value=MagicMock()),
-            patch("src.api.services.chat.stream_rag_response", return_value=["OK"]),
+            patch("src.api.services.chat._direct_answer", return_value="OK"),
             patch("src.api.services.chat.load_history", return_value=[{"role": "user", "content": "prev"}]),
             patch("src.api.services.chat.save_history", return_value="sess_456"),
         ):

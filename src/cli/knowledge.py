@@ -23,6 +23,7 @@ from rich.table import Table
 from config import PRODUCT_NAME, PROJECT_ROOT
 
 _PID_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web.pid"
+_WORKER_PID_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web-worker.pid"
 
 app = typer.Typer(
     add_completion=False,
@@ -259,6 +260,41 @@ def cli():
     run_console()
 
 
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        process_query_limited_information = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            process_query_limited_information, False, pid
+        )
+        if not handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _stop_windows_pid(pid: int, *, tree: bool) -> None:
+    command = ["taskkill", "/PID", str(pid)]
+    if tree:
+        command.append("/T")
+    command.append("/F")
+    killed = subprocess.run(command, check=False, capture_output=True)
+    if killed.returncode != 0 and _pid_is_running(pid):
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", f"Stop-Process -Id {pid} -Force"],
+            check=False,
+            capture_output=True,
+        )
+
+
 def _stop_service(as_json: bool):
     if not _PID_FILE.exists():
         _fail(as_json, EXIT_NOT_FOUND, "没有找到当前项目的服务 PID 文件", "NOT_RUNNING", "not_running")
@@ -267,21 +303,41 @@ def _stop_service(as_json: bool):
     except (OSError, ValueError):
         _PID_FILE.unlink(missing_ok=True)
         _fail(as_json, EXIT_NOT_FOUND, "服务 PID 文件无效，已清理", "NOT_RUNNING", "not_running")
+    try:
+        worker_pid = int(_WORKER_PID_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        worker_pid = None
     if os.name == "nt":
-        # Stop the reloader parent first; taskkill alone can race with
-        # WatchFiles spawning the application child on Windows.
-        subprocess.run(
-            ["powershell.exe", "-NoProfile", "-Command", f"Stop-Process -Id {pid} -Force"],
-            check=False,
-            capture_output=True,
-        )
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
+        # Kill the Uvicorn reloader and its application child atomically.
+        # Killing the parent first loses the relationship Windows needs for
+        # /T and leaves the child listening on the port.
+        _stop_windows_pid(pid, tree=True)
+        if worker_pid and worker_pid != pid:
+            _stop_windows_pid(worker_pid, tree=False)
     else:
         try:
             os.kill(pid, 15)
         except ProcessLookupError:
             pass
+
+    deadline = time.monotonic() + 3.0
+    tracked_pids = {pid, *([worker_pid] if worker_pid else [])}
+    while time.monotonic() < deadline and any(_pid_is_running(item) for item in tracked_pids):
+        time.sleep(0.1)
+    survivors = sorted(item for item in tracked_pids if _pid_is_running(item))
+    if survivors:
+        _fail(
+            as_json,
+            EXIT_ERROR,
+            f"服务进程未能完全停止：{', '.join(map(str, survivors))}。请使用同一用户权限重试。",
+            "STOP_FAILED",
+            "stop_failed",
+            True,
+            ("请在启动服务的同一个终端权限下再次运行 knowledge web --stop",),
+        )
+
     _PID_FILE.unlink(missing_ok=True)
+    _WORKER_PID_FILE.unlink(missing_ok=True)
     if as_json:
         _emit_json({"status": "ok", "data": {"stopped": True, "pid": pid}})
     else:
@@ -351,6 +407,7 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
     try:
         _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
         _PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        os.environ["KNOWLEDGE_WORKER_PID_FILE"] = str(_WORKER_PID_FILE)
         browser_stop = threading.Event()
         if open_browser and not as_json:
             threading.Thread(

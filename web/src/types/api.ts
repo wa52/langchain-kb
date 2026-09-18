@@ -133,6 +133,13 @@ export interface DiagnosticsTaskStatus {
   error?: string | null;
 }
 
+export interface McpServerSummary {
+  name: string;
+  type: string;
+  enabled: boolean;
+  target: string;
+}
+
 export interface AppSettings {
   knowledge_home: string;
   data_dir: string;
@@ -163,5 +170,8 @@ export interface AppSettings {
   max_context_tokens: number;
   mcp_config_path: string;
   mcp_enabled: boolean;
+  mcp_servers: McpServerSummary[];
+  mcp_http_available: boolean;
+  mcp_http_error: string | null;
   lan_protection: boolean;
 }

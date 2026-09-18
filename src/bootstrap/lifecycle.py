@@ -7,7 +7,9 @@ from becoming coupled to FastAPI or any future transport.
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import config
 from config import PRODUCT_NAME_EN
@@ -52,6 +54,7 @@ async def app_lifespan(app):
         )
     else:
         runtime.start_background_task(sync_service.sync_loop(), name="scheduled-experience-sync")
+    worker_pid_file = _register_worker_pid()
     try:
         yield
     finally:
@@ -59,6 +62,32 @@ async def app_lifespan(app):
         logger.info("  Server shutting down - releasing resources")
         logger.info("=" * 50)
         await harness.stop()
+        _remove_worker_pid(worker_pid_file)
+
+
+def _register_worker_pid() -> Path | None:
+    """Register the actual ASGI worker so Windows stop can kill it explicitly."""
+    raw_path = os.getenv("KNOWLEDGE_WORKER_PID_FILE", "").strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(os.getpid()), encoding="ascii")
+        return path
+    except OSError as exc:
+        logger.warning("Unable to write worker PID file %s: %s", path, exc)
+        return None
+
+
+def _remove_worker_pid(path: Path | None) -> None:
+    if path is None:
+        return
+    try:
+        if path.read_text(encoding="ascii").strip() == str(os.getpid()):
+            path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _log_runtime_state(runtime: ResourceManager) -> None:

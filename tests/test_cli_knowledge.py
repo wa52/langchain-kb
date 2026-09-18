@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, ANY
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from src.cli.knowledge import app
@@ -539,6 +540,53 @@ class TestHelpDiscovery:
 
 
 class TestWebCommand:
+
+    def test_windows_stop_kills_reloader_tree_before_parent_fallback(self, tmp_path):
+        from types import SimpleNamespace
+        from src.cli.knowledge import _stop_service
+
+        pid_file = tmp_path / "knowledge-web.pid"
+        worker_pid_file = tmp_path / "knowledge-web-worker.pid"
+        pid_file.write_text("4321", encoding="utf-8")
+        worker_pid_file.write_text("4322", encoding="utf-8")
+        with (
+            patch("src.cli.knowledge._PID_FILE", pid_file),
+            patch("src.cli.knowledge._WORKER_PID_FILE", worker_pid_file),
+            patch("src.cli.knowledge.os.name", "nt"),
+            patch("src.cli.knowledge._pid_is_running", return_value=False),
+            patch(
+                "src.cli.knowledge.subprocess.run",
+                return_value=SimpleNamespace(returncode=0),
+            ) as run,
+        ):
+            _stop_service(False)
+
+        assert run.call_count == 2
+        assert run.call_args_list[0].args[0] == ["taskkill", "/PID", "4321", "/T", "/F"]
+        assert run.call_args_list[1].args[0] == ["taskkill", "/PID", "4322", "/F"]
+        assert not pid_file.exists()
+        assert not worker_pid_file.exists()
+
+    def test_windows_stop_reports_surviving_worker_and_keeps_pid_files(self, tmp_path):
+        from src.cli.knowledge import _stop_service
+
+        pid_file = tmp_path / "knowledge-web.pid"
+        worker_pid_file = tmp_path / "knowledge-web-worker.pid"
+        pid_file.write_text("4321", encoding="utf-8")
+        worker_pid_file.write_text("4322", encoding="utf-8")
+        with (
+            patch("src.cli.knowledge._PID_FILE", pid_file),
+            patch("src.cli.knowledge._WORKER_PID_FILE", worker_pid_file),
+            patch("src.cli.knowledge.os.name", "nt"),
+            patch("src.cli.knowledge._stop_windows_pid"),
+            patch("src.cli.knowledge._pid_is_running", side_effect=lambda pid: pid == 4322),
+            patch("src.cli.knowledge.time.monotonic", side_effect=[0.0, 4.0]),
+        ):
+            with pytest.raises(typer.Exit):
+                _stop_service(False)
+
+        assert pid_file.exists()
+        assert worker_pid_file.exists()
 
     def test_web_json_output(self):
         with (

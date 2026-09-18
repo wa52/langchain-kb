@@ -373,6 +373,33 @@ export async function listLlmModels(input: {
   return data.models ?? [];
 }
 
+export interface McpSettingsResult {
+  ok: boolean;
+  mcp_enabled?: boolean;
+  name?: string;
+  enabled?: boolean;
+}
+
+export async function setMcpEnabled(enabled: boolean): Promise<McpSettingsResult> {
+  const resp = await apiFetch("/api/v1/settings/mcp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `MCP 切换失败 (${resp.status})`));
+  return (await resp.json()) as McpSettingsResult;
+}
+
+export async function setMcpServerEnabled(name: string, enabled: boolean): Promise<McpSettingsResult> {
+  const resp = await apiFetch("/api/v1/settings/mcp/server", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, enabled }),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `MCP Server 切换失败 (${resp.status})`));
+  return (await resp.json()) as McpSettingsResult;
+}
+
 export interface SyncStatus {
   dirs: string[];
   enabled: boolean;

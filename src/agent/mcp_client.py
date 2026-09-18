@@ -214,6 +214,10 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | 
     tools from other enabled servers. Missing config and total load failures
     still degrade to an empty list so local tools remain available.
     """
+    from config import MCP_ENABLED
+    if not MCP_ENABLED:
+        return []
+
     connections = _to_connections(config_path)
     if not connections:
         return []
