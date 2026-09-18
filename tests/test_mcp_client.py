@@ -65,6 +65,32 @@ class TestConnections:
         assert parse_mcp_config(str(tmp_path / "none.json")) == {}
 
 
+class TestCommandEnvironment:
+    def test_connections_expand_exact_environment_variable_references(self, tmp_path, monkeypatch):
+        from src.agent.mcp_client import _to_connections
+
+        config = tmp_path / "mcp.json"
+        config.write_text(json.dumps({"mcp": {"feishu": {
+            "type": "local",
+            "command": ["npx", "mcp", "-a", "${FEISHU_APP_ID}"],
+        }}}), encoding="utf-8")
+        monkeypatch.setenv("FEISHU_APP_ID", "cli_test")
+
+        assert _to_connections(str(config))["feishu"]["args"] == ["mcp", "-a", "cli_test"]
+
+    def test_connections_skip_missing_command_environment_variable(self, tmp_path, monkeypatch):
+        from src.agent.mcp_client import _to_connections
+
+        config = tmp_path / "mcp.json"
+        config.write_text(json.dumps({"mcp": {"feishu": {
+            "type": "local",
+            "command": ["npx", "mcp", "-a", "${FEISHU_APP_ID}"],
+        }}}), encoding="utf-8")
+        monkeypatch.delenv("FEISHU_APP_ID", raising=False)
+
+        assert _to_connections(str(config)) == {}
+
+
 class TestLoadTools:
     def test_load_returns_tools(self, sample_config):
         from unittest.mock import patch

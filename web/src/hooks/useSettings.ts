@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getSettings, setGraphExtractionMode } from "../api/client";
+import { getSettings, setGraphExtractionMode, setLlmConfig } from "../api/client";
 import type { AppSettings } from "../types/api";
 
 export interface UseSettingsResult {
@@ -10,6 +10,7 @@ export interface UseSettingsResult {
   saving: boolean;
   reload: () => void;
   setGraphMode: (enabled: boolean) => Promise<boolean>;
+  setLlm: (input: { provider: string; model: string; base_url: string; api_key?: string }) => Promise<boolean>;
 }
 
 export function useSettings(): UseSettingsResult {
@@ -55,5 +56,20 @@ export function useSettings(): UseSettingsResult {
     [],
   );
 
-  return { settings, error, actionError, saving, reload, setGraphMode };
+  const setLlm = useCallback(async (input: { provider: string; model: string; base_url: string; api_key?: string }) => {
+    setSaving(true);
+    setActionError(null);
+    try {
+      await setLlmConfig(input);
+      reload();
+      return true;
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [reload]);
+
+  return { settings, error, actionError, saving, reload, setGraphMode, setLlm };
 }

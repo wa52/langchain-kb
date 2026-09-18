@@ -11,7 +11,7 @@ from src.api.schemas import (
     TaskStatusResponse,
     UploadTasksResponse,
 )
-from src.api.services.indexing import get_task_manager, run_index_task
+from src.application.indexing import get_task_manager, run_index_task
 
 router = APIRouter()
 

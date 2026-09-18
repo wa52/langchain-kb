@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from src.api.dependencies import RmDep
 from src.api.schemas import SearchRequest, SearchResponse, SearchResultItem
-from src.api.services.search import search_documents
+from src.application.search import search_documents
 
 router = APIRouter()
 

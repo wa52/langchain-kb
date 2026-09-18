@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import threading
+import time
 
 import httpx
 
@@ -24,6 +25,7 @@ log = logging.getLogger("feishu-bot")
 
 KB_API_BASE = os.getenv("KB_API_BASE", "http://127.0.0.1:8000")
 CHAT_URL = f"{KB_API_BASE}/api/v1/chat"
+CHAT_STREAM_URL = f"{KB_API_BASE}/api/v1/chat/stream"
 RESET_WORDS = {"/new", "/新会话"}
 
 
@@ -57,6 +59,31 @@ def ask_knowledge_base(query: str, session_id: str | None) -> tuple[str, str | N
         resp.raise_for_status()
         data = resp.json()
     return str(data.get("answer", "")), data.get("conversation_id")
+
+
+def stream_knowledge_base(query: str, session_id: str | None):
+    """Yield ``(event_type, data)`` pairs from the knowledge-base SSE API."""
+    payload: dict = {"query": query}
+    if session_id:
+        payload["session_id"] = session_id
+    with httpx.Client(timeout=120.0) as client:
+        with client.stream("POST", CHAT_STREAM_URL, json=payload) as response:
+            response.raise_for_status()
+            event_type = None
+            event_data: list[str] = []
+            for line in response.iter_lines():
+                if line.startswith("event:"):
+                    event_type = line[6:].strip()
+                elif line.startswith("data:"):
+                    event_data.append(line[5:].lstrip())
+                elif not line and event_type:
+                    try:
+                        data = json.loads("".join(event_data)) if event_data else {}
+                    except json.JSONDecodeError:
+                        data = {}
+                    yield event_type, data
+                    event_type = None
+                    event_data = []
 
 
 def process_incoming_message(
@@ -96,6 +123,35 @@ def process_incoming_message(
     reply_fn(message_id, chat_id, chat_type, answer)
 
 
+def process_incoming_stream(
+    store: SessionStore,
+    stream_reply_fn,
+    message_id: str,
+    chat_id: str,
+    chat_type: str,
+    text: str | None,
+    sender_key: str,
+) -> None:
+    """Handle a message with incremental Feishu message updates."""
+    if not text:
+        stream_reply_fn(message_id, chat_id, chat_type, "目前仅支持文本消息，请直接发送文字提问。", None)
+        return
+    if text in RESET_WORDS:
+        store.clear(sender_key)
+        stream_reply_fn(message_id, chat_id, chat_type, "已开启新会话，你可以开始提问了。", None)
+        return
+    try:
+        new_session_id = stream_reply_fn(
+            message_id, chat_id, chat_type, text, store.get(sender_key)
+        )
+    except Exception:
+        log.exception("streaming knowledge base call failed")
+        stream_reply_fn(message_id, chat_id, chat_type, "知识库暂时不可用，请稍后再试。", None)
+        return
+    if new_session_id:
+        store.set(sender_key, new_session_id)
+
+
 class FeishuBot:
     def __init__(self, app_id: str, app_secret: str, store: SessionStore | None = None):
         import lark_oapi as lark
@@ -105,6 +161,9 @@ class FeishuBot:
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(self._on_message)
+            .register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(
+                self._on_p2p_chat_entered
+            )
             .build()
         )
         self.ws_client = lark.ws.Client(
@@ -128,10 +187,10 @@ class FeishuBot:
             _sender_key(event),
         )
         threading.Thread(
-            target=process_incoming_message,
+            target=process_incoming_stream,
             args=(
                 self.store,
-                self._reply,
+                self._stream_reply,
                 message.message_id,
                 message.chat_id,
                 message.chat_type,
@@ -140,6 +199,18 @@ class FeishuBot:
             ),
             daemon=True,
         ).start()
+
+    def _on_p2p_chat_entered(self, event) -> None:
+        """Greet a user when the bot is opened in a new private chat."""
+        chat = getattr(event, "event", None)
+        chat_id = getattr(chat, "chat_id", None)
+        if chat_id:
+            self._reply(
+                "",
+                chat_id,
+                "p2p",
+                "你好，我是知识库助手。请直接发送问题，我会结合知识库回答；发送 /new 可开启新会话。",
+            )
 
     def _reply(self, message_id: str, chat_id: str, chat_type: str, text: str) -> None:
         import lark_oapi as lark
@@ -188,8 +259,71 @@ class FeishuBot:
                 )
             else:
                 log.info("reply sent message_id=%s", message_id)
+                return getattr(getattr(response, "data", None), "message_id", None)
         except Exception:
             log.exception("failed to send reply")
+        return None
+
+    def _update_message(self, message_id: str, text: str) -> None:
+        """Replace a previously sent placeholder with the latest answer."""
+        import lark_oapi.api.im.v1 as im
+
+        content = json.dumps({"text": text or "正在思考…"}, ensure_ascii=False)
+        request = (
+            im.UpdateMessageRequest.builder()
+            .message_id(message_id)
+            .request_body(
+                im.UpdateMessageRequestBody.builder()
+                .msg_type("text")
+                .content(content)
+                .build()
+            )
+            .build()
+        )
+        response = self.client.im.v1.message.update(request)
+        if not response.success():
+            log.error(
+                "stream update failed code=%s msg=%s log_id=%s",
+                response.code,
+                response.msg,
+                response.get_log_id(),
+            )
+
+    def _stream_reply(
+        self,
+        message_id: str,
+        chat_id: str,
+        chat_type: str,
+        query_or_text: str,
+        session_id: str | None,
+    ) -> str | None:
+        """Send a placeholder, then update it as SSE tokens arrive."""
+        if session_id is None and query_or_text in {
+            "目前仅支持文本消息，请直接发送文字提问。",
+            "已开启新会话，你可以开始提问了。",
+            "知识库暂时不可用，请稍后再试。",
+        }:
+            self._reply(message_id, chat_id, chat_type, query_or_text)
+            return None
+        placeholder_id = self._reply(message_id, chat_id, chat_type, "正在思考…")
+        if not placeholder_id:
+            raise RuntimeError("无法发送飞书占位消息")
+        parts: list[str] = []
+        new_session_id = session_id
+        last_update = 0.0
+        for event_type, data in stream_knowledge_base(query_or_text, session_id):
+            if event_type == "token":
+                parts.append(str(data.get("text", "")))
+                now = time.monotonic()
+                if now - last_update >= 0.8:
+                    self._update_message(placeholder_id, "".join(parts))
+                    last_update = now
+            elif event_type == "message_end":
+                new_session_id = data.get("session_id") or new_session_id
+            elif event_type == "error":
+                raise RuntimeError(str(data.get("error", "知识库暂时不可用")))
+        self._update_message(placeholder_id, "".join(parts) or "没有找到相关内容，换个问法试试？")
+        return new_session_id
 
     def start(self) -> None:
         self.ws_client.start()

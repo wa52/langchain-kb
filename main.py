@@ -6,13 +6,21 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 
 from src.cli.commands import cli
 from src.cli.console import run_console
-from config import ensure_data_dirs
+from config import PROJECT_ROOT, ensure_data_dirs
 
 
 def run_api():
     import uvicorn
-    from src.api.app import app
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    # Use an import string so Uvicorn can restart the worker when backend
+    # source files change. This is the development entry point (`main.py api`).
+    uvicorn.run(
+        "src.api.app:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        reload_dirs=[str(PROJECT_ROOT)],
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":

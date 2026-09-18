@@ -227,6 +227,7 @@ class SettingsResponse(BaseModel):
     embedding_model: str
     embedding_device: str
     llm_model: str
+    llm_provider: str
     llm_api_base: str
     llm_api_configured: bool
     rerank_llm: str

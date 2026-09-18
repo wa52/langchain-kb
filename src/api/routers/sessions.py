@@ -7,7 +7,7 @@ from src.api.schemas import (
     SessionDetailResponse,
     SessionSummary,
 )
-from src.agent.chat_history import list_sessions, load_history, delete_history
+from src.application.sessions import list_sessions, load_history, delete_history
 
 router = APIRouter()
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")

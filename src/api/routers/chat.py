@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, ChatResumeRequest, CitationItem
-from src.api.services.chat import chat_with_rag, extract_sources, stream_chat_events, resume_chat_events
+from src.application.chat import chat_with_rag, extract_sources, stream_chat_events, resume_chat_events
 
 router = APIRouter()
 

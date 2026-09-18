@@ -81,6 +81,11 @@ TOP_K = int(os.getenv("TOP_K", "5"))
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+# Generic OpenAI-compatible endpoint override. Legacy DeepSeek variables remain
+# supported so existing installations do not need to change their .env.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek").strip().lower()
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_API_BASE = os.getenv("LLM_API_BASE", "")
 
 # 评分/压缩用 LLM: "deepseek"（云端）或 "local"（Ollama 本地小模型）
 RERANK_LLM = os.getenv("RERANK_LLM", "deepseek").lower()
@@ -104,6 +109,10 @@ ENABLE_GRADING = os.getenv("ENABLE_GRADING", "true").lower() == "true"
 ENABLE_REWRITE = os.getenv("ENABLE_REWRITE", "true").lower() == "true"
 ENABLE_HYBRID_SEARCH = os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true"
 ENABLE_CONTEXT_COMPRESSION = os.getenv("ENABLE_CONTEXT_COMPRESSION", "true").lower() == "true"
+# When enabled, let the HTTP server bind immediately and warm heavy resources
+# (embedding/Chroma/graph/BM25) in a worker thread. Readiness-gated endpoints
+# continue returning 503 until the warmup finishes.
+FAST_STARTUP = os.getenv("FAST_STARTUP", "false").lower() == "true"
 ENABLE_GRAPH = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
 ENABLE_GRAPH_LLM_EXTRACTION = os.getenv("ENABLE_GRAPH_LLM_EXTRACTION", "false").lower() == "true"
 GRAPH_LLM_BATCH_SIZE = int(os.getenv("GRAPH_LLM_BATCH_SIZE", "10"))

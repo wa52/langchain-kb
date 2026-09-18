@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
 from typing import Any, ClassVar
@@ -8,7 +7,7 @@ from typing import Any, ClassVar
 from langchain_chroma import Chroma
 
 import config
-from config import CHROMA_PERSIST_DIR, GRAPH_PERSIST_DIR, TOP_K, ENABLE_HYBRID_SEARCH, PRODUCT_NAME_EN, EMBEDDING_MODEL
+from config import CHROMA_PERSIST_DIR, GRAPH_PERSIST_DIR, TOP_K, ENABLE_HYBRID_SEARCH, EMBEDDING_MODEL
 from src.status import get_registry
 
 logger = logging.getLogger(__name__)
@@ -27,6 +26,7 @@ class ResourceManager:
         self._initialized: bool = False
         self._shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
+        self._startup_task: asyncio.Task | None = None
         self._index_version: int = 0
         self._ensemble_retriever: Any = None
         self._cached_k: int | None = None
@@ -218,6 +218,15 @@ class ResourceManager:
         task.add_done_callback(self._background_tasks.discard)
         logger.info(f"Background task started: {name}")
 
+    async def _warmup_then_sync(self, sync_factory):
+        """Run the deferred startup and start scheduled sync afterwards."""
+        try:
+            await self._startup_task
+        except Exception:
+            logger.exception("Background resource startup failed")
+            return
+        await sync_factory()
+
     def _rebuild_bm25(self, echo_fn=print):
         from src.retrieval.retriever import rebuild_bm25
         rebuild_bm25(self.vector_store, echo_fn=echo_fn)
@@ -230,31 +239,8 @@ class ResourceManager:
             set_graph(self.graph)
 
 
-@asynccontextmanager
-async def app_lifespan(app):
-    logger.info("=" * 50)
-    logger.info(f"  {PRODUCT_NAME_EN} API starting...")
-    logger.info("=" * 50)
-    rm = ResourceManager.get_instance()
-    rm.startup(echo_fn=logger.info)
-    if rm.embedding_model:
-        logger.info(f"  Embedding model:  {type(rm.embedding_model).__name__}")
-    if rm.llm:
-        logger.info(f"  LLM client:       initialized")
-    if rm.vector_store:
-        logger.info(f"  Vector store:     connected")
-    if rm.graph:
-        logger.info(f"  Knowledge graph:  {rm.graph.graph.number_of_nodes()} entities")
-    logger.info(f"  Index version:    {rm.get_index_version()}")
-    logger.info("=" * 50)
-    from src.api.services import sync as sync_service
-    # Keep one lightweight scheduler alive even when no directory is configured
-    # yet, so adding the first sync directory at runtime takes effect.
-    rm.start_background_task(sync_service.sync_loop(), name="scheduled-experience-sync")
-    try:
-        yield
-    finally:
-        logger.info("=" * 50)
-        logger.info("  Server shutting down - releasing resources")
-        logger.info("=" * 50)
-        rm.shutdown(echo_fn=logger.info)
+# Compatibility seam for existing extensions and tests. Import lazily to keep
+# the resource module independent from the ASGI/bootstrap layer at import time.
+def app_lifespan(app):
+    from src.bootstrap.lifecycle import app_lifespan as _app_lifespan
+    return _app_lifespan(app)

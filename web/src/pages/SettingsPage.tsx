@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
+import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
+import { listLlmModels } from "../api/client";
 import type { AppSettings } from "../types/api";
 
 function OnOff({ value }: { value: boolean }) {
@@ -34,8 +36,92 @@ function Section({
   );
 }
 
+const PROVIDERS: Record<string, { label: string; baseUrl: string; models: string[] }> = {
+  deepseek: { label: "DeepSeek", baseUrl: "https://api.deepseek.com", models: [] },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: [] },
+  moonshot: { label: "Moonshot", baseUrl: "https://api.moonshot.cn/v1", models: [] },
+  qwen: { label: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: [] },
+  zhipu: { label: "智谱", baseUrl: "https://open.bigmodel.cn/api/paas/v4", models: [] },
+  siliconflow: { label: "SiliconFlow", baseUrl: "https://api.siliconflow.cn/v1", models: [] },
+  ollama: { label: "Ollama（本地）", baseUrl: "http://127.0.0.1:11434/v1", models: [] },
+};
+
 export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => void }) {
-  const { settings, error, actionError, saving, setGraphMode } = useSettings();
+  const { settings, error, actionError, saving, setGraphMode, setLlm } = useSettings();
+  const [provider, setProvider] = useState("deepseek");
+  const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!settings) return;
+    setProvider(settings.llm_provider);
+    setModel(settings.llm_model);
+    setBaseUrl(settings.llm_api_base);
+    setModels(settings.llm_model ? [settings.llm_model] : []);
+  }, [settings]);
+
+  // Load the provider's real model ids as soon as the provider/base URL is
+  // known. The saved server-side key is used automatically; the explicit
+  // button below is still useful immediately after entering a new key.
+  useEffect(() => {
+    if (!provider || !baseUrl) return;
+    let cancelled = false;
+    setLoadingModels(true);
+    setModelError(null);
+    listLlmModels({ provider, base_url: baseUrl })
+      .then((next) => {
+        if (cancelled) return;
+        setModels(next);
+        setModel((current) => next.includes(current) ? current : next[0] ?? current);
+      })
+      .catch((e) => {
+        if (!cancelled) setModelError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingModels(false);
+      });
+    return () => { cancelled = true; };
+  }, [provider, baseUrl]);
+
+  async function saveLlm() {
+    const ok = await setLlm({ provider, model, base_url: baseUrl, ...(apiKey ? { api_key: apiKey } : {}) });
+    if (ok) {
+      setApiKey("");
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 3200);
+    }
+  }
+
+  function chooseProvider(next: string) {
+    setProvider(next);
+    const preset = PROVIDERS[next];
+    if (preset) {
+      setBaseUrl(preset.baseUrl);
+      setModel("");
+      setModels(preset.models);
+    } else {
+      setModels([]);
+    }
+  }
+
+  async function refreshModels() {
+    setLoadingModels(true);
+    setModelError(null);
+    try {
+      const next = await listLlmModels({ provider, base_url: baseUrl, ...(apiKey ? { api_key: apiKey } : {}) });
+      setModels(next);
+      setModel((current) => next.includes(current) ? current : next[0]);
+    } catch (e) {
+      setModelError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingModels(false);
+    }
+  }
 
   if (error) {
     return (
@@ -76,10 +162,9 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
   return (
     <div className="page">
       <div className="card">
-        <h2>设置（只读）</h2>
+        <h2>设置</h2>
         <p className="muted" style={{ fontSize: 13 }}>
-          第一阶段不显示任何密钥，也不在界面中编辑配置。配置变更请编辑数据目录下的{" "}
-          <span className="mono">.env</span> 后重启服务。
+          API 密钥只用于保存，不会回显。模型切换会立即作用于后续请求。
         </p>
       </div>
 
@@ -102,6 +187,36 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
         <Row k="本地 LLM 地址" v={s.local_llm_base} />
         <Row k="本地 LLM 模型" v={s.local_llm_model} />
       </Section>
+
+      <section className="card settings-section llm-editor">
+        <h3>切换模型 API</h3>
+        <p className="muted settings-help">
+          支持 DeepSeek、OpenAI 以及其他 OpenAI-compatible 服务。保存后会清理当前 Agent 缓存并热切换。
+        </p>
+        <div className="settings-form-grid">
+          <label>供应商<select value={provider} onChange={(e) => chooseProvider(e.target.value)} disabled={saving}>
+            {Object.entries(PROVIDERS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
+            <option value="custom">自定义 OpenAI-compatible</option>
+          </select></label>
+          <label>模型<select value={model} onChange={(e) => setModel(e.target.value)} disabled={saving || loadingModels}>
+            {models.map((item) => <option key={item} value={item}>{item}</option>)}
+            {loadingModels ? <option value="">正在读取供应商模型…</option> : null}
+            {!models.length && model ? <option value={model}>{model}</option> : null}
+          </select></label>
+          <label className="wide">Base URL<input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" disabled={saving} /></label>
+          <label className="wide">API Key（留空沿用当前密钥）<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={provider === "ollama" ? "本地 Ollama 通常无需填写" : (s.llm_api_configured ? "已配置，留空即可" : "粘贴供应商 API Key")} disabled={saving} autoComplete="new-password" /></label>
+        </div>
+        <div className="settings-actions">
+          <button type="button" onClick={() => void refreshModels()} disabled={saving || loadingModels || !baseUrl}>
+            {loadingModels ? "读取中…" : "从供应商读取模型"}
+          </button>
+          <button type="button" className="primary" onClick={() => void saveLlm()} disabled={saving || !model || !baseUrl}>
+            {saving ? "切换中…" : "保存并热切换"}
+          </button>
+          {saved ? <span className="save-ok" role="status">已切换，后续对话使用新 API</span> : null}
+          {modelError ? <span className="msg-error" role="alert">{modelError}</span> : null}
+        </div>
+      </section>
 
       <Section title="模型来源">
         <Row k="HF Endpoint" v={s.hf_endpoint} />

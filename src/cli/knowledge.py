@@ -4,6 +4,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 from pathlib import Path
 from typing import Literal
@@ -15,7 +16,9 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TextColumn
 from rich.table import Table
 
-from config import PRODUCT_NAME
+from config import PRODUCT_NAME, PROJECT_ROOT
+
+_PID_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web.pid"
 
 app = typer.Typer(
     add_completion=False,
@@ -233,11 +236,12 @@ def web(
     host: str = typer.Option("127.0.0.1", help="监听地址"),
     port: int = typer.Option(8000, help="监听端口"),
     reload: bool = typer.Option(False, help="开发模式自动重载"),
+    stop: bool = typer.Option(False, "--stop", help="停止当前项目启动的 Web 服务"),
     open_browser: bool = typer.Option(False, "--open", help="启动后打开浏览器"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
     """启动 Web 服务（Web 首页 + API 文档 + MCP）"""
-    _serve(host, port, reload, as_json, open_browser=open_browser)
+    _serve(host, port, reload, as_json, open_browser=open_browser, stop=stop)
 
 
 @app.command()
@@ -247,12 +251,62 @@ def cli():
     run_console()
 
 
-def _serve(host, port, reload, as_json, open_browser=False):
+def _stop_service(as_json: bool):
+    if not _PID_FILE.exists():
+        _fail(as_json, EXIT_NOT_FOUND, "没有找到当前项目的服务 PID 文件", "NOT_RUNNING", "not_running")
+    try:
+        pid = int(_PID_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        _PID_FILE.unlink(missing_ok=True)
+        _fail(as_json, EXIT_NOT_FOUND, "服务 PID 文件无效，已清理", "NOT_RUNNING", "not_running")
+    if os.name == "nt":
+        # Stop the reloader parent first; taskkill alone can race with
+        # WatchFiles spawning the application child on Windows.
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", f"Stop-Process -Id {pid} -Force"],
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
+    else:
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            pass
+    _PID_FILE.unlink(missing_ok=True)
+    if as_json:
+        _emit_json({"status": "ok", "data": {"stopped": True, "pid": pid}})
+    else:
+        _data_console().print(f"已停止服务进程 {pid}")
+
+
+def _serve(host, port, reload, as_json, open_browser=False, stop=False):
     import uvicorn
 
-    from src.api.app import create_app
+    if stop:
+        _stop_service(as_json)
+        return
 
     url = f"http://{host}:{port}"
+    # Give a useful message before Uvicorn emits the opaque Windows
+    # ``WinError 10013`` when another instance already owns the port.
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            _fail(
+                as_json,
+                EXIT_TRANSIENT,
+                f"端口 {port} 已被占用，已有服务正在运行: {url}",
+                "PORT_BUSY",
+                "port_busy",
+                recoverable=True,
+                suggestions=[
+                    f"打开现有服务: {url}",
+                    f"换一个端口: knowledge web --port {port + 1}",
+                    f"检查占用进程: netstat -ano | findstr :{port}",
+                ],
+            )
+    except OSError:
+        pass
     if as_json:
         _emit_json({"status": "ok", "data": {
             "url": url,
@@ -270,11 +324,22 @@ def _serve(host, port, reload, as_json, open_browser=False):
         )
         _data_console().print(panel)
     try:
-        app_obj = create_app()
+        _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
         if open_browser and not as_json:
             import webbrowser
             webbrowser.open(f"{url}/")
-        uvicorn.run(app_obj, host=host, port=port, reload=reload, log_level="info")
+        # Reload needs an import string; passing an app object silently disables
+        # Uvicorn's supervisor. Backend auto-reload is enabled for this local
+        # Web/API launcher, regardless of the legacy flag value.
+        uvicorn.run(
+            "src.api.app:app",
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=[str(PROJECT_ROOT)],
+            log_level="info",
+        )
     except OSError as e:
         _fail(
             as_json, EXIT_TRANSIENT,
@@ -285,6 +350,12 @@ def _serve(host, port, reload, as_json, open_browser=False):
                 f"检查占用进程: netstat -ano | findstr :{port}",
             ],
         )
+    finally:
+        try:
+            if _PID_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
+                _PID_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @app.command()
@@ -292,10 +363,11 @@ def serve(
     host: str = typer.Option("127.0.0.1", help="监听地址"),
     port: int = typer.Option(8000, help="监听端口"),
     reload: bool = typer.Option(False, help="开发模式自动重载"),
+    stop: bool = typer.Option(False, "--stop", help="停止当前项目启动的 Web 服务"),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
     """启动 API + MCP 服务"""
-    _serve(host, port, reload, as_json)
+    _serve(host, port, reload, as_json, stop=stop)
 
 
 @app.command("sync-experience")

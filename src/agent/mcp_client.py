@@ -7,6 +7,7 @@ toolset. Failures degrade gracefully — the local knowledge tools always work.
 
 import json
 import os
+import re
 from pathlib import Path
 
 
@@ -42,6 +43,22 @@ def _enabled_servers(config_path) -> dict:
     }
 
 
+_ENV_REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _resolve_command_value(value):
+    """Expand an exact ``${ENV_VAR}`` command value without exposing secrets.
+
+    MCP configurations are usually committed or shared, so credentials must
+    remain in the environment rather than being copied into ``mcp.json``.
+    Values that are not an exact variable reference are returned unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    match = _ENV_REFERENCE.fullmatch(value)
+    return os.getenv(match.group(1), "") if match else value
+
+
 def _to_connections(config_path) -> dict:
     """Convert opencode-style servers to MultiServerMCPClient connections.
 
@@ -56,7 +73,10 @@ def _to_connections(config_path) -> dict:
             if cfg.get("headers"):
                 conn["headers"] = cfg["headers"]
         else:
-            cmd = cfg.get("command") or []
+            cmd = [_resolve_command_value(value) for value in (cfg.get("command") or [])]
+            if not cmd or not cmd[0] or any(value == "" for value in cmd):
+                print(f"  [MCP] 跳过服务器 {name}（缺少命令或环境变量）")
+                continue
             conn = {
                 "command": cmd[0] if cmd else "",
                 "args": list(cmd[1:]) if len(cmd) > 1 else [],

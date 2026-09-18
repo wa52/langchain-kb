@@ -336,6 +336,43 @@ export async function setGraphExtractionMode(enabled: boolean): Promise<GraphMod
   return (await resp.json()) as GraphModeResult;
 }
 
+export interface LlmConfigResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  requires_restart: boolean;
+}
+
+export async function setLlmConfig(input: {
+  provider: string;
+  model: string;
+  base_url: string;
+  api_key?: string;
+}): Promise<LlmConfigResult> {
+  const resp = await apiFetch("/api/v1/settings/llm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `模型 API 切换失败 (${resp.status})`));
+  return (await resp.json()) as LlmConfigResult;
+}
+
+export async function listLlmModels(input: {
+  provider: string;
+  base_url: string;
+  api_key?: string;
+}): Promise<string[]> {
+  const resp = await apiFetch("/api/v1/settings/llm/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `模型列表读取失败 (${resp.status})`));
+  const data = (await resp.json()) as { models?: string[] };
+  return data.models ?? [];
+}
+
 export interface SyncStatus {
   dirs: string[];
   enabled: boolean;

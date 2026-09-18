@@ -143,6 +143,7 @@ export interface AppSettings {
   embedding_model: string;
   embedding_device: string;
   llm_model: string;
+  llm_provider: string;
   llm_api_base: string;
   llm_api_configured: boolean;
   rerank_llm: string;

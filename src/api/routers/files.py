@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from src.api.schemas import IndexTaskResponse
-from src.api.services.files import list_files_view
-from src.api.services.indexing import get_task_manager, run_remove_task
+from src.application.files import list_files_view
+from src.application.indexing import get_task_manager, run_remove_task
 
 router = APIRouter()
 

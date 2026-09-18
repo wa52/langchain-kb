@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from config import TOP_K
+from config import PROJECT_ROOT, TOP_K
 
 
 def echo_stderr(msg="", end="\n"):
@@ -39,13 +39,19 @@ def kb():
 def serve(host, port, reload, as_json):
     """Start FastAPI + MCP service"""
     import uvicorn
-    from src.api.app import app
     url = f"http://{host}:{port}"
     mcp_url = f"{url}/mcp"
     _output(f"Listening on {url}\nMCP endpoint: {mcp_url}", as_json,
             data={"url": url, "mcp": mcp_url})
     try:
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run(
+            "src.api.app:app",
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=[str(PROJECT_ROOT)],
+            log_level="info",
+        )
     except OSError as e:
         _output("", as_json, error=f"Port {port} in use: {e}", exit_code=75)
 

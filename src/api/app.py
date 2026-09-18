@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from config import PRODUCT_NAME, PRODUCT_NAME_EN, PROJECT_ROOT
 from src.api.web import web_app_html
 from src.api.schemas import ErrorResponse
-from src.resources import app_lifespan
+from src.bootstrap.lifecycle import app_lifespan
 
 logger = logging.getLogger(__name__)
 
