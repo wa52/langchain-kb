@@ -204,6 +204,21 @@ class TestProcessMessage:
         assert store.get("ou_1") is None
         assert replies == ["已删除会话：sid_1"]
 
+    def test_clear_all_removes_all_session_mappings(self, tmp_path):
+        store = SessionStore(tmp_path / "sessions.json")
+        store.set("ou_1", "sid_1")
+        store.set("ou_1", "sid_2")
+        replies = []
+        with patch("src.agent.chat_history.delete_history", return_value=True) as delete:
+            process_incoming_message(
+                store,
+                lambda mid, cid, ctype, text: replies.append(text),
+                "m", "c", "p2p", "/clear-all", "ou_1",
+            )
+        assert store.list("ou_1") == []
+        assert replies == ["已清空 2 个历史会话。"]
+        assert delete.call_count == 2
+
 
 class TestSessionStore:
     def test_set_get_clear(self, tmp_path):

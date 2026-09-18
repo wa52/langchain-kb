@@ -82,7 +82,7 @@ def _session_command(store: SessionStore, sender_key: str, text: str) -> str | N
     """Handle Feishu-only conversation management commands."""
     command = text.strip()
     if command in HELP_WORDS:
-        return "可用命令：\n/new 新建会话\n/sessions 查看会话\n/use <序号> 切换会话\n/delete <序号> 删除会话\n/current 查看当前会话"
+        return "可用命令：\n/new 新建会话\n/sessions 查看会话\n/use <序号> 切换会话\n/delete <序号> 删除会话\n/clear-all 清空全部历史\n/current 查看当前会话"
     if command in {"/current", "/当前"}:
         return f"当前会话：{store.get(sender_key) or '无（下一条消息会自动新建）'}"
     session_ids = store.list(sender_key)
@@ -95,6 +95,18 @@ def _session_command(store: SessionStore, sender_key: str, text: str) -> str | N
             marker = "*" if session_id == current else " "
             lines.append(f"{marker}{index}. {session_id}")
         return "\n".join(lines)
+    if command in {"/clear-all", "/clear_all", "/清空"}:
+        if not session_ids:
+            return "没有可清空的历史会话。"
+        try:
+            from src.agent.chat_history import delete_history
+            for session_id in session_ids:
+                delete_history(session_id)
+        except Exception:
+            log.exception("failed to clear Feishu session history")
+            return "清空历史失败，请稍后重试。"
+        store.clear(sender_key)
+        return f"已清空 {len(session_ids)} 个历史会话。"
     parts = command.split(maxsplit=1)
     if len(parts) == 2 and parts[0] in {"/use", "/切换"}:
         target = _resolve_session_target(session_ids, parts[1])
