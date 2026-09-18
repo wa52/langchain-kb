@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from src.feishu.bot import (
+    _MessageDeduper,
     _message_text,
     _sender_key,
     ask_knowledge_base,
@@ -52,6 +53,20 @@ class TestMessageParsing:
     def test_sender_key_falls_back_to_chat_id(self):
         event = make_message(open_id=None)
         assert _sender_key(event) == "chat_1"
+
+
+class TestMessageDeduper:
+    def test_duplicate_event_is_ignored(self):
+        deduper = _MessageDeduper(ttl=60, max_entries=2)
+        assert deduper.seen("msg_1") is False
+        assert deduper.seen("msg_1") is True
+
+    def test_oldest_event_is_evicted_when_bounded(self):
+        deduper = _MessageDeduper(ttl=60, max_entries=2)
+        deduper.seen("msg_1")
+        deduper.seen("msg_2")
+        deduper.seen("msg_3")
+        assert deduper.seen("msg_1") is False
 
 
 class FakeClient:

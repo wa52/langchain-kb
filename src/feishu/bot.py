@@ -16,6 +16,7 @@ import logging
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
@@ -29,6 +30,32 @@ CHAT_URL = f"{KB_API_BASE}/api/v1/chat"
 CHAT_STREAM_URL = f"{KB_API_BASE}/api/v1/chat/stream"
 RESET_WORDS = {"/new", "/新会话"}
 HELP_WORDS = {"/help", "/帮助"}
+FEISHU_MAX_CONCURRENCY = max(1, int(os.getenv("FEISHU_MAX_CONCURRENCY", "10")))
+FEISHU_QUEUE_SIZE = max(0, int(os.getenv("FEISHU_QUEUE_SIZE", "50")))
+FEISHU_DEDUPE_TTL = max(60.0, float(os.getenv("FEISHU_DEDUPE_TTL", "600")))
+
+
+class _MessageDeduper:
+    """Bounded, TTL-based event deduplication for Feishu retries."""
+
+    def __init__(self, ttl: float = FEISHU_DEDUPE_TTL, max_entries: int = 10000):
+        self.ttl = ttl
+        self.max_entries = max_entries
+        self._items: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def seen(self, message_id: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            expired = [key for key, value in self._items.items() if now - value > self.ttl]
+            for key in expired:
+                self._items.pop(key, None)
+            if message_id in self._items:
+                return True
+            self._items[message_id] = now
+            while len(self._items) > self.max_entries:
+                self._items.pop(next(iter(self._items)))
+            return False
 
 
 def _message_text(event) -> str | None:
@@ -212,6 +239,16 @@ class FeishuBot:
 
         self.store = store or SessionStore()
         self.client = lark.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        self._executor = ThreadPoolExecutor(
+            max_workers=FEISHU_MAX_CONCURRENCY,
+            thread_name_prefix="feishu-chat",
+        )
+        self._capacity = threading.BoundedSemaphore(
+            FEISHU_MAX_CONCURRENCY + FEISHU_QUEUE_SIZE
+        )
+        self._deduper = _MessageDeduper()
+        self._sender_locks: dict[str, threading.Lock] = {}
+        self._sender_locks_guard = threading.Lock()
         handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(self._on_message)
@@ -240,19 +277,55 @@ class FeishuBot:
             text,
             _sender_key(event),
         )
-        threading.Thread(
-            target=process_incoming_stream,
-            args=(
-                self.store,
-                self._stream_reply,
-                message.message_id,
+        message_id = message.message_id or f"{message.chat_id}:{time.monotonic_ns()}"
+        sender_key = _sender_key(event)
+        if self._deduper.seen(message_id):
+            log.info("ignoring duplicate Feishu event message_id=%s", message_id)
+            return
+        if not self._capacity.acquire(blocking=False):
+            self._reply(
+                message_id,
+                message.chat_id,
+                message.chat_type,
+                "当前请求较多，请稍后再试。",
+            )
+            return
+        try:
+            self._executor.submit(
+                self._run_message,
+                message_id,
                 message.chat_id,
                 message.chat_type,
                 text,
-                _sender_key(event),
-            ),
-            daemon=True,
-        ).start()
+                sender_key,
+            )
+        except RuntimeError:
+            self._capacity.release()
+            self._reply(message_id, message.chat_id, message.chat_type, "服务正在关闭，请稍后再试。")
+
+    def _run_message(
+        self,
+        message_id: str,
+        chat_id: str,
+        chat_type: str,
+        text: str | None,
+        sender_key: str,
+    ) -> None:
+        with self._sender_locks_guard:
+            sender_lock = self._sender_locks.setdefault(sender_key, threading.Lock())
+        try:
+            with sender_lock:
+                process_incoming_stream(
+                    self.store,
+                    self._stream_reply,
+                    message_id,
+                    chat_id,
+                    chat_type,
+                    text,
+                    sender_key,
+                )
+        finally:
+            self._capacity.release()
 
     def _on_p2p_chat_entered(self, event) -> None:
         """Greet a user when the bot is opened in a new private chat."""
@@ -381,6 +454,10 @@ class FeishuBot:
 
     def start(self) -> None:
         self.ws_client.start()
+
+    def stop(self) -> None:
+        """Release worker threads when the Feishu bridge is shutting down."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 def get_feishu_credentials() -> tuple[str, str]:
