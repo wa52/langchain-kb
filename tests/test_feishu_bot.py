@@ -216,7 +216,10 @@ class TestProcessMessage:
                 "m", "c", "p2p", "/clear-all", "ou_1",
             )
         assert store.list("ou_1") == []
-        assert replies == ["已清空 2 个历史会话。"]
+        assert replies == [
+            "已清空 2 个知识库历史会话。\n"
+            "飞书聊天窗口中已经发送的提问和回答消息不会被删除；如需清空窗口，请在飞书客户端删除或新建会话。"
+        ]
         assert delete.call_count == 2
 
 

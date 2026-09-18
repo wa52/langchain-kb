@@ -106,7 +106,10 @@ def _session_command(store: SessionStore, sender_key: str, text: str) -> str | N
             log.exception("failed to clear Feishu session history")
             return "清空历史失败，请稍后重试。"
         store.clear(sender_key)
-        return f"已清空 {len(session_ids)} 个历史会话。"
+        return (
+            f"已清空 {len(session_ids)} 个知识库历史会话。\n"
+            "飞书聊天窗口中已经发送的提问和回答消息不会被删除；如需清空窗口，请在飞书客户端删除或新建会话。"
+        )
     parts = command.split(maxsplit=1)
     if len(parts) == 2 and parts[0] in {"/use", "/切换"}:
         target = _resolve_session_target(session_ids, parts[1])
