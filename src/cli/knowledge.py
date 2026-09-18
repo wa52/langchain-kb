@@ -237,7 +237,11 @@ def web(
     port: int = typer.Option(8000, help="监听端口"),
     reload: bool = typer.Option(False, help="开发模式自动重载"),
     stop: bool = typer.Option(False, "--stop", help="停止当前项目启动的 Web 服务"),
-    open_browser: bool = typer.Option(False, "--open", help="启动后打开浏览器"),
+    open_browser: bool = typer.Option(
+        True,
+        "--open/--no-open",
+        help="启动后自动打开浏览器（默认开启）",
+    ),
     as_json: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
     """启动 Web 服务（Web 首页 + API 文档 + MCP）"""

@@ -550,7 +550,7 @@ class TestWebCommand:
         for key in ["url", "web", "swagger", "mcp"]:
             assert key in parsed["data"]
 
-    def test_web_no_open_by_default(self):
+    def test_web_opens_browser_by_default(self):
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
@@ -558,7 +558,7 @@ class TestWebCommand:
         ):
             result = runner.invoke(app, ["web"])
         assert result.exit_code == 0
-        mock_open.assert_not_called()
+        mock_open.assert_called_once_with("http://127.0.0.1:8000/")
 
     def test_web_open_calls_browser(self):
         with (
@@ -577,6 +577,16 @@ class TestWebCommand:
             patch("webbrowser.open") as mock_open,
         ):
             result = runner.invoke(app, ["web", "--open", "--json"])
+        assert result.exit_code == 0
+        mock_open.assert_not_called()
+
+    def test_web_no_open_flag_skips_browser(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run"),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(app, ["web", "--no-open"])
         assert result.exit_code == 0
         mock_open.assert_not_called()
 
