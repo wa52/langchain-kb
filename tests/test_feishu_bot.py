@@ -149,6 +149,30 @@ class TestProcessMessage:
         _, replies = self._run("q", ask=ask_fn)
         assert replies == ["没有找到相关内容，换个问法试试？"]
 
+    def test_session_commands_list_and_switch(self, tmp_path):
+        store = SessionStore(tmp_path / "sessions.json")
+        store.set("ou_1", "sid_1")
+        store.set("ou_1", "sid_2")
+        replies = []
+        reply = lambda mid, cid, ctype, text: replies.append(text)
+        process_incoming_message(store, reply, "m", "c", "p2p", "/sessions", "ou_1")
+        process_incoming_message(store, reply, "m", "c", "p2p", "/use 2", "ou_1")
+        assert "1. sid_2" in replies[0]
+        assert "2. sid_1" in replies[0]
+        assert store.get("ou_1") == "sid_1"
+
+    def test_session_delete_removes_current_mapping(self, tmp_path):
+        store = SessionStore(tmp_path / "sessions.json")
+        store.set("ou_1", "sid_1")
+        replies = []
+        process_incoming_message(
+            store,
+            lambda mid, cid, ctype, text: replies.append(text),
+            "m", "c", "p2p", "/delete 1", "ou_1",
+        )
+        assert store.get("ou_1") is None
+        assert replies == ["已删除会话：sid_1"]
+
 
 class TestSessionStore:
     def test_set_get_clear(self, tmp_path):
@@ -164,3 +188,13 @@ class TestSessionStore:
         path = tmp_path / "sessions.json"
         SessionStore(path).set("ou_1", "sid_1")
         assert SessionStore(path).get("ou_1") == "sid_1"
+
+    def test_session_history_persists_and_switches(self, tmp_path):
+        path = tmp_path / "sessions.json"
+        store = SessionStore(path)
+        store.set("ou_1", "sid_1")
+        store.set("ou_1", "sid_2")
+        restored = SessionStore(path)
+        assert restored.list("ou_1") == ["sid_2", "sid_1"]
+        assert restored.switch("ou_1", "sid_1") is True
+        assert restored.get("ou_1") == "sid_1"

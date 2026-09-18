@@ -44,12 +44,59 @@ class SessionStore:
     def get(self, open_id: str) -> str | None:
         with self._lock:
             item = self._data.get(open_id)
-            return item.get("session_id") if item else None
+            return self._normalize(item).get("session_id") if item else None
+
+    @staticmethod
+    def _normalize(item) -> dict:
+        if not isinstance(item, dict):
+            return {"session_id": None, "sessions": []}
+        current = item.get("session_id")
+        sessions = item.get("sessions")
+        if not isinstance(sessions, list):
+            sessions = []
+        sessions = [str(s) for s in sessions if s]
+        if current and current not in sessions:
+            sessions.insert(0, str(current))
+        return {"session_id": str(current) if current else None, "sessions": sessions}
 
     def set(self, open_id: str, session_id: str) -> None:
         with self._lock:
-            self._data[open_id] = {"session_id": session_id}
+            item = self._normalize(self._data.get(open_id))
+            if session_id not in item["sessions"]:
+                item["sessions"].insert(0, session_id)
+            item["session_id"] = session_id
+            self._data[open_id] = item
             self._save()
+
+    def list(self, open_id: str) -> list[str]:
+        with self._lock:
+            item = self._data.get(open_id)
+            return list(self._normalize(item).get("sessions", [])) if item else []
+
+    def switch(self, open_id: str, session_id: str) -> bool:
+        with self._lock:
+            item = self._normalize(self._data.get(open_id))
+            if session_id not in item["sessions"]:
+                return False
+            item["session_id"] = session_id
+            self._data[open_id] = item
+            self._save()
+            return True
+
+    def remove(self, open_id: str, session_id: str) -> bool:
+        with self._lock:
+            item = self._normalize(self._data.get(open_id))
+            if session_id not in item["sessions"]:
+                return False
+            item["sessions"].remove(session_id)
+            if item["session_id"] == session_id:
+                item["session_id"] = item["sessions"][0] if item["sessions"] else None
+            if item["sessions"] or item["session_id"]:
+                self._data[open_id] = item
+            else:
+                self._data.pop(open_id, None)
+            self._save()
+            return True
 
     def clear(self, open_id: str) -> bool:
         with self._lock:

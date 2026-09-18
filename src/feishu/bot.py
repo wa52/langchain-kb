@@ -4,7 +4,8 @@ Runs as a standalone process using the official ``lark-oapi`` SDK in
 long-connection (WebSocket) mode, so no public URL / ngrok is required.
 Text messages are forwarded to ``POST /api/v1/chat``; the answer is sent
 back in the same chat thread. Each Feishu user keeps their own
-conversation history (send ``/new`` to reset).
+conversation history. Commands include ``/new``, ``/sessions``, ``/use <序号>``,
+``/delete <序号>``, and ``/current``.
 
 ``lark_oapi`` is imported lazily so this module (and its message-handling
 logic) stays importable without the SDK installed, e.g. under pytest.
@@ -27,6 +28,7 @@ KB_API_BASE = os.getenv("KB_API_BASE", "http://127.0.0.1:8000")
 CHAT_URL = f"{KB_API_BASE}/api/v1/chat"
 CHAT_STREAM_URL = f"{KB_API_BASE}/api/v1/chat/stream"
 RESET_WORDS = {"/new", "/新会话"}
+HELP_WORDS = {"/help", "/帮助"}
 
 
 def _message_text(event) -> str | None:
@@ -47,6 +49,50 @@ def _sender_key(event) -> str:
         if open_id:
             return open_id
     return event.event.message.chat_id
+
+
+def _session_command(store: SessionStore, sender_key: str, text: str) -> str | None:
+    """Handle Feishu-only conversation management commands."""
+    command = text.strip()
+    if command in HELP_WORDS:
+        return "可用命令：\n/new 新建会话\n/sessions 查看会话\n/use <序号> 切换会话\n/delete <序号> 删除会话\n/current 查看当前会话"
+    if command in {"/current", "/当前"}:
+        return f"当前会话：{store.get(sender_key) or '无（下一条消息会自动新建）'}"
+    session_ids = store.list(sender_key)
+    if command in {"/sessions", "/会话"}:
+        if not session_ids:
+            return "暂无已保存会话。发送普通问题即可新建会话。"
+        current = store.get(sender_key)
+        lines = ["你的会话："]
+        for index, session_id in enumerate(session_ids[:10], 1):
+            marker = "*" if session_id == current else " "
+            lines.append(f"{marker}{index}. {session_id}")
+        return "\n".join(lines)
+    parts = command.split(maxsplit=1)
+    if len(parts) == 2 and parts[0] in {"/use", "/切换"}:
+        target = _resolve_session_target(session_ids, parts[1])
+        if target and store.switch(sender_key, target):
+            return f"已切换到会话：{target}"
+        return "找不到这个会话。请先发送 /sessions 查看序号。"
+    if len(parts) == 2 and parts[0] in {"/delete", "/删除"}:
+        target = _resolve_session_target(session_ids, parts[1])
+        if not target or not store.remove(sender_key, target):
+            return "找不到这个会话。请先发送 /sessions 查看序号。"
+        try:
+            from src.agent.chat_history import delete_history
+            delete_history(target)
+        except Exception:
+            log.exception("failed to delete Feishu session history: %s", target)
+        return f"已删除会话：{target}"
+    return None
+
+
+def _resolve_session_target(session_ids: list[str], value: str) -> str | None:
+    value = value.strip()
+    if value.isdigit():
+        index = int(value) - 1
+        return session_ids[index] if 0 <= index < len(session_ids) else None
+    return value if value in session_ids else None
 
 
 def ask_knowledge_base(query: str, session_id: str | None) -> tuple[str, str | None]:
@@ -104,6 +150,10 @@ def process_incoming_message(
     if not text:
         reply_fn(message_id, chat_id, chat_type, "目前仅支持文本消息，请直接发送文字提问。")
         return
+    command_reply = _session_command(store, sender_key, text)
+    if command_reply is not None:
+        reply_fn(message_id, chat_id, chat_type, command_reply)
+        return
     if text in RESET_WORDS:
         store.clear(sender_key)
         reply_fn(message_id, chat_id, chat_type, "已开启新会话，你可以开始提问了。")
@@ -135,6 +185,10 @@ def process_incoming_stream(
     """Handle a message with incremental Feishu message updates."""
     if not text:
         stream_reply_fn(message_id, chat_id, chat_type, "目前仅支持文本消息，请直接发送文字提问。", None)
+        return
+    command_reply = _session_command(store, sender_key, text)
+    if command_reply is not None:
+        stream_reply_fn(message_id, chat_id, chat_type, command_reply, None)
         return
     if text in RESET_WORDS:
         store.clear(sender_key)
