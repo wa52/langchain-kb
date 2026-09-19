@@ -109,6 +109,7 @@ class LangGraphAgentRuntime:
         on_tool: Callable[[str], None] | None = None,
         on_interrupt: Callable[[Any], None] | None = None,
         on_tool_result: Callable[[dict], None] | None = None,
+        on_trace_run: Callable[[str], None] | None = None,
         stream_input: Any = None,
         trace: Any = None,
     ) -> Iterable[str]:
@@ -118,6 +119,8 @@ class LangGraphAgentRuntime:
         if owned_trace:
             from src.harness import AgentRunTrace
             trace = AgentRunTrace(run_id=uuid4().hex, query=str(messages[-1].get("content", "")) if messages else "")
+        if trace is not None and on_trace_run is not None:
+            on_trace_run(trace.run_id)
         if trace is not None:
             trace.emit("agent.run.started", session_id=session_id)
             trace.emit("selector.started")

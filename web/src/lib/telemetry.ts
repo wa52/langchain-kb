@@ -7,6 +7,16 @@ export interface RunTelemetry {
   hitChain: string[];
   tools: string[];
   error: string | null;
+  traceRunId: string | null;
+  actions: ActionTelemetry[];
+}
+
+export interface ActionTelemetry {
+  name: string;
+  at: number;
+  elapsedMs: number | null;
+  status?: string;
+  detail?: string;
 }
 
 export interface ApiErrorEntry {
@@ -34,6 +44,8 @@ let telemetry: DevTelemetry = {
     hitChain: [],
     tools: [],
     error: null,
+    traceRunId: null,
+    actions: [],
   },
   apiErrors: [],
 };
@@ -55,6 +67,8 @@ export function resetDevTelemetry(): void {
       hitChain: [],
       tools: [],
       error: null,
+      traceRunId: null,
+      actions: [],
     },
     apiErrors: [],
   };
@@ -62,6 +76,10 @@ export function resetDevTelemetry(): void {
 }
 
 export function recordStreamEvent(type: string): void {
+  const now = Date.now();
+  const previous = telemetry.lastRun.actions.length
+    ? telemetry.lastRun.actions[telemetry.lastRun.actions.length - 1].at
+    : telemetry.lastRun.startedAt;
   telemetry = {
     ...telemetry,
     streamEvents: {
@@ -69,6 +87,14 @@ export function recordStreamEvent(type: string): void {
       [type]: (telemetry.streamEvents[type] ?? 0) + 1,
     },
     lastStreamEvent: type,
+    lastRun: {
+      ...telemetry.lastRun,
+      actions: [...telemetry.lastRun.actions, {
+        name: type,
+        at: now,
+        elapsedMs: previous == null ? null : now - previous,
+      }],
+    },
   };
   emit();
 }
@@ -83,7 +109,39 @@ export function recordRunStart(): void {
       hitChain: [],
       tools: [],
       error: null,
+      traceRunId: null,
+      actions: [],
     },
+  };
+  emit();
+}
+
+export function recordAgentTrace(trace: {
+  run_id: string;
+  events: Array<{ type: string; payload?: Record<string, unknown>; created_at: string }>;
+}): void {
+  let previous: number | null = null;
+  const actions = (trace.events ?? []).map((event) => {
+    const parsed = Date.parse(event.created_at);
+    const at = Number.isFinite(parsed) ? parsed : Date.now();
+    const payload = event.payload ?? {};
+    const status = typeof payload.status === "string" ? payload.status : undefined;
+    const detail = typeof payload.tool_name === "string"
+      ? payload.tool_name
+      : typeof payload.error === "string" ? payload.error : undefined;
+    const action: ActionTelemetry = {
+      name: event.type,
+      at,
+      elapsedMs: previous == null ? null : Math.max(0, at - previous),
+      status,
+      detail,
+    };
+    previous = at;
+    return action;
+  });
+  telemetry = {
+    ...telemetry,
+    lastRun: { ...telemetry.lastRun, traceRunId: trace.run_id, actions },
   };
   emit();
 }

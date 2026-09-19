@@ -17,6 +17,7 @@ class AgentRuntime(Protocol):
         on_tool: Callable[[str], None] | None = None,
         on_interrupt: Callable[[Any], None] | None = None,
         on_tool_result: Callable[[dict], None] | None = None,
+        on_trace_run: Callable[[str], None] | None = None,
         stream_input: Any = None,
     ) -> Iterable[str]: ...
 

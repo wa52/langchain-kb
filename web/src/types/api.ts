@@ -33,6 +33,21 @@ export interface ChatMessage {
   error?: string | null;
 }
 
+export interface TraceEvent {
+  type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AgentTrace {
+  run_id: string;
+  query: string;
+  selected_tools: string[];
+  llm_calls?: Array<Record<string, unknown>>;
+  tool_calls?: Array<Record<string, unknown>>;
+  events: TraceEvent[];
+}
+
 export type ViewId = "chat" | "knowledge" | "status" | "settings";
 
 export interface SessionSummary {

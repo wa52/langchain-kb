@@ -6,6 +6,7 @@ import type {
   SessionDetail,
   SessionSummary,
   SourceItem,
+  AgentTrace,
   TaskStatus,
   TrackedFilesResponse,
   UploadTasks,
@@ -17,7 +18,7 @@ export interface StreamHandlers {
   onToken?: (text: string) => void;
   onSources?: (sources: SourceItem[]) => void;
   onTool?: (tools: string[]) => void;
-  onEnd?: (sessionId: string, interrupted: boolean) => void;
+  onEnd?: (sessionId: string, interrupted: boolean, runId?: string) => void;
   onError?: (message: string) => void;
   onEvent?: (type: string, payload: unknown) => void;
 }
@@ -129,8 +130,8 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
       break;
     case "message_end":
       if (typeof payload === "object" && payload && "session_id" in payload) {
-        const end = payload as { session_id: string; interrupted?: boolean };
-        handlers.onEnd?.(end.session_id, Boolean(end.interrupted));
+        const end = payload as { session_id: string; interrupted?: boolean; run_id?: string };
+        handlers.onEnd?.(end.session_id, Boolean(end.interrupted), end.run_id);
       }
       break;
     case "error":
@@ -141,6 +142,15 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
     default:
       break;
   }
+}
+
+export async function getAgentTrace(runId: string): Promise<AgentTrace | null> {
+  const resp = await apiFetch(`/api/v1/traces/${encodeURIComponent(runId)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`Trace 请求失败 (${resp.status})`);
+  const data = (await resp.json()) as { status?: string; trace?: AgentTrace };
+  return data.status === "completed" ? data.trace ?? null : null;
 }
 
 export async function streamChat(

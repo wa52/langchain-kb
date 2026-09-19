@@ -84,6 +84,25 @@ export function DeveloperPane() {
       </section>
 
       <section className="dev-section">
+        <h4>动作耗时</h4>
+        {run.actions.length === 0 ? (
+          <p className="dev-muted">暂无动作记录</p>
+        ) : (
+          <ol className="dev-action-list">
+            {run.actions.map((action, index) => (
+              <li key={`${action.at}-${index}`}>
+                <span className="dev-action-index">{index + 1}</span>
+                <code>{action.name}</code>
+                <span className="dev-count">{fmtMs(action.elapsedMs)}</span>
+                {action.detail ? <span className="dev-muted">{action.detail}</span> : null}
+              </li>
+            ))}
+          </ol>
+        )}
+        {run.traceRunId ? <p className="dev-muted">run_id：<code>{run.traceRunId}</code></p> : null}
+      </section>
+
+      <section className="dev-section">
         <h4>最近一次回答</h4>
         <ul className="dev-list">
           <li>

@@ -206,6 +206,31 @@ button.primary:not(:disabled):hover {
   font-size: 12px;
 }
 
+.dev-action-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.dev-action-list li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--grid-line) 60%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.dev-action-index {
+  color: var(--muted);
+  text-align: right;
+  font-size: 11px;
+}
+
 .dev-count {
   margin-left: auto;
   white-space: nowrap;

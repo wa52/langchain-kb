@@ -125,6 +125,7 @@ class ConversationService:
         interrupts: list[Any] = []
         results: list[dict] = []
         parts: list[str] = []
+        trace_run_id: str | None = None
         failed = False
 
         def on_tool(name: str) -> None:
@@ -134,10 +135,15 @@ class ConversationService:
         def on_interrupt(value: Any) -> None:
             interrupts.extend(value if isinstance(value, (list, tuple)) else [value])
 
+        def on_trace_run(run_id: str) -> None:
+            nonlocal trace_run_id
+            trace_run_id = run_id
+
         try:
             for chunk in self._agent_runtime_factory().stream_messages(
                 self._model_messages(self._compress_history(messages)), session_id,
                 on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=results.append,
+                on_trace_run=on_trace_run,
             ):
                 if stop_event.is_set():
                     break
@@ -168,6 +174,7 @@ class ConversationService:
         yield {"type": "message_end", "data": {
             "session_id": new_session_id, "elapsed_ms": round((time.time() - started) * 1000, 2),
             "interrupted": interrupted, "waiting_approval": bool(interrupts), "route": self._agent_route,
+            **({"run_id": trace_run_id} if trace_run_id else {}),
         }}
 
     def resume(self, session_id: str, decision: str, message: str | None, stop_event: Any, decisions: list[str] | None = None) -> Iterator[dict]:

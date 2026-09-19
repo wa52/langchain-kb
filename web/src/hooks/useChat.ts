@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getSession, streamChat } from "../api/client";
+import { getAgentTrace, getSession, streamChat } from "../api/client";
 import {
   recordRunEnd,
   recordRunError,
@@ -8,6 +8,7 @@ import {
   recordRunStart,
   recordRunTools,
   recordStreamEvent,
+  recordAgentTrace,
 } from "../lib/telemetry";
 import type { ChatMessage, SessionSummary, SourceItem } from "../types/api";
 
@@ -134,11 +135,16 @@ export function useChat(): UseChatResult {
                 if (!isCurrentRun()) return;
                 recordRunTools(tools);
               },
-              onEnd: (sid, interrupted) => {
+              onEnd: (sid, interrupted, runId) => {
                 if (!isCurrentRun()) return;
                 streamSessionRef.current = sid;
                 setSessionId(sid);
                 finish(assistantId, interrupted);
+                if (runId) {
+                  void getAgentTrace(runId).then((trace) => {
+                    if (trace && isCurrentRun()) recordAgentTrace(trace);
+                  }).catch(() => undefined);
+                }
               },
               onError: (message) => {
                 if (!isCurrentRun()) return;
