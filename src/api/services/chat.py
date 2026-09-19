@@ -3,15 +3,20 @@
 import time
 from typing import Iterator
 
-from config import ENABLE_GRAPH, ENABLE_HYBRID_SEARCH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
+from config import (
+    ENABLE_GRAPH, ENABLE_HYBRID_SEARCH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS,
+    FAST_RAG_FETCH_K, FAST_RAG_GATE_THRESHOLD, FAST_RAG_MAX_CONTEXT_TOKENS,
+    FAST_RAG_TOP_K,
+)
 from src.agent.chat_history import allocate_session_id, load_history, save_history, session_lock
 from src.agent.harness import verify_agent_run
-from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, route_query
+from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, parse_route_command, route_query
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.application.citations import _CITATION_PATTERN, extract_sources
 from src.application.conversation_service import ConversationService
 from src.application.conversation_store import ConversationStore
 from src.application.direct_chat import DirectChatEngine
+from src.application.fast_rag import FastRagService
 from src.application.source_enrichment import enrich_sources
 from src.bootstrap.composition import create_agent_runtime
 
@@ -102,6 +107,22 @@ def _direct_answer(messages: list[dict]) -> str:
 
 def _stream_direct_answer(messages: list[dict]):
     yield from _direct_engine().stream(messages)
+
+
+def _fast_rag_service() -> FastRagService:
+    def retrieve(query: str, k: int):
+        from src.application.knowledge import retrieve_documents
+        return retrieve_documents(query, k)
+
+    return FastRagService(
+        retrieve=retrieve,
+        llm_factory=_get_direct_llm,
+        token_estimator=_estimated_tokens,
+        top_k=FAST_RAG_TOP_K,
+        fetch_k=FAST_RAG_FETCH_K,
+        max_context_tokens=FAST_RAG_MAX_CONTEXT_TOKENS,
+        gate_threshold=FAST_RAG_GATE_THRESHOLD,
+    )
 
 
 def _maybe_compress_history(messages: list[dict]) -> list[dict]:
@@ -223,11 +244,13 @@ def _resume_command(decisions: list[str], message: str | None):
 
 def _conversation_service() -> ConversationService:
     return ConversationService(
-        store_factory=_conversation_store, route_query=route_query, direct_route=QueryRoute.DIRECT,
+        store_factory=_conversation_store, route_query=route_query, parse_command=parse_route_command,
+        direct_route=QueryRoute.DIRECT, fast_rag_route=QueryRoute.FAST_RAG,
         agent_route=QueryRoute.AGENT, direct_answer=_direct_answer, stream_direct_answer=_stream_direct_answer,
         trim_direct_history=_trim_direct_history, model_messages=_model_messages, compress_history=_maybe_compress_history,
         agent_runtime_factory=_agent_runtime, serialize_messages=_serialize_messages, build_sources=build_sources,
         verify_agent_run=verify_agent_run, resume_command=_resume_command,
+        fast_rag_service=_fast_rag_service(),
     )
 
 

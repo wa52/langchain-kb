@@ -14,7 +14,9 @@ class ConversationService:
         *,
         store_factory: Callable[[], Any],
         route_query: Callable[[str, list[dict]], Any],
+        parse_command: Callable[[str], tuple[Any | None, str]],
         direct_route: Any,
+        fast_rag_route: Any,
         agent_route: Any,
         direct_answer: Callable[[list[dict]], str],
         stream_direct_answer: Callable[[list[dict]], Iterator[str]],
@@ -26,10 +28,13 @@ class ConversationService:
         build_sources: Callable[[str], list[dict]],
         verify_agent_run: Callable[[str, list[dict], bool], dict],
         resume_command: Callable[[list[str], str | None], Any],
+        fast_rag_service: Any,
     ) -> None:
         self._store_factory = store_factory
         self._route_query = route_query
+        self._parse_command = parse_command
         self._direct_route = direct_route
+        self._fast_rag_route = fast_rag_route
         self._agent_route = agent_route
         self._direct_answer = direct_answer
         self._stream_direct_answer = stream_direct_answer
@@ -41,6 +46,7 @@ class ConversationService:
         self._build_sources = build_sources
         self._verify_agent_run = verify_agent_run
         self._resume_command = resume_command
+        self._fast_rag_service = fast_rag_service
 
     def _messages(self, query: str, session_id: str | None, store: Any) -> list[dict]:
         messages: list[dict] = []
@@ -65,12 +71,29 @@ class ConversationService:
         store = self._store_factory()
         session_id = session_id or store.allocate()
         with store.lock(session_id):
+            forced_route, query = self._parse_command(query)
+            if not query:
+                raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            route = self._route_query(query, messages[:-1])
+            route = forced_route or self._route_query(query, messages[:-1])
             if route == self._direct_route:
                 answer = self._direct_answer(self._trim_direct_history(messages))
                 history = self._serialize_messages(messages) + [
                     {"role": "assistant", "content": answer, "route": self._direct_route}
+                ]
+                return answer, store.save(history, session_id), round((time.time() - started) * 1000, 2)
+
+            if route == self._fast_rag_route:
+                plan = self._fast_rag_service.prepare(self._trim_direct_history(messages))
+                if not plan.relevant:
+                    answer = self._direct_answer(self._trim_direct_history(messages))
+                    used_route = self._direct_route
+                else:
+                    answer = "".join(self._fast_rag_service.stream_answer(messages, plan))
+                    answer += self._fast_rag_service.citation_suffix(answer, plan.sources)
+                    used_route = self._fast_rag_route
+                history = self._serialize_messages(messages) + [
+                    {"role": "assistant", "content": answer, "route": used_route}
                 ]
                 return answer, store.save(history, session_id), round((time.time() - started) * 1000, 2)
 
@@ -88,14 +111,20 @@ class ConversationService:
         with store.lock(session_id):
             yield {"type": "message_start", "data": {"session_id": session_id}}
             started = time.time()
+            forced_route, query = self._parse_command(query)
+            if not query:
+                raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            route = self._route_query(query, messages[:-1])
+            route = forced_route or self._route_query(query, messages[:-1])
             if route == self._direct_route:
                 yield from self._stream_direct(messages, session_id, stop_event, store, started)
                 return
+            if route == self._fast_rag_route:
+                yield from self._stream_fast_rag(messages, session_id, stop_event, store, started)
+                return
             yield from self._stream_agent(messages, session_id, stop_event, store, started)
 
-    def _stream_direct(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
+    def _stream_direct(self, messages, session_id, stop_event, store, started, *, performance=None) -> Iterator[dict]:
         parts: list[str] = []
         failed = False
         try:
@@ -118,6 +147,48 @@ class ConversationService:
         yield {"type": "message_end", "data": {
             "session_id": new_session_id, "elapsed_ms": round((time.time() - started) * 1000, 2),
             "interrupted": interrupted, "waiting_approval": False, "route": self._direct_route,
+            **({"fast_rag": performance} if performance else {}),
+        }}
+
+    def _stream_fast_rag(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
+        plan = self._fast_rag_service.prepare(self._trim_direct_history(messages))
+        if not plan.relevant:
+            yield from self._stream_direct(
+                messages, session_id, stop_event, store, started,
+                performance=plan.snapshot(),
+            )
+            return
+
+        parts: list[str] = []
+        failed = False
+        try:
+            for chunk in self._fast_rag_service.stream_answer(messages, plan):
+                if stop_event.is_set():
+                    break
+                parts.append(chunk)
+                yield {"type": "token", "data": {"text": chunk}}
+            suffix = self._fast_rag_service.citation_suffix("".join(parts), plan.sources)
+            if suffix and not stop_event.is_set():
+                parts.append(suffix)
+                yield {"type": "token", "data": {"text": suffix}}
+        except Exception:
+            failed = True
+            raise
+        finally:
+            answer = "".join(parts)
+            interrupted = stop_event.is_set() or failed
+            assistant = {
+                "role": "assistant", "content": answer, "interrupted": interrupted,
+                "route": self._fast_rag_route,
+            }
+            new_session_id = store.save(self._serialize_messages(messages) + [assistant], session_id)
+        yield {"type": "sources", "data": {"sources": self._build_sources(answer)}}
+        performance = self._fast_rag_service.prepare_snapshot(plan, started)
+        yield {"type": "message_end", "data": {
+            "session_id": new_session_id,
+            "elapsed_ms": round((time.time() - started) * 1000, 2),
+            "interrupted": interrupted, "waiting_approval": False,
+            "route": self._fast_rag_route, "fast_rag": performance,
         }}
 
     def _stream_agent(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:

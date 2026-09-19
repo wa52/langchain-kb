@@ -11,6 +11,7 @@ import re
 
 class QueryRoute(StrEnum):
     DIRECT = "direct"
+    FAST_RAG = "fast_rag"
     AGENT = "agent"
 
 
@@ -21,11 +22,15 @@ _DIRECT_PATTERNS = (
 )
 
 _AGENT_TERMS = {
+    "联网", "搜索", "查一下", "最新", "官网", "网页", "mcp",
+    "保存到", "写入", "创建", "执行", "运行", "文件", "github",
+}
+
+_KNOWLEDGE_TERMS = {
     "知识库", "资料", "文档", "来源", "引用", "检索", "rag",
     "工业视觉", "机器视觉", "缺陷", "检测", "分割", "识别", "定位",
     "测量", "相机", "镜头", "光源", "标定", "视觉项目", "算法选型",
     "项目方案", "项目验证", "spi", "aoi", "ocr", "yolo", "opencv",
-    "联网", "搜索", "查一下", "最新", "官网", "网页",
 }
 
 _DIRECT_TASK_TERMS = {
@@ -47,6 +52,8 @@ def route_query(query: str, history: list[dict] | None = None) -> QueryRoute:
         return QueryRoute.DIRECT
     if any(term in text for term in _AGENT_TERMS):
         return QueryRoute.AGENT
+    if any(term in text for term in _KNOWLEDGE_TERMS):
+        return QueryRoute.FAST_RAG
 
     # A short follow-up after a grounded/tool-assisted answer should keep the
     # same execution path even if it omits the original domain nouns.
@@ -56,10 +63,24 @@ def route_query(query: str, history: list[dict] | None = None) -> QueryRoute:
                 continue
             if message.get("route") == QueryRoute.AGENT or message.get("tools"):
                 return QueryRoute.AGENT
+            if message.get("route") == QueryRoute.FAST_RAG:
+                return QueryRoute.FAST_RAG
             if "[来源:" in str(message.get("content", "")):
-                return QueryRoute.AGENT
+                return QueryRoute.FAST_RAG
             break
     return QueryRoute.DIRECT
+
+
+def parse_route_command(query: str) -> tuple[QueryRoute | None, str]:
+    """Parse explicit route commands while preserving ordinary user input."""
+    text = (query or "").strip()
+    lowered = text.lower()
+    for command, route in (("/ask", QueryRoute.DIRECT), ("/rag", QueryRoute.FAST_RAG), ("/agent", QueryRoute.AGENT)):
+        if lowered == command:
+            return route, ""
+        if lowered.startswith(command + " "):
+            return route, text[len(command):].strip()
+    return None, text
 
 
 DIRECT_SYSTEM_PROMPT = """你是一个工业视觉 AI 工程助手。当前请求不需要检索知识库，也不要声称已经检索资料。

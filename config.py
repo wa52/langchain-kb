@@ -78,6 +78,13 @@ EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "auto").lower()
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 TOP_K = int(os.getenv("TOP_K", "5"))
+# Fast RAG is intentionally separate from the Agent tool's retrieval profile.
+# It uses one answer LLM call only; ranking/compression/graph LLM helpers stay
+# exclusive to the full Agent path.
+FAST_RAG_TOP_K = int(os.getenv("FAST_RAG_TOP_K", "4"))
+FAST_RAG_FETCH_K = int(os.getenv("FAST_RAG_FETCH_K", "12"))
+FAST_RAG_MAX_CONTEXT_TOKENS = int(os.getenv("FAST_RAG_MAX_CONTEXT_TOKENS", "1200"))
+FAST_RAG_GATE_THRESHOLD = float(os.getenv("FAST_RAG_GATE_THRESHOLD", "0.12"))
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
