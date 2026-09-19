@@ -17,7 +17,7 @@ _MUTATING_ACTION = re.compile(
     re.I,
 )
 _ACTION_CONCEPT_QUESTION = re.compile(
-    r"(?:创建|新建|删除|修改|发送|保存|发布|写入|执行|运行).{0,18}(?:是什么|为什么|哪些|怎么|如何|通常|一般)",
+    r"(?:创建|新建|删除|修改|发送|保存|发布|写入|执行|运行).{0,18}(?:是什么|为什么|哪些|怎么|如何|通常|一般|区别|用途|意义|作用)",
     re.I,
 )
 _EXTERNAL_ACTION = re.compile(
@@ -54,9 +54,10 @@ class SmartRouteService:
         started = time.perf_counter()
         text = " ".join(query.strip().lower().split())
         intents = self._intent_classifier.classify(query) if self._intent_classifier is not None else {}
-        if _ACTION_CONCEPT_QUESTION.search(text):
-            return self._decision(Route.DIRECT, 0.95, ("action_concept_question",), {"direct_intent": 0.95, "routing_ms": self._elapsed(started)})
-        if _MUTATING_ACTION.search(text) or _EXTERNAL_ACTION.search(text):
+        # "保存文件时为什么…" and "执行链为什么…" discuss an action;
+        # only an imperative request should enter the tool path.  Let conceptual
+        # questions continue to retrieval, which preserves personal-history RAG.
+        if not _ACTION_CONCEPT_QUESTION.search(text) and (_MUTATING_ACTION.search(text) or _EXTERNAL_ACTION.search(text)):
             return self._decision(Route.AGENT, 1.0, ("tool_or_side_effect_intent",), {"agent_intent": 1.0, "routing_ms": self._elapsed(started)})
         if intents.get("agent", 0.0) >= 0.82 and intents.get("agent", 0.0) > intents.get("direct", 0.0):
             return self._decision(Route.AGENT, intents["agent"], ("intent_prototype_agent",), {"agent_intent": intents["agent"], "routing_ms": self._elapsed(started)})

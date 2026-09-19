@@ -86,6 +86,11 @@ def test_smart_router_keeps_action_concept_questions_direct(query):
     assert _router([]).decide(query, []).route == Route.DIRECT
 
 
+def test_smart_router_allows_personal_action_concepts_to_use_rag():
+    query = "以前的聊天执行链为什么要从 API 层迁走"
+    assert _router([_scored(query)]).decide(query, []).route == Route.FAST_RAG
+
+
 @pytest.mark.parametrize("query", [
     "用 MCP 获取当前知识库健康状态",
     "请新建一个 issue 来追踪这个错误",
