@@ -24,9 +24,15 @@ class ChatOrchestrator:
 
     def __init__(self, backend_factory: Callable[[], ChatPort] | None = None) -> None:
         self._backend_factory = backend_factory or _default_backend
+        # The default composition is deliberately resolved per turn so hot
+        # configuration changes and compatibility adapters remain observable.
+        # Explicitly injected backends stay cached for normal application use.
+        self._cache_backend = backend_factory is not None
         self._backend: ChatPort | None = None
 
     def _get_backend(self) -> ChatPort:
+        if not self._cache_backend:
+            return self._backend_factory()
         if self._backend is None:
             self._backend = self._backend_factory()
         return self._backend
