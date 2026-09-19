@@ -299,6 +299,9 @@ function routingSignalName(signal: string): string {
     semantic: "语义命中", lexical: "关键词覆盖", rank: "候选排名",
     context: "会话关联", hit_count: "候选数量", dense_bm25_agreement: "Hybrid 一致",
     agent_intent: "Agent 意图", direct_intent: "直连意图",
+    top1_score: "首条检索分", top3_mean: "前三平均分", top1_top2_gap: "首二分差",
+    intent_direct: "直连原型意图", intent_fast_rag: "知识库原型意图",
+    intent_agent: "工具原型意图",
   };
   return names[signal] ?? signal;
 }

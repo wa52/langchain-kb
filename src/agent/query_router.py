@@ -5,14 +5,13 @@ to call the first LLM adds latency and can be less stable than a small policy.
 Ambiguous domain questions route to RAG; ordinary conversation stays direct.
 """
 
-from enum import StrEnum
 import re
 
+from src.domain.routing import Route
 
-class QueryRoute(StrEnum):
-    DIRECT = "direct"
-    FAST_RAG = "fast_rag"
-    AGENT = "agent"
+# Compatibility name for callers that still import the legacy router module.
+# Route is the single routing language shared by the application and transports.
+QueryRoute = Route
 
 
 _DIRECT_PATTERNS = (
