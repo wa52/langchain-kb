@@ -64,3 +64,19 @@ def test_fast_rag_context_budget_and_deduplication():
 
     assert plan.context_tokens <= 30
     assert plan.selected_docs_count == 1
+
+
+def test_fast_rag_labels_hdevelop_examples_as_non_reference_parameter_evidence():
+    llm = _LLM()
+    docs = [
+        SimpleNamespace(
+            page_content="lines_facet (Image, Lines, 5, 3, 5, 'light')",
+            metadata={"source": "Filters/Lines/lines_facet.hdev"},
+        )
+    ]
+    service = _service(lambda _query, _k: docs, llm)
+
+    plan = service.prepare([{"role": "user", "content": "lines_facet 参数含义"}])
+
+    assert "HDevelop 示例代码" in plan.context
+    assert "不能单独证明算子参数语义" in plan.context

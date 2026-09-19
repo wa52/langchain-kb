@@ -22,6 +22,7 @@ from src.retrieval.grading import grade_document
 from src.retrieval.rewrite import rewrite_question
 from src.llm import get_llm
 from src.retrieval.telemetry import RetrievalRecord, retrieval_record_store
+from src.application.evidence import evidence_header, source_evidence_note
 
 _TIMING_ENABLED = True
 _MAX_CONCURRENT_RERANK = 5
@@ -91,12 +92,21 @@ def _compress(docs, query, llm):
     if ENABLE_CONTEXT_COMPRESSION and llm:
         workers = min(_MAX_CONCURRENT_RERANK, len(docs))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(_compress_document, d.page_content, query, llm) for d in docs]
+            futures = [
+                pool.submit(
+                    _compress_document,
+                    d.page_content,
+                    query,
+                    llm,
+                    str((getattr(d, "metadata", {}) or {}).get("source", "unknown")),
+                )
+                for d in docs
+            ]
             compressed = [fut.result() for fut in futures]
         results = []
         for doc, summary in zip(docs, compressed):
             source = doc.metadata.get("source", "unknown")
-            results.append(f"[来源: {source}]\n{summary}")
+            results.append(f"{evidence_header(source)}\n{summary}")
         return "\n\n---\n\n".join(results)
     results = []
     for doc in docs:
@@ -104,7 +114,7 @@ def _compress(docs, query, llm):
         content = doc.page_content
         if len(content) > MAX_CONTEXT_TOKENS * 4:
             content = content[:MAX_CONTEXT_TOKENS * 4] + "..."
-        results.append(f"[来源: {source}]\n{content}")
+        results.append(f"{evidence_header(source)}\n{content}")
     return "\n\n---\n\n".join(results)
 
 
@@ -282,10 +292,14 @@ def save_research_material(title: str, content: str, sources: str = "") -> str:
     return f"已将研究资料加入知识库：{title}（{chunks} 个片段，总耗时 {time.perf_counter() - started:.2f}s）"
 
 
-def _compress_document(text: str, query: str, llm) -> str:
+def _compress_document(text: str, query: str, llm, source: str = "unknown") -> str:
     prompt = (
         "你是一个文档压缩助手。根据用户问题，从以下文档中提取最关键的信息，"
-        "保留事实、数据、代码和关键结论，去掉冗余内容，输出精简摘要（100-150字）。\n\n"
+        "保留原文明确记载的事实、数据、代码和关键结论，去掉冗余内容，输出精简摘要（100-150字）。"
+        "不得从算子名、变量名、参数位置或代码调用推断原文未写出的参数语义、输出类型或适用范围。"
+        "若证据类型为示例代码，只摘录可直接观察到的调用，并明确其不是参数文档。\n\n"
+        f"来源: {source}\n"
+        f"{source_evidence_note(source)}\n\n"
         f"问题: {query}\n\n"
         f"文档: {text[:1500]}\n\n"
         "摘要:"

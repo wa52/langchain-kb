@@ -13,6 +13,8 @@ import re
 import time
 from typing import Any
 
+from src.application.evidence import evidence_header
+
 
 _TERM_RE = re.compile(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]")
 _COMMON_CHARS = frozenset("的是了在和与及对用有这那一个什么怎么如何可以请帮我把的")
@@ -133,7 +135,7 @@ class FastRagService:
             selected.append(doc)
             if source not in sources:
                 sources.append(source)
-            segments.append(f"[来源: {source}]\n{excerpt}")
+            segments.append(f"{evidence_header(source)}\n{excerpt}")
             used += tokens
         return selected, "\n\n---\n\n".join(segments), sources, used
 
@@ -144,7 +146,11 @@ class FastRagService:
         ]
         system = (
             "你是个人知识库助手。仅根据给出的资料回答；资料不足时明确说明知识库没有足够依据。"
-            "回答使用中文、简洁准确，不要提及内部检索实现。每个关键结论尽量保留 [来源: 文件名] 标记。\n\n"
+            "回答使用中文、简洁准确，不要提及内部检索实现。每个关键结论尽量保留 [来源: 文件名] 标记。"
+            "严格遵守每段资料的证据类型：示例代码只能证明示例中的调用，"
+            "不得从算子名、变量名或参数位置推断参数语义、输出类型或适用范围；"
+            "没有手册或资料明确说明时，应直接说明无法从当前资料确认。"
+            "不要罗列未支撑结论的来源。\n\n"
             f"资料：\n{plan.context}"
         )
         return [
