@@ -7,6 +7,7 @@ from config import (
     ENABLE_GRAPH, ENABLE_HYBRID_SEARCH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS,
     FAST_RAG_FETCH_K, FAST_RAG_GATE_THRESHOLD, FAST_RAG_MAX_CONTEXT_TOKENS,
     FAST_RAG_TOP_K,
+    ROUTE_RAG_THRESHOLD,
 )
 from src.agent.chat_history import allocate_session_id, load_history, save_history, session_lock
 from src.agent.harness import verify_agent_run
@@ -128,13 +129,13 @@ def _fast_rag_service() -> FastRagService:
 
 def _smart_router() -> SmartRouteService:
     def retrieve(query: str, k: int):
-        from src.application.knowledge import retrieve_documents
-        return retrieve_documents(query, k)
+        from src.application.knowledge import retrieve_scored_documents
+        return retrieve_scored_documents(query, k)
 
     return SmartRouteService(
         retrieve,
         fetch_k=FAST_RAG_FETCH_K,
-        rag_threshold=FAST_RAG_GATE_THRESHOLD,
+        rag_threshold=ROUTE_RAG_THRESHOLD,
     )
 
 

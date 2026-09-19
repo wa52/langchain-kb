@@ -10,7 +10,8 @@ from typing import Any
 from src.domain.routing import Route, RoutingDecision
 
 
-_AGENT_ACTIONS = frozenset(("创建", "删除", "修改", "发送", "保存", "发布", "写入", "执行", "运行", "搜索", "查一下", "联网", "仓库", "github", "mcp"))
+_MUTATING_ACTIONS = frozenset(("创建", "删除", "修改", "发送", "保存", "发布", "写入", "执行", "运行"))
+_EXTERNAL_ACTION = re.compile(r"(?:帮我|请|去|给我).{0,10}(?:查|搜索|看看).{0,20}(?:github|仓库|网页|官网|最新)|(?:帮我|请).{0,12}(?:联网|调用工具|mcp)", re.I)
 _DIRECT_ACTIONS = frozenset(("翻译", "润色", "改写", "写一封", "解释", "计算"))
 _RAG_HINTS = frozenset(("知识库", "资料", "文档", "之前", "项目", "参数", "方案", "训练", "检测", "标定", "halcon", "aoi", "ocr"))
 _FOLLOW_UP = re.compile(r"^(那|这个|那个|第二种|参数呢|为什么|怎么|如何|继续|具体)")
@@ -29,7 +30,7 @@ class SmartRouteService:
     def decide(self, query: str, history: list[dict]) -> RoutingDecision:
         started = time.perf_counter()
         text = " ".join(query.strip().lower().split())
-        if any(action in text for action in _AGENT_ACTIONS):
+        if any(action in text for action in _MUTATING_ACTIONS) or _EXTERNAL_ACTION.search(text):
             return self._decision(Route.AGENT, 1.0, ("tool_or_side_effect_intent",), {"agent_intent": 1.0, "routing_ms": self._elapsed(started)})
         if any(action in text for action in _DIRECT_ACTIONS) and not any(hint in text for hint in _RAG_HINTS):
             return self._decision(Route.DIRECT, 0.95, ("direct_task_intent",), {"direct_intent": 0.95, "routing_ms": self._elapsed(started)})
@@ -40,9 +41,9 @@ class SmartRouteService:
         signals = self._signals(text, docs, context_route)
         signals["routing_ms"] = self._elapsed(started)
         confidence = round(
-            0.52 * float(signals["semantic"])
-            + 0.22 * float(signals["lexical"])
-            + 0.16 * float(signals["rank"])
+            0.58 * float(signals["semantic"])
+            + 0.20 * float(signals["lexical"])
+            + 0.12 * float(signals["rank"])
             + 0.10 * float(signals["context"]), 3,
         )
         reasons = []
@@ -73,15 +74,19 @@ class SmartRouteService:
         terms = {term.lower() for term in _TERMS.findall(query) if term not in _NOISE}
         corpus = "\n".join(str(getattr(doc, "page_content", "")) for doc in docs).lower()
         lexical = sum(term in corpus for term in terms) / max(1, len(terms))
-        # The retriever has already performed dense + BM25 fusion.  This
-        # normalized candidate-quality signal is intentionally score-agnostic
-        # until the retrieval adapter exposes native per-channel scores.
-        semantic = min(1.0, 0.55 * lexical + 0.15 * min(len(docs), 4) / 4)
+        fusion = [float(getattr(doc, "fusion_score", 0.0)) for doc in docs]
+        top1 = fusion[0] if fusion else 0.0
+        top3_mean = sum(fusion[:3]) / min(3, len(fusion)) if fusion else 0.0
+        gap = max(0.0, top1 - fusion[1]) if len(fusion) > 1 else top1
+        agreement = any(getattr(doc, "dense_rank", None) and getattr(doc, "bm25_rank", None) for doc in docs)
+        # Fused retrieval scores, not hit count, are the semantic backbone.
+        semantic = min(1.0, 0.65 * top1 + 0.25 * top3_mean + 0.10 * gap)
         return {
             "semantic": round(semantic, 3), "lexical": round(lexical, 3),
-            "rank": round(min(1.0, len(docs) / 4), 3),
+            "rank": round(gap, 3), "top1_score": round(top1, 3),
+            "top3_mean": round(top3_mean, 3), "top1_top2_gap": round(gap, 3),
             "context": 1.0 if context_route else 0.0,
-            "hit_count": len(docs), "dense_bm25_agreement": len(docs) >= 2,
+            "hit_count": len(docs), "dense_bm25_agreement": agreement,
         }
 
     @staticmethod

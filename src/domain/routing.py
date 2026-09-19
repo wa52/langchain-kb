@@ -26,3 +26,24 @@ class RoutingDecision:
             "reasons": list(self.reasons),
             "signals": dict(self.signals),
         }
+
+
+@dataclass(frozen=True)
+class ScoredDocument:
+    """A retriever candidate with independently inspectable channel signals."""
+
+    document: Any
+    dense_score: float = 0.0
+    bm25_score: float = 0.0
+    fusion_score: float = 0.0
+    dense_rank: int | None = None
+    bm25_rank: int | None = None
+    final_rank: int = 0
+
+    @property
+    def page_content(self) -> str:
+        return str(getattr(self.document, "page_content", ""))
+
+    @property
+    def metadata(self) -> dict:
+        return dict(getattr(self.document, "metadata", {}) or {})

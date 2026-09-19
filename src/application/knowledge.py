@@ -1,5 +1,7 @@
 import time
 
+from src.domain.routing import ScoredDocument
+
 
 def retrieve_documents(query: str, k: int, capability: str | None = None):
     """Application boundary for Agent-oriented hybrid retrieval."""
@@ -29,6 +31,38 @@ def retrieve_graph(query: str) -> str:
     from src.graph_store.service import GraphService
 
     return GraphService().search(query)
+
+
+def retrieve_scored_documents(query: str, top_k: int) -> list[ScoredDocument]:
+    """Return ranked candidates without changing the legacy Document[] API.
+
+    Dense relevance is supplied by Chroma; BM25 exposes ranks rather than raw
+    incomparable scores, so each channel is normalized before fusion.
+    """
+    from src.vector_store.service import VectorStoreService
+    from src.retrieval import retriever as retrieval
+
+    dense = VectorStoreService().similarity_search_with_scores(query, top_k)
+    bm25 = retrieval._bm25_retriever.invoke(query)[:top_k] if retrieval._bm25_retriever is not None else []
+    candidates: dict[tuple[str, str], dict] = {}
+    for rank, (doc, score) in enumerate(dense, 1):
+        key = (str((getattr(doc, "metadata", {}) or {}).get("source", "")), str(getattr(doc, "page_content", "")))
+        candidates[key] = {"document": doc, "dense_score": max(0.0, min(1.0, float(score))), "dense_rank": rank, "bm25_score": 0.0, "bm25_rank": None}
+    for rank, doc in enumerate(bm25, 1):
+        key = (str((getattr(doc, "metadata", {}) or {}).get("source", "")), str(getattr(doc, "page_content", "")))
+        row = candidates.setdefault(key, {"document": doc, "dense_score": 0.0, "dense_rank": None, "bm25_score": 0.0, "bm25_rank": None})
+        row["bm25_rank"] = rank
+        row["bm25_score"] = 1.0 / rank
+    rows = []
+    for row in candidates.values():
+        # Dense relevance is already [0, 1]; BM25 uses reciprocal rank [0, 1].
+        channels = [row["dense_score"]] if row["dense_rank"] else []
+        if row["bm25_rank"]:
+            channels.append(row["bm25_score"])
+        row["fusion_score"] = sum(channels) / len(channels) if channels else 0.0
+        rows.append(row)
+    rows.sort(key=lambda row: row["fusion_score"], reverse=True)
+    return [ScoredDocument(**row, final_rank=index) for index, row in enumerate(rows[:top_k], 1)]
 
 
 def search_documents(query: str, top_k: int) -> tuple[list[dict], float]:
