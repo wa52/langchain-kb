@@ -2,24 +2,40 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from hashlib import sha256
+from collections import OrderedDict
 from pathlib import Path
 from threading import Lock
 
 from langchain.tools import tool
 
-from config import TOP_K, ENABLE_GRADING, ENABLE_REWRITE, ENABLE_CONTEXT_COMPRESSION, ENABLE_GRAPH, MAX_CONTEXT_TOKENS, RERANK_LLM
+from config import (
+    TOP_K,
+    ENABLE_GRADING,
+    ENABLE_REWRITE,
+    ENABLE_HYBRID_SEARCH,
+    ENABLE_CONTEXT_COMPRESSION,
+    ENABLE_GRAPH,
+    MAX_CONTEXT_TOKENS,
+    RERANK_LLM,
+)
 from src.retrieval.grading import grade_document
 from src.retrieval.rewrite import rewrite_question
 from src.llm import get_llm
+from src.retrieval.telemetry import RetrievalRecord, retrieval_record_store
 
 _TIMING_ENABLED = True
 _MAX_CONCURRENT_RERANK = 5
 _RETRIEVAL_LOCKS_GUARD = Lock()
+_CACHE_KEYS_GUARD = Lock()
+_COMPLETED_CACHE_KEYS: OrderedDict[tuple[str, str | None, int], None] = OrderedDict()
+_MAX_CACHE_KEYS = 128
 
 
 def _timing(name: str, t0: float):
+    elapsed_ms = (time.perf_counter() - t0) * 1000
     if _TIMING_ENABLED:
-        print(f"  [计时] {name}: {time.time() - t0:.2f}s")
+        print(f"  [计时] {name}: {elapsed_ms / 1000:.2f}s")
+    return round(elapsed_ms, 2)
 
 
 def _get_rerank_llm():
@@ -100,36 +116,75 @@ def _index_version() -> int:
         return 0
 
 
+def _cache_key_completed(key: tuple[str, str | None, int]) -> bool:
+    with _CACHE_KEYS_GUARD:
+        return key in _COMPLETED_CACHE_KEYS
+
+
+def _mark_cache_key_completed(key: tuple[str, str | None, int]) -> None:
+    with _CACHE_KEYS_GUARD:
+        _COMPLETED_CACHE_KEYS[key] = None
+        _COMPLETED_CACHE_KEYS.move_to_end(key)
+        while len(_COMPLETED_CACHE_KEYS) > _MAX_CACHE_KEYS:
+            _COMPLETED_CACHE_KEYS.popitem(last=False)
+
+
 @lru_cache(maxsize=128)
 def _retrieve_knowledge_cached(query: str, capability: str | None, index_version: int) -> str:
     """Cache the expensive retrieve/rerank/compress result until the index changes."""
-    _t_all = time.time()
-    llm = _get_rerank_llm() if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
+    started = time.perf_counter()
+    record = RetrievalRecord(
+        query=query,
+        capability=capability,
+        index_version=index_version,
+        flags={
+            "grading": ENABLE_GRADING,
+            "rewrite": ENABLE_REWRITE,
+            "hybrid_search": ENABLE_HYBRID_SEARCH,
+            "context_compression": ENABLE_CONTEXT_COMPRESSION,
+            "graph": ENABLE_GRAPH,
+        },
+    )
+    try:
+        llm = _get_rerank_llm() if (ENABLE_GRADING or ENABLE_CONTEXT_COMPRESSION) else None
 
-    fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
-    _t0 = time.time()
-    raw_docs = _search(query, fetch_k, capability=capability)
-    _timing("混合检索 (vector+BM25)", _t0)
-    _t0 = time.time()
-    docs = _grade(query, raw_docs, llm) if raw_docs else []
-    _timing("文档评分", _t0)
-    _t0 = time.time()
-    result = _compress(docs, query, llm) if docs else ""
-    _timing("上下文压缩", _t0)
+        fetch_k = TOP_K * 3 if ENABLE_GRADING else TOP_K
+        _t0 = time.perf_counter()
+        raw_docs = _search(query, fetch_k, capability=capability)
+        record.stages["search_ms"] = _timing("混合检索 (vector+BM25)", _t0)
+        record.raw_docs_count = len(raw_docs or [])
 
-    if ENABLE_GRAPH:
-        try:
-            from src.application.knowledge import retrieve_graph
-            _t0 = time.time()
-            graph_result = retrieve_graph(query)
-            _timing("知识图谱检索", _t0)
-            if graph_result != "未找到相关的图谱信息。":
-                result += f"\n\n【知识图谱关联】\n{graph_result}"
-        except Exception as e:
-            print(f"  [图谱] 检索失败: {e}")
+        _t0 = time.perf_counter()
+        docs = _grade(query, raw_docs, llm) if raw_docs else []
+        record.stages["grading_ms"] = _timing("文档评分", _t0)
+        record.selected_docs_count = len(docs or [])
 
-    _timing("retrieve_knowledge 工具总计", _t_all)
-    return result if result else "未找到相关信息。"
+        _t0 = time.perf_counter()
+        result = _compress(docs, query, llm) if docs else ""
+        record.stages["compression_ms"] = _timing("上下文压缩", _t0)
+
+        if ENABLE_GRAPH:
+            try:
+                from src.application.knowledge import retrieve_graph
+                _t0 = time.perf_counter()
+                graph_result = retrieve_graph(query)
+                record.stages["graph_ms"] = _timing("知识图谱检索", _t0)
+                if graph_result != "未找到相关的图谱信息。":
+                    result += f"\n\n【知识图谱关联】\n{graph_result}"
+            except Exception as e:
+                record.error = f"graph: {e}"
+                print(f"  [图谱] 检索失败: {e}")
+
+        record.finish((time.perf_counter() - started) * 1000)
+        _mark_cache_key_completed((query, capability, index_version))
+        _timing("retrieve_knowledge 工具总计", started)
+        return result if result else "未找到相关信息。"
+    except Exception as exc:
+        record.error = str(exc)
+        record.finish((time.perf_counter() - started) * 1000, status="failed")
+        raise
+    finally:
+        retrieval_record_store.put(record)
 
 
 @lru_cache(maxsize=256)
@@ -148,6 +203,8 @@ def _get_retrieval_lock(query: str, capability: str | None, index_version: int) 
 def clear_retrieval_cache() -> None:
     """Drop cached evidence after indexing or configuration changes."""
     _retrieve_knowledge_cached.cache_clear()
+    with _CACHE_KEYS_GUARD:
+        _COMPLETED_CACHE_KEYS.clear()
 
 
 @tool
@@ -162,8 +219,28 @@ def retrieve_knowledge(query: str, capability: str | None = None) -> str:
     if not normalized:
         return "未找到相关信息。"
     index_version = _index_version()
+    key = (normalized, capability, index_version)
     with _get_retrieval_lock(normalized, capability, index_version):
-        return _retrieve_knowledge_cached(normalized, capability, index_version)
+        started = time.perf_counter()
+        cache_hit = _cache_key_completed(key)
+        result = _retrieve_knowledge_cached(normalized, capability, index_version)
+        if cache_hit:
+            record = RetrievalRecord(
+                query=normalized,
+                capability=capability,
+                index_version=index_version,
+                cache_hit=True,
+                flags={
+                    "grading": ENABLE_GRADING,
+                    "rewrite": ENABLE_REWRITE,
+                    "hybrid_search": ENABLE_HYBRID_SEARCH,
+                    "context_compression": ENABLE_CONTEXT_COMPRESSION,
+                    "graph": ENABLE_GRAPH,
+                },
+            )
+            record.finish((time.perf_counter() - started) * 1000)
+            retrieval_record_store.put(record)
+        return result
 
 
 @tool
@@ -190,7 +267,7 @@ def save_research_material(title: str, content: str, sources: str = "") -> str:
     if len(content) > 200_000:
         return "无法入库：整理后的资料超过 200 KB 限制。"
 
-    started = time.time()
+    started = time.perf_counter()
     source_id = sha256((title + "\n" + content).encode("utf-8")).hexdigest()[:16]
     from config import EXTERNAL_DIR
     target = Path(EXTERNAL_DIR) / f"research_{source_id}.md"
@@ -198,11 +275,11 @@ def save_research_material(title: str, content: str, sources: str = "") -> str:
     source_block = f"\n\n## 参考来源\n{sources.strip()}" if sources.strip() else ""
     target.write_text(f"# {title}\n\n{content}{source_block}\n", encoding="utf-8")
 
-    _t_index = time.time()
+    _t_index = time.perf_counter()
     from src.ingestion.pipeline import run_add_path
     chunks = run_add_path(str(target), external_dir=str(Path(EXTERNAL_DIR)), echo_fn=print)
     _timing("网页内容入库", _t_index)
-    return f"已将研究资料加入知识库：{title}（{chunks} 个片段，总耗时 {time.time() - started:.2f}s）"
+    return f"已将研究资料加入知识库：{title}（{chunks} 个片段，总耗时 {time.perf_counter() - started:.2f}s）"
 
 
 def _compress_document(text: str, query: str, llm) -> str:

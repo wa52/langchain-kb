@@ -68,6 +68,7 @@ def create_app() -> FastAPI:
     from src.api.routers.health import router as health_router
     from src.api.routers.status import router as status_router
     from src.api.routers.search import router as search_router
+    from src.api.routers.retrieval import router as retrieval_router
     from src.api.routers.chat import router as chat_router
     from src.api.routers.indexing import router as indexing_router
     from src.api.routers.sessions import router as sessions_router
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(status_router, prefix="/api/v1")
     app.include_router(search_router, prefix="/api/v1")
+    app.include_router(retrieval_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(indexing_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
