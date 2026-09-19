@@ -1,5 +1,5 @@
 from src.adapters.agent import LangGraphAgentRuntime
-from src.harness import RuleBasedToolSelector, ToolRegistry
+from src.harness import AgentRunTrace, RuleBasedToolSelector, ToolRegistry
 
 
 class FakeAgent:
@@ -65,5 +65,7 @@ def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
         tool_selector=RuleBasedToolSelector(max_candidates=3, min_candidates=1),
     )
 
-    assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4")) == ["answer"]
+    trace = AgentRunTrace(run_id="run-4")
+    assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4", trace=trace)) == ["answer"]
     assert selected == [("retrieve_knowledge",)]
+    assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "agent.run.completed"]

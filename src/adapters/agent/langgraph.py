@@ -109,24 +109,28 @@ class LangGraphAgentRuntime:
         on_interrupt: Callable[[Any], None] | None = None,
         on_tool_result: Callable[[dict], None] | None = None,
         stream_input: Any = None,
+        trace: Any = None,
     ) -> Iterable[str]:
         """Run a prepared chat turn with LangGraph state and tool callbacks."""
         self._cancelled.discard(session_id)
+        if trace is not None:
+            trace.emit("agent.run.started", session_id=session_id)
+            trace.emit("selector.started")
         selected_tools = self._select_tools(messages)
+        if trace is not None:
+            trace.selected_tools = tuple(selected_tools or ())
+            trace.emit("selector.completed", selected_tools=list(selected_tools or ()))
         configured = self._bind_session(self._get_agent(selected_tools), session_id)
         prepared = self._messages_for_session(configured, messages, session_id)
-        for chunk in self._stream(
-            configured,
-            prepared,
-            on_tool=on_tool,
-            on_interrupt=on_interrupt,
-            on_tool_result=on_tool_result,
-            stream_input=stream_input,
-        ):
-            if session_id in self._cancelled:
-                break
-            if chunk:
-                yield str(chunk)
+        try:
+            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, stream_input=stream_input):
+                if session_id in self._cancelled:
+                    break
+                if chunk:
+                    yield str(chunk)
+        finally:
+            if trace is not None:
+                trace.emit("agent.run.completed", session_id=session_id)
 
     def cancel(self, session_id: str) -> None:
         self._cancelled.add(session_id)
