@@ -127,6 +127,7 @@ class ConversationService:
     def _stream_direct(self, messages, session_id, stop_event, store, started, *, performance=None) -> Iterator[dict]:
         parts: list[str] = []
         failed = False
+        llm_started = time.perf_counter()
         try:
             for chunk in self._stream_direct_answer(self._trim_direct_history(messages)):
                 if stop_event.is_set():
@@ -137,6 +138,13 @@ class ConversationService:
             failed = True
             raise
         finally:
+            if performance is not None:
+                performance["route"] = self._direct_route
+                performance.setdefault("stages", {})["llm_ms"] = round(
+                    (time.perf_counter() - llm_started) * 1000, 2
+                )
+                performance["llm_calls"] = 1
+                performance["total_ms"] = round((time.time() - started) * 1000, 2)
             answer = "".join(parts)
             interrupted = stop_event.is_set() or failed
             history = self._serialize_messages(messages) + [{
@@ -151,7 +159,8 @@ class ConversationService:
         }}
 
     def _stream_fast_rag(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
-        plan = self._fast_rag_service.prepare(self._trim_direct_history(messages))
+        model_messages = self._trim_direct_history(messages)
+        plan = self._fast_rag_service.prepare(model_messages)
         if not plan.relevant:
             yield from self._stream_direct(
                 messages, session_id, stop_event, store, started,
@@ -162,7 +171,7 @@ class ConversationService:
         parts: list[str] = []
         failed = False
         try:
-            for chunk in self._fast_rag_service.stream_answer(messages, plan):
+            for chunk in self._fast_rag_service.stream_answer(model_messages, plan):
                 if stop_event.is_set():
                     break
                 parts.append(chunk)

@@ -120,6 +120,20 @@ export function DeveloperPane() {
             耗时 <span className="dev-count">{fmtMs(run.elapsedMs)}</span>
           </li>
           <li>
+            路径 <span className="dev-count">{run.route ?? "—"}</span>
+          </li>
+          <li>
+            LLM 调用 <span className="dev-count">{run.llmCalls ?? "—"}</span>
+          </li>
+          <li>
+            文档 <span className="dev-count">
+              {run.rawDocsCount == null ? "—" : `${run.rawDocsCount} → ${run.selectedDocsCount ?? 0}`}
+            </span>
+          </li>
+          <li>
+            Context <span className="dev-count">{run.contextTokens == null ? "—" : `${run.contextTokens} tokens`}</span>
+          </li>
+          <li>
             来源数 <span className="dev-count">{run.sourceCount ?? "—"}</span>
           </li>
           <li>

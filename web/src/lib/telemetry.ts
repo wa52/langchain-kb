@@ -9,6 +9,11 @@ export interface RunTelemetry {
   error: string | null;
   traceRunId: string | null;
   actions: ActionTelemetry[];
+  route: string | null;
+  llmCalls: number | null;
+  rawDocsCount: number | null;
+  selectedDocsCount: number | null;
+  contextTokens: number | null;
 }
 
 export interface ActionTelemetry {
@@ -47,6 +52,11 @@ let telemetry: DevTelemetry = {
     error: null,
     traceRunId: null,
     actions: [],
+    route: null,
+    llmCalls: null,
+    rawDocsCount: null,
+    selectedDocsCount: null,
+    contextTokens: null,
   },
   apiErrors: [],
 };
@@ -70,6 +80,11 @@ export function resetDevTelemetry(): void {
       error: null,
       traceRunId: null,
       actions: [],
+      route: null,
+      llmCalls: null,
+      rawDocsCount: null,
+      selectedDocsCount: null,
+      contextTokens: null,
     },
     apiErrors: [],
   };
@@ -112,6 +127,11 @@ export function recordRunStart(): void {
       error: null,
       traceRunId: null,
       actions: [],
+      route: null,
+      llmCalls: null,
+      rawDocsCount: null,
+      selectedDocsCount: null,
+      contextTokens: null,
     },
   };
   emit();
@@ -189,7 +209,55 @@ export function recordAgentTrace(trace: {
   }
   telemetry = {
     ...telemetry,
-    lastRun: { ...telemetry.lastRun, traceRunId: trace.run_id, actions },
+    lastRun: {
+      ...telemetry.lastRun,
+      traceRunId: trace.run_id,
+      actions,
+      route: "agent",
+      llmCalls: actions.filter((action) => action.name.startsWith("LLM #")).length,
+    },
+  };
+  emit();
+}
+
+export function recordFastRagTrace(trace: {
+  route: "fast_rag" | "direct";
+  total_ms: number;
+  stages: Record<string, number>;
+  llm_calls: number;
+  raw_docs_count: number;
+  selected_docs_count: number;
+  context_tokens: number;
+  relevant: boolean;
+}): void {
+  const now = Date.now();
+  const names: Record<string, string> = {
+    search_ms: "混合检索",
+    gate_ms: "相关性判断",
+    context_ms: "上下文构建",
+    llm_ms: "LLM #1",
+  };
+  const actions = Object.entries(trace.stages)
+    .filter(([, elapsedMs]) => typeof elapsedMs === "number")
+    .map(([stage, elapsedMs]) => ({
+      name: names[stage] ?? stage,
+      at: now,
+      elapsedMs,
+    }));
+  telemetry = {
+    ...telemetry,
+    lastRun: {
+      ...telemetry.lastRun,
+      elapsedMs: trace.total_ms,
+      actions,
+      traceRunId: null,
+      tools: [],
+      route: trace.route,
+      llmCalls: trace.llm_calls,
+      rawDocsCount: trace.raw_docs_count,
+      selectedDocsCount: trace.selected_docs_count,
+      contextTokens: trace.context_tokens,
+    },
   };
   emit();
 }

@@ -48,6 +48,17 @@ export interface AgentTrace {
   events: TraceEvent[];
 }
 
+export interface FastRagTrace {
+  route: "fast_rag" | "direct";
+  total_ms: number;
+  stages: Record<string, number>;
+  llm_calls: number;
+  raw_docs_count: number;
+  selected_docs_count: number;
+  context_tokens: number;
+  relevant: boolean;
+}
+
 export type ViewId = "chat" | "knowledge" | "status" | "settings";
 
 export interface SessionSummary {

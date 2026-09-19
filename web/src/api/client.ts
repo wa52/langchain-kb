@@ -7,6 +7,7 @@ import type {
   SessionSummary,
   SourceItem,
   AgentTrace,
+  FastRagTrace,
   TaskStatus,
   TrackedFilesResponse,
   UploadTasks,
@@ -18,7 +19,7 @@ export interface StreamHandlers {
   onToken?: (text: string) => void;
   onSources?: (sources: SourceItem[]) => void;
   onTool?: (tools: string[]) => void;
-  onEnd?: (sessionId: string, interrupted: boolean, runId?: string) => void;
+  onEnd?: (sessionId: string, interrupted: boolean, runId?: string, fastRag?: FastRagTrace) => void;
   onError?: (message: string) => void;
   onEvent?: (type: string, payload: unknown) => void;
 }
@@ -130,8 +131,10 @@ function handleSseBlock(block: string, handlers: StreamHandlers): void {
       break;
     case "message_end":
       if (typeof payload === "object" && payload && "session_id" in payload) {
-        const end = payload as { session_id: string; interrupted?: boolean; run_id?: string };
-        handlers.onEnd?.(end.session_id, Boolean(end.interrupted), end.run_id);
+        const end = payload as {
+          session_id: string; interrupted?: boolean; run_id?: string; fast_rag?: FastRagTrace;
+        };
+        handlers.onEnd?.(end.session_id, Boolean(end.interrupted), end.run_id, end.fast_rag);
       }
       break;
     case "error":

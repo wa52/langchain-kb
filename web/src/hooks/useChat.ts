@@ -9,6 +9,7 @@ import {
   recordRunTools,
   recordStreamEvent,
   recordAgentTrace,
+  recordFastRagTrace,
 } from "../lib/telemetry";
 import type { ChatMessage, SessionSummary, SourceItem } from "../types/api";
 
@@ -135,7 +136,7 @@ export function useChat(): UseChatResult {
                 if (!isCurrentRun()) return;
                 recordRunTools(tools);
               },
-              onEnd: (sid, interrupted, runId) => {
+              onEnd: (sid, interrupted, runId, fastRag) => {
                 if (!isCurrentRun()) return;
                 streamSessionRef.current = sid;
                 setSessionId(sid);
@@ -145,6 +146,7 @@ export function useChat(): UseChatResult {
                     if (trace && isCurrentRun()) recordAgentTrace(trace);
                   }).catch(() => undefined);
                 }
+                if (fastRag) recordFastRagTrace(fastRag);
               },
               onError: (message) => {
                 if (!isCurrentRun()) return;
