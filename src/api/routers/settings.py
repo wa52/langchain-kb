@@ -10,6 +10,7 @@ from src.application.settings import (
     set_llm_config,
     set_mcp_enabled,
     set_mcp_server_enabled,
+    set_jev_api_key,
 )
 
 router = APIRouter()
@@ -34,6 +35,10 @@ class LlmModelsRequest(BaseModel):
 
 class McpEnabledRequest(BaseModel):
     enabled: bool
+
+
+class JevConfigRequest(BaseModel):
+    api_key: str
 
 
 class McpServerEnabledRequest(BaseModel):
@@ -118,6 +123,15 @@ def mcp_enabled(req: McpEnabledRequest):
         content=set_mcp_enabled(req.enabled),
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/settings/jev", operation_id="set_jev_api_key", summary="保存 Jev Key 并热加载")
+def jev_config(req: JevConfigRequest):
+    try:
+        result = set_jev_api_key(req.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(content=result, headers={"Cache-Control": "no-store"})
 
 
 @router.post(

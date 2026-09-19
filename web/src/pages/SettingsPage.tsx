@@ -56,6 +56,7 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
     setLlm,
     setMcpEnabled,
     setMcpServerEnabled,
+    setJevApiKey,
   } = useSettings();
   const [provider, setProvider] = useState("deepseek");
   const [model, setModel] = useState("");
@@ -65,6 +66,7 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [jevKey, setJevKey] = useState("");
 
   useEffect(() => {
     if (!settings) return;
@@ -225,6 +227,13 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
           {saved ? <span className="save-ok" role="status">已切换，后续对话使用新 API</span> : null}
           {modelError ? <span className="msg-error" role="alert">{modelError}</span> : null}
         </div>
+      </section>
+
+      <section className="card settings-section">
+        <h3>Jev 工具选择</h3>
+        <p className="muted settings-help">配置后，Jev 会对规则召回的候选工具进行概率排序；密钥不会回显，保存后立即热加载。</p>
+        <div className="settings-form-grid"><label className="wide">Jev API Key<input type="password" value={jevKey} onChange={(e) => setJevKey(e.target.value)} placeholder={s.jev_api_configured ? "已配置，输入新 Key 可替换" : "粘贴 TYPESAFE_API_KEY"} disabled={saving} autoComplete="new-password" /></label></div>
+        <div className="settings-actions"><button type="button" className="primary" disabled={saving || !jevKey} onClick={() => void setJevApiKey(jevKey).then((ok) => { if (ok) setJevKey(""); })}>{saving ? "保存中…" : "保存并热加载"}</button>{s.jev_api_configured ? <span className="save-ok">已启用</span> : <span className="muted">未配置，使用规则选择器</span>}</div>
       </section>
 
       <Section title="模型来源">

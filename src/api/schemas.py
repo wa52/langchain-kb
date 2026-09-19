@@ -254,6 +254,7 @@ class SettingsResponse(BaseModel):
     max_context_tokens: int
     mcp_config_path: str
     mcp_enabled: bool
+    jev_api_configured: bool
     mcp_servers: list[McpServerSummary]
     mcp_http_available: bool
     mcp_http_error: str | None

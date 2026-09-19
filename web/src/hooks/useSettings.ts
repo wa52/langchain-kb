@@ -6,6 +6,7 @@ import {
   setLlmConfig,
   setMcpEnabled as saveMcpEnabled,
   setMcpServerEnabled as saveMcpServerEnabled,
+  setJevApiKey as saveJevApiKey,
 } from "../api/client";
 import type { AppSettings } from "../types/api";
 
@@ -19,6 +20,7 @@ export interface UseSettingsResult {
   setLlm: (input: { provider: string; model: string; base_url: string; api_key?: string }) => Promise<boolean>;
   setMcpEnabled: (enabled: boolean) => Promise<boolean>;
   setMcpServerEnabled: (name: string, enabled: boolean) => Promise<boolean>;
+  setJevApiKey: (apiKey: string) => Promise<boolean>;
 }
 
 export function useSettings(): UseSettingsResult {
@@ -108,6 +110,7 @@ export function useSettings(): UseSettingsResult {
       setSaving(false);
     }
   }, [reload]);
+  const setJevApiKey = useCallback(async (apiKey: string) => { setSaving(true); setActionError(null); try { await saveJevApiKey(apiKey); reload(); return true; } catch (e) { setActionError(e instanceof Error ? e.message : String(e)); return false; } finally { setSaving(false); } }, [reload]);
 
   return {
     settings,
@@ -119,5 +122,6 @@ export function useSettings(): UseSettingsResult {
     setLlm,
     setMcpEnabled,
     setMcpServerEnabled,
+    setJevApiKey,
   };
 }

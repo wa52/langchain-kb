@@ -25,3 +25,7 @@ def set_mcp_enabled(enabled: bool):
 
 def set_mcp_server_enabled(name: str, enabled: bool):
     return _module().set_mcp_server_enabled(name, enabled)
+
+
+def set_jev_api_key(api_key: str):
+    return _module().set_jev_api_key(api_key)

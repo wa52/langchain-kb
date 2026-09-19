@@ -112,6 +112,7 @@ def get_settings_view() -> dict:
         # MCP
         "mcp_config_path": config.MCP_CONFIG_PATH,
         "mcp_enabled": config.MCP_ENABLED,
+        "jev_api_configured": bool(os.getenv("TYPESAFE_API_KEY", "").strip()),
         "mcp_servers": list_mcp_servers(),
         # Access protection (LAN token; loopback is always exempt)
         "lan_protection": bool((config.LAN_TOKEN or "").strip()),
@@ -166,6 +167,23 @@ def set_mcp_enabled(enabled: bool) -> dict:
     config.MCP_ENABLED = enabled
     _drop_agent_for_mcp_reload()
     return {"ok": True, "mcp_enabled": enabled, "servers": list_mcp_servers()}
+
+
+def set_jev_api_key(api_key: str) -> dict:
+    """Persist Jev credentials locally and rebuild Agents without a restart."""
+    from dotenv import set_key
+
+    key = api_key.strip()
+    if len(key) < 12:
+        raise ValueError("Jev API Key 格式无效")
+    dotenv_path = Path(config.KNOWLEDGE_HOME) / ".env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.touch(exist_ok=True)
+    set_key(str(dotenv_path), "TYPESAFE_API_KEY", key)
+    os.environ["TYPESAFE_API_KEY"] = key
+    from src.resources import ResourceManager
+    ResourceManager.get_instance().clear_agent_cache()
+    return {"ok": True, "jev_api_configured": True, "requires_restart": False}
 
 
 def set_mcp_server_enabled(name: str, enabled: bool) -> dict:

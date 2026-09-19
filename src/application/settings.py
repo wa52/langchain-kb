@@ -5,6 +5,7 @@ from src.adapters.legacy.settings import (
     set_llm_config,
     set_mcp_enabled,
     set_mcp_server_enabled,
+    set_jev_api_key,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "set_llm_config",
     "set_mcp_enabled",
     "set_mcp_server_enabled",
+    "set_jev_api_key",
 ]

@@ -170,6 +170,7 @@ export interface AppSettings {
   max_context_tokens: number;
   mcp_config_path: string;
   mcp_enabled: boolean;
+  jev_api_configured: boolean;
   mcp_servers: McpServerSummary[];
   mcp_http_available: boolean;
   mcp_http_error: string | null;

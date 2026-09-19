@@ -390,6 +390,12 @@ export async function setMcpEnabled(enabled: boolean): Promise<McpSettingsResult
   return (await resp.json()) as McpSettingsResult;
 }
 
+export async function setJevApiKey(api_key: string): Promise<{ ok: boolean }> {
+  const resp = await apiFetch("/api/v1/settings/jev", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key }) });
+  if (!resp.ok) throw new Error(await readError(resp, `Jev 设置失败 (${resp.status})`));
+  return (await resp.json()) as { ok: boolean };
+}
+
 export async function setMcpServerEnabled(name: string, enabled: boolean): Promise<McpSettingsResult> {
   const resp = await apiFetch("/api/v1/settings/mcp/server", {
     method: "POST",
