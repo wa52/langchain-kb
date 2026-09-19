@@ -16,7 +16,8 @@ class AgentToolsPlugin:
         if ENABLE_GRAPH:
             tools.append(retrieve_graph)
         for tool in tools:
-            context.tools.register_tool(tool, plugin_id=self.id)
+            tags = ("knowledge", "search") if tool.name.startswith("retrieve") else ("knowledge", "write")
+            context.tools.register_tool(tool, plugin_id=self.id, tags=tags, retryable=tool.name.startswith("retrieve"), read_only=tool.name.startswith("retrieve"))
 
         # External MCP discovery stays lazy and is performed once when the
         # Agent is first built; service startup must not wait on remote tools.

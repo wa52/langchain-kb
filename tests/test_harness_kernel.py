@@ -33,6 +33,15 @@ def test_tool_registry_exposes_langchain_tools_without_framework_imports():
     assert tools.call("demo", value=3) == 3
 
 
+def test_tool_catalog_exposes_metadata_and_filters_disabled_tools():
+    tools = ToolRegistry()
+    tools.register("search", lambda: None, source="local", tags=("knowledge", "search"), retryable=True)
+    tools.register("issue", lambda: None, source="mcp", server_id="github", tags=("github", "write"), risk_level="medium", read_only=False, enabled=False)
+    assert [spec.name for spec in tools.catalog(tags=("knowledge",))] == ["search"]
+    assert tools.catalog(source="mcp", include_disabled=True)[0].server_id == "github"
+    assert tools.langchain_tools() == [tools.get("search").handler]
+
+
 def test_session_log_is_append_only_snapshot():
     log = SessionLog("session-1")
     first = log.append("user.message", text="hi")
