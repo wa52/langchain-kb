@@ -10,12 +10,9 @@ from src.ports.chat import ChatPort
 
 def create_chat_backend() -> ChatPort:
     """Compose the application conversation module behind the chat port."""
-    # Bootstrap may select concrete infrastructure; transports and the
-    # application facade never need to know that this uses LangGraph, files,
-    # or the compatibility dependency factories.
-    from src.api.services.chat import _conversation_service
+    from src.adapters.conversation.factory import create_conversation_backend
 
-    return _conversation_service()
+    return create_conversation_backend()
 
 
 def create_query_service(resource_manager):
