@@ -119,7 +119,7 @@ def close_agent_checkpoint(agent) -> None:
         agent._checkpoint_connection = None
 
 
-def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, on_tool_result=None, stream_input=None):
+def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, on_tool_result=None, on_llm=None, stream_input=None):
     def content_length(value) -> int:
         if isinstance(value, str):
             return len(value)
@@ -148,6 +148,8 @@ def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, 
                 mtype = getattr(msg, "type", "")
                 content = getattr(msg, "content", "") or ""
                 if mtype == "ai" and content:
+                    if on_llm is not None:
+                        on_llm({"has_tool_calls": bool(getattr(msg, "tool_calls", None)), "content_length": len(str(content))})
                     yield content
                 elif mtype == "tool" and not tool_called:
                     tool_called = True

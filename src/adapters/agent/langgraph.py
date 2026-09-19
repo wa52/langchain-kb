@@ -130,13 +130,14 @@ class LangGraphAgentRuntime:
         try:
             if trace is not None:
                 trace.emit("llm.request", messages=len(prepared), selected_tools=list(selected_tools or ()))
-            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, stream_input=stream_input):
+            def on_llm(payload):
+                if trace is not None:
+                    trace.emit("llm.response", **payload)
+            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, on_llm=on_llm, stream_input=stream_input):
                 if session_id in self._cancelled:
                     break
                 if chunk:
                     yield str(chunk)
-                    if trace is not None:
-                        trace.emit("llm.response", final_answer=True)
         finally:
             if trace is not None:
                 trace.emit("agent.run.completed", session_id=session_id)
