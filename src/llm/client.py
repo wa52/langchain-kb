@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+import httpx
 from langchain_openai import ChatOpenAI
 
 import config
@@ -31,6 +32,15 @@ def _provider_runtime_options() -> dict:
     return options
 
 
+def _direct_http_options() -> dict:
+    """Keep provider traffic independent from machine-wide proxy settings."""
+    timeout = httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
+    return {
+        "http_client": httpx.Client(timeout=timeout, trust_env=False),
+        "http_async_client": httpx.AsyncClient(timeout=timeout, trust_env=False),
+    }
+
+
 @lru_cache(maxsize=2)
 def get_llm(temperature: float = 0) -> ChatOpenAI:
     return ChatOpenAI(
@@ -42,6 +52,7 @@ def get_llm(temperature: float = 0) -> ChatOpenAI:
         ),
         base_url=config.LLM_API_BASE or config.DEEPSEEK_API_BASE,
         **_provider_runtime_options(),
+        **_direct_http_options(),
     )
 
 
