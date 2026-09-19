@@ -673,7 +673,7 @@ def chat(
         run_console()
         return
 
-    from src.api.services.chat import chat_with_rag
+    from src.application.chat import chat_with_rag
 
     try:
         answer, session_id, elapsed_ms = chat_with_rag(question, session)

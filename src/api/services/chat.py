@@ -1,15 +1,17 @@
-import re
 import time
 import inspect
 from typing import Iterator
 
+from src.application.citations import _CITATION_PATTERN, extract_sources
+from src.application.direct_chat import DirectChatEngine
+from src.application.conversation_store import ConversationStore
+from src.application.source_enrichment import enrich_sources
 from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.agent.harness import verify_agent_run
 from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, route_query
 from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
-_CITATION_PATTERN = re.compile(r"\[来源:\s*([^\]]{1,256})\]")
 _EXCERPT_LIMIT = 200
 _BASENAME_TTL = 60.0
 
@@ -76,7 +78,7 @@ def _stream_with_callbacks(agent, messages, on_tool, on_interrupt, on_tool_resul
 def _build_messages(query: str, session_id: str | None) -> list[dict]:
     messages: list[dict] = []
     if session_id:
-        saved = load_history(session_id)
+        saved = _conversation_store().load(session_id)
         for m in saved or []:
             if isinstance(m, dict):
                 message = {"role": m.get("role", ""), "content": m.get("content", "")}
@@ -109,44 +111,40 @@ def _get_direct_llm():
 
 
 def _direct_messages(messages: list[dict]) -> list[dict]:
-    return [
-        {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
-        *_model_messages(messages),
-    ]
+    return _direct_engine().prompt_messages(messages)
 
 
 def _model_messages(messages: list[dict]) -> list[dict]:
     """Remove service-only metadata before invoking LangChain models/agents."""
-    return [
-        {"role": message.get("role", ""), "content": message.get("content", "")}
-        for message in messages
-    ]
+    return DirectChatEngine.model_messages(messages)
 
 
 def _trim_direct_history(messages: list[dict]) -> list[dict]:
     """Bound direct-chat context locally without paying for an LLM summary."""
-    if len(messages) < 2:
-        return messages
-    history = list(messages[:-1])
-    current = messages[-1]
-    while len(history) > 2 and sum(
-        _estimated_tokens(str(message.get("content", ""))) for message in history
-    ) > HISTORY_MAX_TOKENS:
-        history = history[2:]
-    return history + [current]
+    return _direct_engine().trim_history(messages)
 
 
 def _direct_answer(messages: list[dict]) -> str:
-    response = _get_direct_llm().invoke(_direct_messages(messages))
-    content = getattr(response, "content", response)
-    return str(content or "").strip()
+    return _direct_engine().answer(messages)
 
 
 def _stream_direct_answer(messages: list[dict]):
-    for chunk in _get_direct_llm().stream(_direct_messages(messages)):
-        content = getattr(chunk, "content", chunk)
-        if content:
-            yield str(content)
+    yield from _direct_engine().stream(messages)
+
+
+def _direct_engine() -> DirectChatEngine:
+    """Create a lightweight engine while keeping legacy patch seams intact."""
+    return DirectChatEngine(
+        llm_factory=_get_direct_llm,
+        system_prompt=DIRECT_SYSTEM_PROMPT,
+        token_estimator=_estimated_tokens,
+        max_tokens=HISTORY_MAX_TOKENS,
+    )
+
+
+def _conversation_store() -> ConversationStore:
+    """Build persistence boundary while retaining legacy patch seams."""
+    return ConversationStore(allocate_session_id, load_history, save_history, session_lock)
 
 
 def _estimated_tokens(text: str) -> int:
@@ -205,18 +203,6 @@ def _serialize_messages(messages: list) -> list[dict]:
                 "content": getattr(m, "content", ""),
             })
     return serializable
-
-
-def extract_sources(answer: str) -> list[dict]:
-    """Extract `[来源: 文件名]` annotations into source items."""
-    seen = set()
-    sources = []
-    for match in _CITATION_PATTERN.finditer(answer):
-        source = match.group(1).strip()
-        if source and source not in seen:
-            seen.add(source)
-            sources.append({"source": source, "chunk_id": "", "excerpt": None})
-    return sources
 
 
 _basename_index: dict[str, str] | None = None
@@ -314,20 +300,19 @@ def _hit_chain() -> list[str]:
 
 def build_sources(answer: str) -> list[dict]:
     """Extract source markers and enrich them with chunk/excerpt/chain."""
-    sources = extract_sources(answer)
-    chain = _hit_chain()
-    for s in sources:
-        found = _source_lookup(s["source"])
-        s["chunk_id"] = found.get("chunk_id", "")
-        s["excerpt"] = found.get("excerpt")
-        s["hit_chain"] = list(chain)
-    return sources
+    return enrich_sources(
+        answer,
+        extract_sources=extract_sources,
+        source_lookup=_source_lookup,
+        hit_chain=_hit_chain,
+    )
 
 
 def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
     t0 = time.time()
-    session_id = session_id or allocate_session_id()
-    with session_lock(session_id):
+    store = _conversation_store()
+    session_id = session_id or store.allocate()
+    with store.lock(session_id):
         messages = _build_messages(query, session_id)
         print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
 
@@ -338,7 +323,7 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
             history = _serialize_messages(messages) + [
                 {"role": "assistant", "content": answer, "route": QueryRoute.DIRECT}
             ]
-            new_session_id = save_history(history, session_id)
+            new_session_id = store.save(history, session_id)
             print(f"  [路由] direct，无 RAG 检索 ({time.time() - t_direct:.2f}s)")
             return answer, new_session_id, round((time.time() - t0) * 1000, 2)
 
@@ -360,7 +345,7 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
             {"role": "assistant", "content": answer, "route": QueryRoute.AGENT}
         ]
         t3 = time.time()
-        new_session_id = save_history(history, session_id)
+        new_session_id = store.save(history, session_id)
         print(f"  [计时] 保存会话历史: {time.time() - t3:.2f}s")
 
     elapsed_ms = (time.time() - t0) * 1000
@@ -390,9 +375,10 @@ def stream_chat_events(
     recoverable on the client even if the connection dies before
     ``message_end``.
     """
+    store = _conversation_store()
     if session_id is None:
-        session_id = allocate_session_id()
-    with session_lock(session_id):
+        session_id = store.allocate()
+    with store.lock(session_id):
         yield {"type": "message_start", "data": {"session_id": session_id}}
         t0 = time.time()
 
@@ -419,7 +405,7 @@ def stream_chat_events(
                     "interrupted": interrupted,
                     "route": QueryRoute.DIRECT,
                 }]
-                new_session_id = save_history(history, session_id)
+                new_session_id = store.save(history, session_id)
             elapsed_ms = (time.time() - t0) * 1000
             yield {"type": "sources", "data": {"sources": []}}
             yield {
@@ -485,7 +471,7 @@ def stream_chat_events(
                     answer, tool_results, bool(interrupt_payload)
                 )
             history = _serialize_messages(messages) + [assistant_message]
-            new_session_id = save_history(history, session_id)
+            new_session_id = store.save(history, session_id)
 
         if interrupt_payload:
             yield {
@@ -524,7 +510,8 @@ def resume_chat_events(
     """Resume an interrupted Deep Agent thread after an approval decision."""
     from langgraph.types import Command
 
-    with session_lock(session_id):
+    store = _conversation_store()
+    with store.lock(session_id):
         agent = _bind_agent_thread(_get_agent(), session_id)
         tool_names: list[str] = []
         interrupt_payload = []
@@ -555,7 +542,7 @@ def resume_chat_events(
                 parts.append(chunk)
 
         answer = "".join(parts)
-        history = load_history(session_id) or []
+        history = store.load(session_id) or []
         if history and history[-1].get("pending_approval"):
             history.pop()
         assistant = {"role": "assistant", "content": answer, "interrupted": bool(stop_event.is_set())}
@@ -567,7 +554,7 @@ def resume_chat_events(
             assistant["verification"] = verify_agent_run(
                 answer, tool_results, bool(interrupt_payload)
             )
-        save_history(history + [assistant], session_id)
+        store.save(history + [assistant], session_id)
         yield {"type": "token", "data": {"text": answer}}
         if interrupt_payload:
             yield {

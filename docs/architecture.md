@@ -287,7 +287,7 @@ Chat 流式输出采用 **POST + fetch readable stream**，事件使用 SSE 文�
 
 1. **文档阶段**：固化本目标架构与 `docs/ui-design.md`，不改变运行行为。
 2. **前端阶段**：新增 `web/` 工程和 FastAPI 静态托管，保留旧 `src/api/web.py` 直到新 UI 可用。
-3. **Chat 阶段**：新增 `ChatWithAgent` 用例和 `POST /api/v1/chat/stream`，Web/CLI/API 共享同一聊天链路。
+3. **Chat 阶段**：新增 `ChatWithAgent` 用例和 `POST /api/v1/chat/stream`，Web/CLI/API 共享同一聊天链路。当前已进一步落地 `src/application/chat_orchestrator.py` 与 `src/bootstrap/composition.py`：应用层只依赖 `ChatPort`，旧 API 服务通过兼容适配器接入，CLI 已切换到应用层入口。
 4. **Search 阶段**：抽出 `SearchKnowledge` 用例，让 Agent 工具、API 搜索、Web 搜索共用一条检索链路。
 5. **Status 阶段**：把现有 `src/status.py`、`src/monitor.py` 收敛到 `observability` 语义下，保持 `selfcheck.py` 独立入口。
 6. **Index 阶段**：把 `ingestion/pipeline.py` 的横切流程收敛到 `IndexDocuments` 用例。
