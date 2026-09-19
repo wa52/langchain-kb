@@ -1,6 +1,6 @@
 import asyncio
 
-from src.harness import Event, EventBus, HarnessRuntime, SessionLog, ToolRegistry
+from src.harness import Event, EventBus, HarnessRuntime, SessionLog, ToolRegistry, ToolSelector
 
 
 def test_event_bus_and_tool_registry_are_isolated():
@@ -40,6 +40,30 @@ def test_tool_catalog_exposes_metadata_and_filters_disabled_tools():
     assert [spec.name for spec in tools.catalog(tags=("knowledge",))] == ["search"]
     assert tools.catalog(source="mcp", include_disabled=True)[0].server_id == "github"
     assert tools.langchain_tools() == [tools.get("search").handler]
+
+
+def test_tool_selector_uses_metadata_and_keeps_write_tools_out_of_fallback():
+    tools = ToolRegistry()
+    tools.register("retrieve_knowledge", lambda: None, description="检索本地知识库文档", tags=("knowledge", "search"), retryable=True)
+    tools.register("retrieve_graph", lambda: None, description="查询图谱关系", tags=("graph", "knowledge", "search"), retryable=True)
+    tools.register("github_create_issue", lambda: None, source="mcp", server_id="github", tags=("github", "mcp", "write"), risk_level="medium", read_only=False)
+    tools.register("save_material", lambda: None, description="保存研究资料", tags=("knowledge", "write"), risk_level="medium", read_only=False)
+
+    selected = ToolSelector(max_candidates=3, min_candidates=2).select("帮我查询知识库里的 Halcon 文档", tools.catalog())
+
+    assert selected[0].spec.name == "retrieve_knowledge"
+    assert {candidate.spec.name for candidate in selected} == {"retrieve_knowledge", "retrieve_graph"}
+    assert all(candidate.spec.read_only for candidate in selected)
+
+
+def test_tool_selector_finds_mcp_server_from_query_keyword():
+    tools = ToolRegistry()
+    tools.register("retrieve_knowledge", lambda: None, tags=("knowledge", "search"))
+    tools.register("github_create_issue", lambda: None, source="mcp", server_id="github", tags=("github", "mcp", "write"), risk_level="medium", read_only=False)
+
+    selected = ToolSelector(max_candidates=3, min_candidates=1).select_names("帮我在 GitHub 创建 issue", tools.catalog())
+
+    assert selected == ("github_create_issue",)
 
 
 def test_session_log_is_append_only_snapshot():
