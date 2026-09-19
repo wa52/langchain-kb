@@ -17,6 +17,11 @@ class ResourceManagerPlugin:
         self.echo_fn = echo_fn
 
     async def start(self, _context: PluginContext) -> None:
+        # Embedded callers and test clients may provide an already-started
+        # manager. Avoid repeating the expensive resource initialization.
+        if self.runtime.is_ready():
+            self.runtime._startup_task = None
+            return
         task = asyncio.create_task(
             asyncio.to_thread(self.runtime.startup, echo_fn=self.echo_fn),
             name="resource-startup",
@@ -30,4 +35,5 @@ class ResourceManagerPlugin:
             raise
 
     async def stop(self, _context: PluginContext) -> None:
-        self.runtime.shutdown(echo_fn=self.echo_fn)
+        if self.runtime.is_ready() or self.runtime._background_tasks:
+            self.runtime.shutdown(echo_fn=self.echo_fn)
