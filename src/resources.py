@@ -171,7 +171,7 @@ class ResourceManager:
             reg = get_registry()
             reg.set_loading("agent", "构建 RAG Agent")
             try:
-                self.agent = create_rag_agent()
+                self.agent = create_rag_agent(getattr(self, "tool_registry", None))
             except Exception as e:
                 reg.set_error("agent", e, "构建 RAG Agent")
                 raise

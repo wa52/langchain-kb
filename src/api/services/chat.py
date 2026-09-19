@@ -10,6 +10,7 @@ from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.agent.harness import verify_agent_run
 from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, route_query
 from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
+from src.bootstrap.composition import create_agent_runtime
 from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
 _EXCERPT_LIMIT = 200
@@ -73,6 +74,11 @@ def _stream_with_callbacks(agent, messages, on_tool, on_interrupt, on_tool_resul
     except (TypeError, ValueError):
         pass
     return stream_rag_response(agent, messages, **kwargs)
+
+
+def _agent_runtime():
+    """Compatibility composition for the main AgentRuntime execution path."""
+    return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 
 
 def _build_messages(query: str, session_id: str | None) -> list[dict]:
@@ -329,13 +335,11 @@ def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
 
         t1 = time.time()
         agent_messages = _model_messages(_maybe_compress_history(messages))
-        agent = _bind_agent_thread(_get_agent(), session_id)
-        agent_messages = _agent_messages(agent, agent_messages, session_id)
         print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
 
         t2 = time.time()
         answer_parts = []
-        for chunk in stream_rag_response(agent, agent_messages):
+        for chunk in _agent_runtime().stream_messages(agent_messages, session_id):
             if chunk:
                 answer_parts.append(chunk)
         answer = "".join(answer_parts)
@@ -421,8 +425,6 @@ def stream_chat_events(
             return
 
         agent_messages = _model_messages(_maybe_compress_history(messages))
-        agent = _bind_agent_thread(_get_agent(), session_id)
-        agent_messages = _agent_messages(agent, agent_messages, session_id)
 
         tool_names: list[str] = []
         interrupt_payload = []
@@ -442,8 +444,12 @@ def stream_chat_events(
         failed = False
         new_session_id = session_id
         try:
-            for chunk in _stream_with_callbacks(
-                agent, agent_messages, _on_tool, _on_interrupt, _on_tool_result
+            for chunk in _agent_runtime().stream_messages(
+                agent_messages,
+                session_id,
+                on_tool=_on_tool,
+                on_interrupt=_on_interrupt,
+                on_tool_result=_on_tool_result,
             ):
                 if stop_event.is_set():
                     break
@@ -512,7 +518,6 @@ def resume_chat_events(
 
     store = _conversation_store()
     with store.lock(session_id):
-        agent = _bind_agent_thread(_get_agent(), session_id)
         tool_names: list[str] = []
         interrupt_payload = []
         tool_results: list[dict] = []
@@ -533,8 +538,13 @@ def resume_chat_events(
             for item in selected
         ]})
         parts: list[str] = []
-        for chunk in _stream_with_callbacks(
-            agent, [], _on_tool, _on_interrupt, _on_tool_result, stream_input=command
+        for chunk in _agent_runtime().stream_messages(
+            [],
+            session_id,
+            on_tool=_on_tool,
+            on_interrupt=_on_interrupt,
+            on_tool_result=_on_tool_result,
+            stream_input=command,
         ):
             if stop_event.is_set():
                 break

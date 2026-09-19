@@ -30,3 +30,18 @@ def test_langgraph_adapter_can_cancel_a_stream():
     assert next(stream) == "one"
     runtime.cancel("session-2")
     assert list(stream) == []
+
+
+def test_langgraph_adapter_forwards_agent_tool_events():
+    agent = FakeAgent()
+    tools = []
+
+    def stream_fn(_agent, _messages, on_tool=None):
+        on_tool("retrieve_knowledge")
+        return ["answer"]
+
+    runtime = LangGraphAgentRuntime(agent_factory=lambda: agent, stream_fn=stream_fn)
+    assert list(runtime.stream_messages(
+        [{"role": "user", "content": "hi"}], "session-3", on_tool=tools.append
+    )) == ["answer"]
+    assert tools == ["retrieve_knowledge"]

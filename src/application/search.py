@@ -1,12 +1,11 @@
-import time
-
-from src.adapters.retrieval.current import CurrentRetrieverAdapter
 from src.application.query import QueryService
 
 
-def search_documents(rm, query: str, top_k: int) -> tuple[list[dict], float]:
+def search_documents(query_service: QueryService, query: str, top_k: int) -> tuple[list[dict], float]:
+    import time
+
     started = time.time()
-    results = QueryService(CurrentRetrieverAdapter(rm.vector_store)).search(query, limit=top_k)
+    results = query_service.search(query, limit=top_k)
     payload = [
         {
             "source": result.chunk.source or "unknown",

@@ -21,6 +21,17 @@ class ToolRegistry:
             raise ValueError(f"Tool already registered: {name}")
         self._tools[name] = ToolSpec(name, handler, description, plugin_id)
 
+    def register_tool(self, tool: Any, *, plugin_id: str = "core") -> None:
+        """Register a LangChain-compatible tool without coupling the registry to LangChain."""
+        name = getattr(tool, "name", "")
+        if not name:
+            raise ValueError("Tool must expose a non-empty name")
+        self.register(name, tool, description=getattr(tool, "description", ""), plugin_id=plugin_id)
+
+    def langchain_tools(self) -> list[Any]:
+        """Return registered tool objects for an agent adapter."""
+        return [spec.handler for spec in self._tools.values()]
+
     def unregister_plugin(self, plugin_id: str) -> None:
         self._tools = {name: spec for name, spec in self._tools.items() if spec.plugin_id != plugin_id}
 
@@ -34,4 +45,6 @@ class ToolRegistry:
         return tuple(sorted(self._tools))
 
     def call(self, name: str, **kwargs: Any) -> Any:
-        return self.get(name).handler(**kwargs)
+        handler = self.get(name).handler
+        invoke = getattr(handler, "invoke", None)
+        return invoke(kwargs) if invoke is not None else handler(**kwargs)

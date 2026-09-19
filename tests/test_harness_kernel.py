@@ -17,6 +17,22 @@ def test_event_bus_and_tool_registry_are_isolated():
     assert seen == ["hello"]
 
 
+def test_tool_registry_exposes_langchain_tools_without_framework_imports():
+    class Tool:
+        name = "demo"
+        description = "demo tool"
+
+        def invoke(self, payload):
+            return payload["value"]
+
+    tools = ToolRegistry()
+    tool = Tool()
+    tools.register_tool(tool, plugin_id="demo-plugin")
+    assert tools.names() == ("demo",)
+    assert tools.langchain_tools() == [tool]
+    assert tools.call("demo", value=3) == 3
+
+
 def test_session_log_is_append_only_snapshot():
     log = SessionLog("session-1")
     first = log.append("user.message", text="hi")

@@ -56,7 +56,8 @@ def search_knowledge(query: str, top_k: int = 5) -> dict:
     """在知识库向量库中执行语义搜索，返回相关文档片段（含 source 与 score）。"""
     rm = _ensure_ready()
     from src.application.search import search_documents
-    results, elapsed_ms = search_documents(rm, query, top_k)
+    from src.bootstrap.composition import create_query_service
+    results, elapsed_ms = search_documents(create_query_service(rm), query, top_k)
     return {"results": results, "elapsed_ms": elapsed_ms}
 
 

@@ -13,7 +13,7 @@ from src.agent.harness import ToolRecoveryMiddleware
 SYSTEM_PROMPT = build_agent_prompt()
 
 
-def create_rag_agent():
+def create_rag_agent(tool_registry=None):
     import os as _os
     import time as _time
     from src.status import get_registry
@@ -40,24 +40,35 @@ def create_rag_agent():
     model = get_llm(temperature=0)
     print(f"  [计时] 初始化 LLM: {_time.time() - _t3:.2f}s")
 
-    tools = [retrieve_knowledge, project_workflow, save_research_material]
-    if ENABLE_GRAPH:
-        tools.append(retrieve_graph)
+    tools = tool_registry.langchain_tools() if tool_registry is not None else []
+    if tool_registry is not None:
+        try:
+            from src.agent.mcp_client import default_mcp_config_path, load_mcp_tools
+            for external_tool in load_mcp_tools(default_mcp_config_path()):
+                tool_registry.register_tool(external_tool, plugin_id="mcp")
+            tools = tool_registry.langchain_tools()
+        except Exception as exc:
+            print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {exc}")
+    if not tools:
+        tools = [retrieve_knowledge, project_workflow, save_research_material]
+        if ENABLE_GRAPH:
+            tools.append(retrieve_graph)
 
     # Load external MCP tools (opencode-style mcp.json). Degrades gracefully:
     # a failure here never blocks the local knowledge tools.
-    external_names: list[str] = []
+    external_names: list[str] = [getattr(t, "name", "external") for t in tools if getattr(t, "name", "").startswith("mcp_")]
     external_tools = []
-    try:
-        from src.agent.mcp_client import load_mcp_tools, default_mcp_config_path
-        external = load_mcp_tools(default_mcp_config_path())
-        if external:
-            tools.extend(external)
-            external_tools = external
-            external_names = [getattr(t, "name", "external") for t in external]
-            print(f"  [MCP] 已加载 {len(external)} 个外部工具")
-    except Exception as e:
-        print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
+    if tool_registry is None:
+        try:
+            from src.agent.mcp_client import load_mcp_tools, default_mcp_config_path
+            external = load_mcp_tools(default_mcp_config_path())
+            if external:
+                tools.extend(external)
+                external_tools = external
+                external_names = [getattr(t, "name", "external") for t in external]
+                print(f"  [MCP] 已加载 {len(external)} 个外部工具")
+        except Exception as e:
+            print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {e}")
 
     _t4 = _time.time()
     prompt = build_agent_prompt(external_names)

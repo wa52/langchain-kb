@@ -14,6 +14,7 @@ from pathlib import Path
 import config
 from config import PRODUCT_NAME_EN
 from src.bootstrap.plugins import ResourceManagerPlugin
+from src.bootstrap.agent_tools import AgentToolsPlugin
 from src.harness import HarnessRuntime
 from src.resources import ResourceManager
 
@@ -34,6 +35,8 @@ async def app_lifespan(app):
     runtime = ResourceManager.get_instance()
     harness = HarnessRuntime()
     harness.register(ResourceManagerPlugin(runtime, echo_fn=logger.info))
+    runtime.tool_registry = harness.tools
+    harness.register(AgentToolsPlugin())
     app.state.harness = harness
     if config.FAST_STARTUP:
         logger.info("  FAST_STARTUP enabled; warming resources in background")
