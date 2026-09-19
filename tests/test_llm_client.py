@@ -21,6 +21,7 @@ def test_zhipu_glm_53_uses_low_reasoning_effort_and_bounded_timeout():
     assert llm.reasoning_effort == "low"
     assert llm.request_timeout == 90.0
     assert llm.stream_chunk_timeout == 45.0
+    assert llm.disable_streaming == "tool_calling"
 
 
 def test_other_providers_keep_their_existing_reasoning_behavior():
@@ -29,3 +30,4 @@ def test_other_providers_keep_their_existing_reasoning_behavior():
     assert llm.reasoning_effort is None
     assert llm.request_timeout == 90.0
     assert llm.stream_chunk_timeout == 45.0
+    assert llm.disable_streaming is False

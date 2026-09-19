@@ -24,6 +24,10 @@ def _provider_runtime_options() -> dict:
         and config.LLM_MODEL.strip().lower().startswith("glm-5.3")
     ):
         options["reasoning_effort"] = "low"
+        # GLM's non-streaming tool-call endpoint is reliable, while its
+        # streamed tool-call path can withhold every event for a full Agent
+        # turn. LangChain still streams ordinary answer tokens after tools.
+        options["disable_streaming"] = "tool_calling"
     return options
 
 
