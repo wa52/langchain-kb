@@ -33,26 +33,35 @@ class ExecutionPolicy:
 
 
 class ToolExecutor:
-    def __init__(self, policy: ExecutionPolicy | None = None) -> None:
+    def __init__(self, policy: ExecutionPolicy | None = None, *, trace: Any = None) -> None:
         self.policy = policy or ExecutionPolicy()
+        self.trace = trace
 
     def execute(self, spec: ToolSpec, kwargs: dict[str, Any], *, approved: bool = False) -> ToolResult:
         started = time.perf_counter()
+        if self.trace is not None:
+            self.trace.emit("tool.call.started", tool_name=spec.name, arguments=kwargs)
         if self.policy.requires_approval(spec) and not approved:
-            return ToolResult(False, spec.name, error="tool approval required", error_type="APPROVAL_REQUIRED")
+            result = ToolResult(False, spec.name, error="tool approval required", error_type="APPROVAL_REQUIRED")
+            if self.trace is not None: self.trace.record(result, arguments=kwargs)
+            return result
         attempts = self.policy.retry_limit(spec)
         for retry_count in range(attempts + 1):
             try:
                 with ThreadPoolExecutor(max_workers=1) as pool:
                     future = pool.submit(self._invoke, spec, kwargs)
                     data = future.result(timeout=spec.timeout_seconds)
-                return ToolResult(True, spec.name, data=data, elapsed_ms=self._elapsed(started), retry_count=retry_count)
+                result = ToolResult(True, spec.name, data=data, elapsed_ms=self._elapsed(started), retry_count=retry_count)
+                if self.trace is not None: self.trace.record(result, arguments=kwargs)
+                return result
             except TimeoutError:
                 error, error_type = "tool execution timed out", "TIMEOUT"
             except Exception as exc:
                 error, error_type = str(exc), "EXECUTION_ERROR"
             if retry_count >= attempts:
-                return ToolResult(False, spec.name, error=error, error_type=error_type, elapsed_ms=self._elapsed(started), retry_count=retry_count)
+                result = ToolResult(False, spec.name, error=error, error_type=error_type, elapsed_ms=self._elapsed(started), retry_count=retry_count)
+                if self.trace is not None: self.trace.record(result, arguments=kwargs)
+                return result
         raise AssertionError("unreachable")
 
     @staticmethod

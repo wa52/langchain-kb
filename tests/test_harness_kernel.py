@@ -103,6 +103,15 @@ def test_agent_run_trace_records_tool_result_summary():
     assert trace.snapshot()["selected_tools"] == ["search"]
 
 
+def test_tool_executor_emits_trace_events():
+    trace = AgentRunTrace(run_id="run-1")
+    registry = ToolRegistry()
+    registry.register("search", lambda query: query, read_only=True)
+    result = ToolExecutor(trace=trace).execute(registry.get("search"), {"query": "docs"})
+    assert result.success
+    assert [event.type for event in trace.events] == ["tool.call.started", "tool.call.completed"]
+
+
 def test_session_log_is_append_only_snapshot():
     log = SessionLog("session-1")
     first = log.append("user.message", text="hi")
