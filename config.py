@@ -113,6 +113,7 @@ MCP_CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "") or str(
     KNOWLEDGE_HOME / "mcp.json"
 )
 MCP_ENABLED = os.getenv("MCP_ENABLED", "true").lower() == "true"
+MCP_DISCOVERY_TIMEOUT_SECONDS = float(os.getenv("MCP_DISCOVERY_TIMEOUT_SECONDS", "8"))
 
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://huggingface.co")
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT

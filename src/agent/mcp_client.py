@@ -8,6 +8,7 @@ toolset. Failures degrade gracefully — the local knowledge tools always work.
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -250,7 +251,7 @@ def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode:
     tools from other enabled servers. Missing config and total load failures
     still degrade to an empty list so local tools remain available.
     """
-    from config import MCP_ENABLED
+    from config import MCP_DISCOVERY_TIMEOUT_SECONDS, MCP_ENABLED
     if not MCP_ENABLED:
         return []
 
@@ -278,7 +279,11 @@ def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode:
     result: list[McpToolEntry] = []
     for server_name in connections:
         try:
-            server_tools = asyncio.run(client.get_tools(server_name=server_name))
+            server_tools = asyncio.run(_get_tools_with_timeout(
+                client,
+                server_name,
+                timeout_seconds=MCP_DISCOVERY_TIMEOUT_SECONDS,
+            ))
             if mode == "dispatch":
                 if server_tools:
                     tool = _server_dispatch_tool(server_name, server_tools)
@@ -294,6 +299,16 @@ def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode:
     return result
 
 
+async def _get_tools_with_timeout(client, server_name: str, *, timeout_seconds: float):
+    """Bound lazy MCP discovery so an unavailable server cannot block chat."""
+    import asyncio
+
+    return await asyncio.wait_for(
+        client.get_tools(server_name=server_name),
+        timeout=max(0.1, float(timeout_seconds)),
+    )
+
+
 def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list:
     """Load external MCP tools for legacy callers that only need handlers."""
     return [entry.tool for entry in load_mcp_tool_entries(config_path, tool_name_prefix, tool_mode)]
@@ -307,26 +322,39 @@ def ensure_mcp_tools_registered(tool_registry, config_path=None) -> None:
     remembered for this runtime; changing MCP settings creates a fresh Agent
     lifecycle and therefore retries discovery.
     """
-    if getattr(tool_registry, "_mcp_catalog_discovered", False):
+    if (
+        getattr(tool_registry, "_mcp_catalog_discovered", False)
+        or getattr(tool_registry, "_mcp_catalog_discovering", False)
+    ):
         return
-    tool_registry._mcp_catalog_discovered = True
-    for entry in load_mcp_tool_entries(config_path or default_mcp_config_path()):
+    tool_registry._mcp_catalog_discovering = True
+
+    def discover() -> None:
         try:
-            existing = tool_registry.get(getattr(entry.tool, "name", ""))
-        except KeyError:
-            existing = None
-        if existing is not None:
-            continue
-        tool_registry.register_tool(
-            entry.tool,
-            plugin_id="mcp",
-            source="mcp",
-            server_id=entry.server_id,
-            tags=entry.tags,
-            risk_level=entry.risk_level,
-            retryable=entry.retryable,
-            read_only=entry.read_only,
-        )
+            for entry in load_mcp_tool_entries(config_path or default_mcp_config_path()):
+                try:
+                    existing = tool_registry.get(getattr(entry.tool, "name", ""))
+                except KeyError:
+                    existing = None
+                if existing is not None:
+                    continue
+                tool_registry.register_tool(
+                    entry.tool,
+                    plugin_id="mcp",
+                    source="mcp",
+                    server_id=entry.server_id,
+                    tags=entry.tags,
+                    risk_level=entry.risk_level,
+                    retryable=entry.retryable,
+                    read_only=entry.read_only,
+                )
+        finally:
+            tool_registry._mcp_catalog_discovering = False
+            tool_registry._mcp_catalog_discovered = True
+
+    # MCP processes and remote endpoints can take seconds to launch. Discovery
+    # is catalog enrichment, never a prerequisite for answering with local KB.
+    threading.Thread(target=discover, name="mcp-tool-discovery", daemon=True).start()
 
 
 def default_mcp_config_path() -> str:

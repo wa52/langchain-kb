@@ -347,6 +347,41 @@ class TestServerDispatch:
 
 
 class TestLoadToolsConverged:
+    def test_background_discovery_never_blocks_local_agent_start(self, monkeypatch):
+        import threading
+        import time
+        from src.agent.mcp_client import ensure_mcp_tools_registered
+        from src.harness.tools import ToolRegistry
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_discovery(_path):
+            entered.set()
+            release.wait(timeout=1)
+            return []
+
+        monkeypatch.setattr("src.agent.mcp_client.load_mcp_tool_entries", slow_discovery)
+        registry = ToolRegistry()
+        started = time.perf_counter()
+        ensure_mcp_tools_registered(registry, "unused.json")
+
+        assert time.perf_counter() - started < 0.1
+        assert entered.wait(timeout=0.5)
+        assert registry._mcp_catalog_discovering is True
+        release.set()
+
+    def test_discovery_timeout_returns_control_to_the_agent(self):
+        import asyncio
+        from src.agent.mcp_client import _get_tools_with_timeout
+
+        class SlowClient:
+            async def get_tools(self, server_name=None):
+                await asyncio.sleep(1)
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(_get_tools_with_timeout(SlowClient(), "slow", timeout_seconds=0.001))
+
     def test_load_returns_one_tool_per_server(self, sample_config, monkeypatch):
         """dispatch 模式保留每个 server 一个调度工具的兼容行为。"""
         from unittest.mock import MagicMock
