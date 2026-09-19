@@ -43,9 +43,18 @@ def create_rag_agent(tool_registry=None):
     tools = tool_registry.langchain_tools() if tool_registry is not None else []
     if tool_registry is not None:
         try:
-            from src.agent.mcp_client import default_mcp_config_path, load_mcp_tools
-            for external_tool in load_mcp_tools(default_mcp_config_path()):
-                tool_registry.register_tool(external_tool, plugin_id="mcp")
+            from src.agent.mcp_client import default_mcp_config_path, load_mcp_tool_entries
+            for entry in load_mcp_tool_entries(default_mcp_config_path()):
+                tool_registry.register_tool(
+                    entry.tool,
+                    plugin_id="mcp",
+                    source="mcp",
+                    server_id=entry.server_id,
+                    tags=entry.tags,
+                    risk_level=entry.risk_level,
+                    retryable=entry.retryable,
+                    read_only=entry.read_only,
+                )
             tools = tool_registry.langchain_tools()
         except Exception as exc:
             print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {exc}")

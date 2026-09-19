@@ -8,7 +8,43 @@ toolset. Failures degrade gracefully — the local knowledge tools always work.
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class McpToolEntry:
+    """An MCP tool together with the server metadata needed by the harness."""
+
+    tool: object
+    server_id: str
+    tags: tuple[str, ...]
+    risk_level: str
+    retryable: bool
+    read_only: bool
+
+
+_MUTATING_TOOL_WORDS = frozenset({
+    "create", "write", "update", "edit", "delete", "remove", "move",
+    "rename", "execute", "run", "send", "publish", "upload",
+})
+
+
+def _tool_metadata(server_id: str, tool) -> tuple[tuple[str, ...], str, bool, bool]:
+    """Infer safe discovery metadata without changing how an MCP tool runs.
+
+    MCP servers do not consistently expose side-effect annotations through the
+    LangChain adapter.  Until a server provides them, name/description verbs
+    give the registry a conservative, inspectable baseline.  Execution policy
+    will consume this metadata in a later phase; this function only describes
+    the tool catalog.
+    """
+    text = f"{getattr(tool, 'name', '')} {getattr(tool, 'description', '')}".lower()
+    words = set(re.findall(r"[a-z0-9]+", text))
+    is_mutating = bool(words & _MUTATING_TOOL_WORDS)
+    tags = {"mcp", server_id.lower(), "write" if is_mutating else "read"}
+    tags.update(words & _MUTATING_TOOL_WORDS)
+    return tuple(sorted(tags)), ("medium" if is_mutating else "low"), not is_mutating, not is_mutating
 
 
 def parse_mcp_config(path) -> dict:
@@ -203,8 +239,8 @@ def _server_dispatch_tool(server_name: str, server_tools: list):
     )
 
 
-def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list:
-    """Load external MCP tools for the agent.
+def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list[McpToolEntry]:
+    """Load MCP tools with the originating server's discovery metadata.
 
     ``direct`` exposes every MCP operation as an individual Agent tool. The
     legacy ``dispatch`` mode exposes one operation router per server. The mode
@@ -239,18 +275,28 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | 
         print(f"  [MCP] 外部工具客户端加载失败（不影响本地工具）: {e}")
         return []
 
-    result = []
+    result: list[McpToolEntry] = []
     for server_name in connections:
         try:
             server_tools = asyncio.run(client.get_tools(server_name=server_name))
             if mode == "dispatch":
                 if server_tools:
-                    result.append(_server_dispatch_tool(server_name, server_tools))
+                    tool = _server_dispatch_tool(server_name, server_tools)
+                    tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
+                    result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
             else:
-                result.extend(_make_sync_compatible(tool) for tool in server_tools)
+                for server_tool in server_tools:
+                    tool = _make_sync_compatible(server_tool)
+                    tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
+                    result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
         except Exception as e:
             print(f"  [MCP] 跳过服务器 {server_name}（不影响其他 MCP）: {e}")
     return result
+
+
+def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list:
+    """Load external MCP tools for legacy callers that only need handlers."""
+    return [entry.tool for entry in load_mcp_tool_entries(config_path, tool_name_prefix, tool_mode)]
 
 
 def default_mcp_config_path() -> str:

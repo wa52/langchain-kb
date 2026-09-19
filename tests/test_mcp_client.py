@@ -122,6 +122,28 @@ class TestLoadTools:
         tools = load_mcp_tools(sample_config)
         assert tools == []
 
+    def test_loaded_entries_keep_server_and_discovery_metadata(self, sample_config, monkeypatch):
+        from unittest.mock import MagicMock
+        from src.agent.mcp_client import load_mcp_tool_entries
+
+        fake_tools = TestServerDispatch()._fake_server_tools()
+
+        async def fake_get_tools(server_name=None):
+            return fake_tools
+
+        mock_client = MagicMock()
+        mock_client.return_value.get_tools = fake_get_tools
+        module = types.ModuleType("langchain_mcp_adapters.client")
+        module.MultiServerMCPClient = mock_client
+        monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", module)
+
+        entries = load_mcp_tool_entries(sample_config)
+
+        assert len(entries) == 4
+        assert {entry.server_id for entry in entries} == {"filesystem", "remote_svc"}
+        assert all("mcp" in entry.tags and "read" in entry.tags for entry in entries)
+        assert all(entry.read_only and entry.retryable for entry in entries)
+
 
 class TestRagAgentIntegration:
     def test_agent_loads_external_tools(self, sample_config):
@@ -141,6 +163,44 @@ class TestRagAgentIntegration:
             tools = m_create.call_args.kwargs["tools"]
             assert "ext_tool_1" in tools
             assert "ext_tool_2" in tools
+
+    def test_agent_registers_mcp_tool_metadata(self):
+        from unittest.mock import MagicMock, patch
+        from src.agent import rag_agent
+        from src.agent.mcp_client import McpToolEntry
+        from src.harness import ToolRegistry
+
+        tool = MagicMock()
+        tool.name = "github_create_issue"
+        tool.description = "Create a GitHub issue"
+        tool.args_schema = None
+        entry = McpToolEntry(
+            tool=tool,
+            server_id="github",
+            tags=("github", "mcp", "write"),
+            risk_level="medium",
+            retryable=False,
+            read_only=False,
+        )
+        registry = ToolRegistry()
+
+        with (
+            patch("src.agent.mcp_client.load_mcp_tool_entries", return_value=[entry]),
+            patch("src.agent.rag_agent.get_embedding_model"),
+            patch("src.agent.rag_agent.get_vector_store"),
+            patch("src.agent.rag_agent.VectorStoreService"),
+            patch("src.agent.rag_agent.get_llm"),
+            patch("src.agent.rag_agent.create_deep_agent"),
+        ):
+            rag_agent.create_rag_agent(registry)
+
+        spec = registry.get("github_create_issue")
+        assert spec.source == "mcp"
+        assert spec.server_id == "github"
+        assert spec.tags == ("github", "mcp", "write")
+        assert spec.risk_level == "medium"
+        assert not spec.read_only
+        assert not spec.retryable
 
 
 class TestSyncCompatible:
