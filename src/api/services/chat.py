@@ -51,12 +51,12 @@ def _agent_runtime():
     except Exception:
         tool_registry = None
     if tool_registry is not None:
-        from src.harness import ToolSelector
+        from src.harness import RuleBasedToolSelector
         return create_agent_runtime(
             agent_factory=_get_agent,
             stream_fn=stream_rag_response,
             tool_registry=tool_registry,
-            tool_selector=ToolSelector(),
+            tool_selector=RuleBasedToolSelector(),
         )
     return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 

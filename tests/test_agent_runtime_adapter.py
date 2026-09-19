@@ -1,5 +1,5 @@
 from src.adapters.agent import LangGraphAgentRuntime
-from src.harness import ToolRegistry, ToolSelector
+from src.harness import RuleBasedToolSelector, ToolRegistry
 
 
 class FakeAgent:
@@ -62,7 +62,7 @@ def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
         agent_factory=factory,
         stream_fn=lambda _agent, _messages: ["answer"],
         tool_registry=registry,
-        tool_selector=ToolSelector(max_candidates=3, min_candidates=1),
+        tool_selector=RuleBasedToolSelector(max_candidates=3, min_candidates=1),
     )
 
     assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4")) == ["answer"]

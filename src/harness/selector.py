@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 import re
+from typing import Protocol
 
 from src.harness.tools import ToolSpec
 
@@ -31,13 +32,20 @@ class ToolCandidate:
     score: int
 
 
-class ToolSelector:
+class ToolSelector(Protocol):
+    """Stable selection port implemented by rule-based and remote adapters."""
+
+    def select(self, query: str, tools: Iterable[ToolSpec]) -> tuple[ToolCandidate, ...]: ...
+
+    def select_names(self, query: str, tools: Iterable[ToolSpec]) -> tuple[str, ...]: ...
+
+
+class RuleBasedToolSelector:
     """Choose a compact tool set from the ToolRegistry catalog.
 
     This first implementation is deliberately deterministic: it uses tool
-    tags, server identifiers, names and descriptions.  It is the seam where
-    embedding retrieval and LLM re-ranking can be added later without making
-    AgentRuntime understand catalog internals.
+    tags, server identifiers, names and descriptions. It is the default
+    offline implementation and the fallback for a future Jev adapter.
     """
 
     def __init__(self, *, max_candidates: int = 8, min_candidates: int = 3) -> None:
