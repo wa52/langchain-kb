@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable
 import inspect
+from uuid import uuid4
 from typing import Any
 
 
@@ -116,7 +117,7 @@ class LangGraphAgentRuntime:
         owned_trace = trace is None
         if owned_trace:
             from src.harness import AgentRunTrace
-            trace = AgentRunTrace(run_id=f"{session_id}:{id(self)}", query=str(messages[-1].get("content", "")) if messages else "")
+            trace = AgentRunTrace(run_id=uuid4().hex, query=str(messages[-1].get("content", "")) if messages else "")
         if trace is not None:
             trace.emit("agent.run.started", session_id=session_id)
             trace.emit("selector.started")
@@ -127,11 +128,15 @@ class LangGraphAgentRuntime:
         configured = self._bind_session(self._get_agent(selected_tools), session_id)
         prepared = self._messages_for_session(configured, messages, session_id)
         try:
+            if trace is not None:
+                trace.emit("llm.request", messages=len(prepared), selected_tools=list(selected_tools or ()))
             for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, stream_input=stream_input):
                 if session_id in self._cancelled:
                     break
                 if chunk:
                     yield str(chunk)
+                    if trace is not None:
+                        trace.emit("llm.response", final_answer=True)
         finally:
             if trace is not None:
                 trace.emit("agent.run.completed", session_id=session_id)
