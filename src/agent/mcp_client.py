@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,17 @@ class McpToolEntry:
     risk_level: str
     retryable: bool
     read_only: bool
+
+
+MCP_CATALOG_NOT_STARTED = "NOT_STARTED"
+MCP_CATALOG_DISCOVERING = "DISCOVERING"
+MCP_CATALOG_READY = "READY"
+MCP_CATALOG_DEGRADED = "DEGRADED"
+
+# A registry is process-local, but several chat requests can reach it at the
+# same time.  This lock protects creation and state transitions of the small
+# per-registry MCP lifecycle maps attached below.
+_CATALOG_STATE_LOCK = threading.Lock()
 
 
 _MUTATING_TOOL_WORDS = frozenset({
@@ -96,7 +108,7 @@ def _resolve_command_value(value):
     return os.getenv(match.group(1), "") if match else value
 
 
-def _to_connections(config_path) -> dict:
+def _to_connections(config_path, server_names: set[str] | None = None) -> dict:
     """Convert opencode-style servers to MultiServerMCPClient connections.
 
     local  → {"command", "args", "transport": "stdio"}
@@ -104,6 +116,8 @@ def _to_connections(config_path) -> dict:
     """
     connections: dict = {}
     for name, cfg in _enabled_servers(config_path).items():
+        if server_names is not None and name not in server_names:
+            continue
         stype = (cfg.get("type") or "local").lower()
         if stype == "remote":
             conn = {"url": cfg["url"], "transport": "streamable-http"}
@@ -240,6 +254,44 @@ def _server_dispatch_tool(server_name: str, server_tools: list):
     )
 
 
+def _load_mcp_tool_entries_for_connection(
+    server_name: str,
+    connection: dict,
+    *,
+    tool_name_prefix: bool,
+    tool_mode: str,
+) -> list[McpToolEntry] | None:
+    """Discover one server without allowing it to delay another server.
+
+    ``None`` means the server could not be reached.  An empty list is a valid
+    READY result for a server which currently exposes no tools.
+    """
+    from config import MCP_DISCOVERY_TIMEOUT_SECONDS
+    try:
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+        import asyncio
+        client = MultiServerMCPClient({server_name: connection}, tool_name_prefix=tool_name_prefix)
+        server_tools = asyncio.run(_get_tools_with_timeout(
+            client, server_name, timeout_seconds=MCP_DISCOVERY_TIMEOUT_SECONDS,
+        ))
+    except Exception as exc:
+        print(f"  [MCP] 跳过服务器 {server_name}（不影响其他 MCP）: {exc}")
+        return None
+
+    result: list[McpToolEntry] = []
+    if tool_mode == "dispatch":
+        if server_tools:
+            tool = _server_dispatch_tool(server_name, server_tools)
+            tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
+            result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
+    else:
+        for server_tool in server_tools:
+            tool = _make_sync_compatible(server_tool)
+            tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
+            result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
+    return result
+
+
 def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode: str | None = None) -> list[McpToolEntry]:
     """Load MCP tools with the originating server's discovery metadata.
 
@@ -251,7 +303,7 @@ def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode:
     tools from other enabled servers. Missing config and total load failures
     still degrade to an empty list so local tools remain available.
     """
-    from config import MCP_DISCOVERY_TIMEOUT_SECONDS, MCP_ENABLED
+    from config import MCP_ENABLED
     if not MCP_ENABLED:
         return []
 
@@ -264,39 +316,33 @@ def load_mcp_tool_entries(config_path, tool_name_prefix: bool = True, tool_mode:
         print(f"  [MCP] 忽略无效 MCP_TOOL_MODE={mode!r}，使用 direct")
         mode = "direct"
 
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-        import asyncio
-
-        client = MultiServerMCPClient(
-            connections,
-            tool_name_prefix=tool_name_prefix,
-        )
-    except Exception as e:
-        print(f"  [MCP] 外部工具客户端加载失败（不影响本地工具）: {e}")
-        return []
-
     result: list[McpToolEntry] = []
-    for server_name in connections:
-        try:
-            server_tools = asyncio.run(_get_tools_with_timeout(
-                client,
-                server_name,
-                timeout_seconds=MCP_DISCOVERY_TIMEOUT_SECONDS,
-            ))
-            if mode == "dispatch":
-                if server_tools:
-                    tool = _server_dispatch_tool(server_name, server_tools)
-                    tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
-                    result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
-            else:
-                for server_tool in server_tools:
-                    tool = _make_sync_compatible(server_tool)
-                    tags, risk_level, retryable, read_only = _tool_metadata(server_name, tool)
-                    result.append(McpToolEntry(tool, server_name, tags, risk_level, retryable, read_only))
-        except Exception as e:
-            print(f"  [MCP] 跳过服务器 {server_name}（不影响其他 MCP）: {e}")
+    for server_name, connection in connections.items():
+        entries = _load_mcp_tool_entries_for_connection(
+            server_name, connection, tool_name_prefix=tool_name_prefix, tool_mode=mode,
+        )
+        if entries is not None:
+            result.extend(entries)
     return result
+
+
+def load_mcp_tool_entries_for_server(
+    config_path, server_name: str, tool_name_prefix: bool = True, tool_mode: str | None = None,
+) -> list[McpToolEntry] | None:
+    """Load one configured server for the parallel catalog lifecycle."""
+    from config import MCP_ENABLED
+    if not MCP_ENABLED:
+        return []
+    connections = _to_connections(config_path, {server_name})
+    connection = connections.get(server_name)
+    if connection is None:
+        return None
+    mode = (tool_mode or os.getenv("MCP_TOOL_MODE", "direct")).strip().lower()
+    if mode not in {"direct", "dispatch"}:
+        mode = "direct"
+    return _load_mcp_tool_entries_for_connection(
+        server_name, connection, tool_name_prefix=tool_name_prefix, tool_mode=mode,
+    )
 
 
 async def _get_tools_with_timeout(client, server_name: str, *, timeout_seconds: float):
@@ -314,6 +360,54 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | 
     return [entry.tool for entry in load_mcp_tool_entries(config_path, tool_name_prefix, tool_mode)]
 
 
+def _catalog_maps(tool_registry, config_path: str) -> tuple[dict[str, str], dict[str, threading.Event]]:
+    """Create the per-server catalog state once for a ToolRegistry."""
+    with _CATALOG_STATE_LOCK:
+        states = getattr(tool_registry, "_mcp_server_states", None)
+        events = getattr(tool_registry, "_mcp_server_events", None)
+        if states is None or events is None:
+            enabled = _enabled_servers(config_path)
+            connections = _to_connections(config_path)
+            states = {
+                name: (MCP_CATALOG_NOT_STARTED if name in connections else MCP_CATALOG_DEGRADED)
+                for name in enabled
+            }
+            events = {name: threading.Event() for name in enabled}
+            for name, state in states.items():
+                if state == MCP_CATALOG_DEGRADED:
+                    events[name].set()
+            tool_registry._mcp_server_states = states
+            tool_registry._mcp_server_events = events
+            tool_registry._mcp_config_path = config_path
+        return states, events
+
+
+def _refresh_catalog_flags(tool_registry) -> None:
+    states = getattr(tool_registry, "_mcp_server_states", {})
+    tool_registry._mcp_catalog_discovering = any(state == MCP_CATALOG_DISCOVERING for state in states.values())
+    tool_registry._mcp_catalog_discovered = bool(states) and not tool_registry._mcp_catalog_discovering
+
+
+def _register_mcp_entries(tool_registry, entries: list[McpToolEntry]) -> None:
+    for entry in entries:
+        try:
+            existing = tool_registry.get(getattr(entry.tool, "name", ""))
+        except KeyError:
+            existing = None
+        if existing is not None:
+            continue
+        tool_registry.register_tool(
+            entry.tool,
+            plugin_id="mcp",
+            source="mcp",
+            server_id=entry.server_id,
+            tags=entry.tags,
+            risk_level=entry.risk_level,
+            retryable=entry.retryable,
+            read_only=entry.read_only,
+        )
+
+
 def ensure_mcp_tools_registered(tool_registry, config_path=None) -> None:
     """Populate a registry's MCP catalog once, on the first Agent request.
 
@@ -322,39 +416,60 @@ def ensure_mcp_tools_registered(tool_registry, config_path=None) -> None:
     remembered for this runtime; changing MCP settings creates a fresh Agent
     lifecycle and therefore retries discovery.
     """
-    if (
-        getattr(tool_registry, "_mcp_catalog_discovered", False)
-        or getattr(tool_registry, "_mcp_catalog_discovering", False)
-    ):
-        return
-    tool_registry._mcp_catalog_discovering = True
+    path = config_path or default_mcp_config_path()
+    states, events = _catalog_maps(tool_registry, path)
 
-    def discover() -> None:
+    def discover(server_name: str) -> None:
         try:
-            for entry in load_mcp_tool_entries(config_path or default_mcp_config_path()):
-                try:
-                    existing = tool_registry.get(getattr(entry.tool, "name", ""))
-                except KeyError:
-                    existing = None
-                if existing is not None:
-                    continue
-                tool_registry.register_tool(
-                    entry.tool,
-                    plugin_id="mcp",
-                    source="mcp",
-                    server_id=entry.server_id,
-                    tags=entry.tags,
-                    risk_level=entry.risk_level,
-                    retryable=entry.retryable,
-                    read_only=entry.read_only,
-                )
+            entries = load_mcp_tool_entries_for_server(path, server_name)
+            if entries is None:
+                states[server_name] = MCP_CATALOG_DEGRADED
+            else:
+                _register_mcp_entries(tool_registry, entries)
+                states[server_name] = MCP_CATALOG_READY
         finally:
-            tool_registry._mcp_catalog_discovering = False
-            tool_registry._mcp_catalog_discovered = True
+            events[server_name].set()
+            _refresh_catalog_flags(tool_registry)
 
-    # MCP processes and remote endpoints can take seconds to launch. Discovery
-    # is catalog enrichment, never a prerequisite for answering with local KB.
-    threading.Thread(target=discover, name="mcp-tool-discovery", daemon=True).start()
+    # MCP processes and remote endpoints can take seconds to launch.  Start
+    # each one independently: a slow browser/filesystem process must never
+    # postpone GitHub or Feishu becoming selectable.
+    for server_name, state in tuple(states.items()):
+        if state != MCP_CATALOG_NOT_STARTED:
+            continue
+        states[server_name] = MCP_CATALOG_DISCOVERING
+        _refresh_catalog_flags(tool_registry)
+        threading.Thread(
+            target=discover, args=(server_name,), name=f"mcp-discovery-{server_name}", daemon=True,
+        ).start()
+
+
+def mcp_catalog_readiness(tool_registry, domain: str | None, *, timeout_seconds: float | None = None) -> dict[str, object]:
+    """Return domain-specific MCP readiness, with at most a short bounded wait.
+
+    The caller invokes this only for a routed Agent action.  General chat and
+    KB/RAG requests never wait for MCP discovery.  A missing or failed server
+    is an explicit degraded result rather than a silent empty tool catalog.
+    """
+    normalized = (domain or "").strip().lower()
+    states = getattr(tool_registry, "_mcp_server_states", {})
+    events = getattr(tool_registry, "_mcp_server_events", {})
+    if not normalized or normalized == "general" or normalized not in states:
+        return {"domain": normalized or "general", "state": "NOT_APPLICABLE", "waited_ms": 0.0}
+
+    if timeout_seconds is None:
+        from config import MCP_ACTION_READY_WAIT_SECONDS
+        timeout_seconds = MCP_ACTION_READY_WAIT_SECONDS
+    started = time.perf_counter()
+    state = states.get(normalized, MCP_CATALOG_DEGRADED)
+    if state == MCP_CATALOG_DISCOVERING:
+        events[normalized].wait(timeout=max(0.0, float(timeout_seconds)))
+        state = states.get(normalized, MCP_CATALOG_DISCOVERING)
+    return {
+        "domain": normalized,
+        "state": state,
+        "waited_ms": round((time.perf_counter() - started) * 1000, 3),
+    }
 
 
 def default_mcp_config_path() -> str:

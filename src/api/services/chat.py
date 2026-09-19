@@ -62,13 +62,20 @@ def _agent_runtime():
         tool_registry = None
     if tool_registry is not None:
         from src.harness import JevToolSelector, RuleBasedToolSelector
+        from src.agent.mcp_client import mcp_catalog_readiness
         rule_selector = RuleBasedToolSelector(max_candidates=12)
         selector = JevToolSelector(rule_selector) if __import__("os").getenv("TYPESAFE_API_KEY") else rule_selector
+        def catalog_readiness(selection_context):
+            return mcp_catalog_readiness(
+                tool_registry,
+                getattr(selection_context, "domain", None),
+            )
         return create_agent_runtime(
             agent_factory=_get_agent,
             stream_fn=stream_rag_response,
             tool_registry=tool_registry,
             tool_selector=selector,
+            catalog_readiness=catalog_readiness,
         )
     return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 

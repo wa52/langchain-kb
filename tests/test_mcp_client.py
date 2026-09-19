@@ -356,12 +356,14 @@ class TestLoadToolsConverged:
         entered = threading.Event()
         release = threading.Event()
 
-        def slow_discovery(_path):
+        def slow_discovery(_path, _server):
             entered.set()
             release.wait(timeout=1)
             return []
 
-        monkeypatch.setattr("src.agent.mcp_client.load_mcp_tool_entries", slow_discovery)
+        monkeypatch.setattr("src.agent.mcp_client._enabled_servers", lambda _path: {"github": {}})
+        monkeypatch.setattr("src.agent.mcp_client._to_connections", lambda _path: {"github": {}})
+        monkeypatch.setattr("src.agent.mcp_client.load_mcp_tool_entries_for_server", slow_discovery)
         registry = ToolRegistry()
         started = time.perf_counter()
         ensure_mcp_tools_registered(registry, "unused.json")
@@ -370,6 +372,60 @@ class TestLoadToolsConverged:
         assert entered.wait(timeout=0.5)
         assert registry._mcp_catalog_discovering is True
         release.set()
+
+    def test_domain_readiness_waits_only_for_requested_server(self, monkeypatch):
+        import threading
+        import time
+        from src.agent.mcp_client import (
+            MCP_CATALOG_DISCOVERING,
+            MCP_CATALOG_READY,
+            ensure_mcp_tools_registered,
+            mcp_catalog_readiness,
+        )
+        from src.harness.tools import ToolRegistry
+
+        github_started = threading.Event()
+        github_release = threading.Event()
+        filesystem_release = threading.Event()
+
+        def discover(_path, server_name):
+            if server_name == "github":
+                github_started.set()
+                github_release.wait(timeout=1)
+            else:
+                filesystem_release.wait(timeout=1)
+            return []
+
+        monkeypatch.setattr("src.agent.mcp_client._enabled_servers", lambda _path: {"github": {}, "filesystem": {}})
+        monkeypatch.setattr("src.agent.mcp_client._to_connections", lambda _path, server_names=None: {
+            name: {} for name in {"github", "filesystem"} if server_names is None or name in server_names
+        })
+        monkeypatch.setattr("src.agent.mcp_client.load_mcp_tool_entries_for_server", discover)
+        registry = ToolRegistry()
+        ensure_mcp_tools_registered(registry, "unused.json")
+        assert github_started.wait(timeout=0.5)
+        assert registry._mcp_server_states["github"] == MCP_CATALOG_DISCOVERING
+
+        def release_github():
+            time.sleep(0.03)
+            github_release.set()
+
+        threading.Thread(target=release_github, daemon=True).start()
+        status = mcp_catalog_readiness(registry, "github", timeout_seconds=0.2)
+
+        assert status["state"] == MCP_CATALOG_READY
+        assert 15 <= status["waited_ms"] <= 200
+        # The unrelated filesystem server can still be discovering; it did not
+        # delay GitHub becoming selectable.
+        assert registry._mcp_server_states["filesystem"] == MCP_CATALOG_DISCOVERING
+        filesystem_release.set()
+
+    def test_domain_readiness_degrades_missing_server_without_waiting(self):
+        from src.agent.mcp_client import mcp_catalog_readiness
+        from src.harness.tools import ToolRegistry
+
+        status = mcp_catalog_readiness(ToolRegistry(), "github", timeout_seconds=0.2)
+        assert status == {"domain": "github", "state": "NOT_APPLICABLE", "waited_ms": 0.0}
 
     def test_discovery_timeout_returns_control_to_the_agent(self):
         import asyncio

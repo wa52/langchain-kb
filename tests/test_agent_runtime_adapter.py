@@ -71,6 +71,29 @@ def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
     assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "agent.run.completed"]
 
 
+def test_langgraph_adapter_records_domain_mcp_readiness_before_selection():
+    registry = ToolRegistry()
+    registry.register("github_search", lambda: None, tags=("github", "read"))
+    runtime = LangGraphAgentRuntime(
+        agent_factory=lambda **_kwargs: FakeAgent(),
+        stream_fn=lambda _agent, _messages: ["answer"],
+        tool_registry=registry,
+        tool_selector=RuleBasedToolSelector(max_candidates=3, min_candidates=1),
+        catalog_readiness=lambda context: {"domain": context.domain, "state": "READY", "waited_ms": 4.0},
+    )
+    from src.harness import ToolSelectionContext
+    trace = AgentRunTrace(run_id="run-mcp-ready")
+
+    assert list(runtime.stream_messages(
+        [{"role": "user", "content": "查看 GitHub"}], "session-mcp", trace=trace,
+        selection_context=ToolSelectionContext(intent="ACTION", domain="github"),
+    )) == ["answer"]
+    status = next(event for event in trace.events if event.type == "mcp.catalog")
+    assert {key: status.payload[key] for key in ("domain", "state", "waited_ms")} == {
+        "domain": "github", "state": "READY", "waited_ms": 4.0,
+    }
+
+
 def test_langgraph_adapter_records_each_model_callback_boundary():
     agent = FakeAgent()
 

@@ -114,6 +114,9 @@ MCP_CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "") or str(
 )
 MCP_ENABLED = os.getenv("MCP_ENABLED", "true").lower() == "true"
 MCP_DISCOVERY_TIMEOUT_SECONDS = float(os.getenv("MCP_DISCOVERY_TIMEOUT_SECONDS", "8"))
+# A domain-routed Agent action (for example GitHub) may wait briefly for that
+# one MCP server.  Ordinary chat and KB retrieval never enter this window.
+MCP_ACTION_READY_WAIT_SECONDS = float(os.getenv("MCP_ACTION_READY_WAIT_SECONDS", "1"))
 
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://huggingface.co")
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT

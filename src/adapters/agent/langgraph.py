@@ -19,6 +19,7 @@ class LangGraphAgentRuntime:
         stream_fn: Callable[..., Iterable[str]] | None = None,
         tool_registry: Any = None,
         tool_selector: Any = None,
+        catalog_readiness: Callable[[Any], dict[str, Any] | None] | None = None,
     ) -> None:
         self._agent_factory = agent_factory
         self._stream_fn = stream_fn
@@ -26,6 +27,7 @@ class LangGraphAgentRuntime:
         self._agents: dict[tuple[str, ...] | None, Any] = {}
         self._tool_registry = tool_registry
         self._tool_selector = tool_selector
+        self._catalog_readiness = catalog_readiness
         self._cancelled: set[str] = set()
 
     def _get_agent(self, tool_names: tuple[str, ...] | None = None) -> Any:
@@ -124,6 +126,11 @@ class LangGraphAgentRuntime:
             on_trace_run(trace.run_id)
         if trace is not None:
             trace.emit("agent.run.started", session_id=session_id)
+        if self._catalog_readiness is not None:
+            readiness = self._catalog_readiness(selection_context)
+            if trace is not None and readiness is not None:
+                trace.emit("mcp.catalog", **readiness)
+        if trace is not None:
             trace.emit("selector.started")
         selected_tools = self._select_tools(messages, selection_context)
         if trace is not None:
