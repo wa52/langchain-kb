@@ -51,12 +51,14 @@ def _agent_runtime():
     except Exception:
         tool_registry = None
     if tool_registry is not None:
-        from src.harness import RuleBasedToolSelector
+        from src.harness import JevToolSelector, RuleBasedToolSelector
+        rule_selector = RuleBasedToolSelector(max_candidates=12)
+        selector = JevToolSelector(rule_selector) if __import__("os").getenv("TYPESAFE_API_KEY") else rule_selector
         return create_agent_runtime(
             agent_factory=_get_agent,
             stream_fn=stream_rag_response,
             tool_registry=tool_registry,
-            tool_selector=RuleBasedToolSelector(),
+            tool_selector=selector,
         )
     return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 

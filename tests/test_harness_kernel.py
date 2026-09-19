@@ -1,6 +1,6 @@
 import asyncio
 
-from src.harness import Event, EventBus, HarnessRuntime, RuleBasedToolSelector, SessionLog, ToolRegistry
+from src.harness import Event, EventBus, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolRegistry
 
 
 def test_event_bus_and_tool_registry_are_isolated():
@@ -64,6 +64,16 @@ def test_tool_selector_finds_mcp_server_from_query_keyword():
     selected = RuleBasedToolSelector(max_candidates=3, min_candidates=1).select_names("帮我在 GitHub 创建 issue", tools.catalog())
 
     assert selected == ("github_create_issue",)
+
+
+def test_jev_selector_ranks_recalled_tools_and_falls_back_without_key():
+    tools = ToolRegistry()
+    tools.register("retrieve_knowledge", lambda: None, description="search knowledge", tags=("knowledge", "search"))
+    tools.register("retrieve_graph", lambda: None, description="search graph", tags=("graph", "search"))
+    fallback = RuleBasedToolSelector(max_candidates=4, min_candidates=1)
+    response = {"answers": {"tool": {"probabilities": {"retrieve_knowledge": 0.2, "retrieve_graph": 0.8}}}}
+    selector = JevToolSelector(fallback, api_key="test", request=lambda _payload, _key: response)
+    assert selector.select_names("search knowledge", tools.catalog()) == ("retrieve_graph", "retrieve_knowledge")
 
 
 def test_session_log_is_append_only_snapshot():
