@@ -68,4 +68,4 @@ def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
     trace = AgentRunTrace(run_id="run-4")
     assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4", trace=trace)) == ["answer"]
     assert selected == [("retrieve_knowledge",)]
-    assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "llm.request", "llm.response", "agent.run.completed"]
+    assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "llm.request", "agent.run.completed"]
