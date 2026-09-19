@@ -17,6 +17,7 @@ from src.application.conversation_service import ConversationService
 from src.application.conversation_store import ConversationStore
 from src.application.direct_chat import DirectChatEngine
 from src.application.fast_rag import FastRagService
+from src.application.smart_router import SmartRouteService
 from src.application.source_enrichment import enrich_sources
 from src.bootstrap.composition import create_agent_runtime
 
@@ -122,6 +123,18 @@ def _fast_rag_service() -> FastRagService:
         fetch_k=FAST_RAG_FETCH_K,
         max_context_tokens=FAST_RAG_MAX_CONTEXT_TOKENS,
         gate_threshold=FAST_RAG_GATE_THRESHOLD,
+    )
+
+
+def _smart_router() -> SmartRouteService:
+    def retrieve(query: str, k: int):
+        from src.application.knowledge import retrieve_documents
+        return retrieve_documents(query, k)
+
+    return SmartRouteService(
+        retrieve,
+        fetch_k=FAST_RAG_FETCH_K,
+        rag_threshold=FAST_RAG_GATE_THRESHOLD,
     )
 
 
@@ -251,6 +264,7 @@ def _conversation_service() -> ConversationService:
         agent_runtime_factory=_agent_runtime, serialize_messages=_serialize_messages, build_sources=build_sources,
         verify_agent_run=verify_agent_run, resume_command=_resume_command,
         fast_rag_service=_fast_rag_service(),
+        smart_router=_smart_router(),
     )
 
 

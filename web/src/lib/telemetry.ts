@@ -229,6 +229,12 @@ export function recordFastRagTrace(trace: {
   selected_docs_count: number;
   context_tokens: number;
   relevant: boolean;
+  routing?: {
+    route: string;
+    confidence: number;
+    reasons: string[];
+    signals: Record<string, number | boolean>;
+  };
 }): void {
   const now = Date.now();
   const names: Record<string, string> = {
@@ -237,13 +243,25 @@ export function recordFastRagTrace(trace: {
     context_ms: "上下文构建",
     llm_ms: "LLM #1",
   };
-  const actions = Object.entries(trace.stages)
+  const actions: ActionTelemetry[] = Object.entries(trace.stages)
     .filter(([, elapsedMs]) => typeof elapsedMs === "number")
     .map(([stage, elapsedMs]) => ({
       name: names[stage] ?? stage,
       at: now,
       elapsedMs,
     }));
+  if (trace.routing) {
+    const routingMs = trace.routing.signals.routing_ms;
+    actions.unshift({
+      name: "智能路由",
+      at: now,
+      elapsedMs: typeof routingMs === "number" ? routingMs : null,
+      detail: `${trace.routing.route} · ${Math.round(trace.routing.confidence * 100)}% · ${trace.routing.reasons.join(" / ")}`,
+      children: Object.entries(trace.routing.signals)
+        .filter(([key, value]) => key !== "routing_ms" && (typeof value === "number" || typeof value === "boolean"))
+        .map(([key, value]) => ({ name: routingSignalName(key), at: now, elapsedMs: null, detail: typeof value === "number" ? `${Math.round(value * 100)}%` : String(value) })),
+    });
+  }
   telemetry = {
     ...telemetry,
     lastRun: {
@@ -274,6 +292,15 @@ function retrievalStageName(stage: string): string {
     graph_ms: "知识图谱检索",
   };
   return names[stage] ?? stage;
+}
+
+function routingSignalName(signal: string): string {
+  const names: Record<string, string> = {
+    semantic: "语义命中", lexical: "关键词覆盖", rank: "候选排名",
+    context: "会话关联", hit_count: "候选数量", dense_bm25_agreement: "Hybrid 一致",
+    agent_intent: "Agent 意图", direct_intent: "直连意图",
+  };
+  return names[signal] ?? signal;
 }
 
 export function recordRunSources(sources: Array<{ hit_chain?: string[] }>): void {

@@ -57,6 +57,12 @@ export interface FastRagTrace {
   selected_docs_count: number;
   context_tokens: number;
   relevant: boolean;
+  routing?: {
+    route: string;
+    confidence: number;
+    reasons: string[];
+    signals: Record<string, number | boolean>;
+  };
 }
 
 export type ViewId = "chat" | "knowledge" | "status" | "settings";

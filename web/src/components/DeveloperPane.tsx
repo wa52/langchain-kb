@@ -102,6 +102,7 @@ export function DeveloperPane() {
                       <li key={`${child.name}-${childIndex}`}>
                         <code>{child.name}</code>
                         <span className="dev-count">{fmtMs(child.elapsedMs)}</span>
+                        {child.detail ? <span className="dev-muted">{child.detail}</span> : null}
                       </li>
                     ))}
                   </ul>

@@ -27,7 +27,7 @@ class _FastRag:
         self.prepared = []
         self.streamed = 0
 
-    def prepare(self, messages):
+    def prepare(self, messages, **_kwargs):
         self.prepared.append(messages)
         return SimpleNamespace(
             relevant=True,

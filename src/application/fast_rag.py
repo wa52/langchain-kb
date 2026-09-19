@@ -67,11 +67,11 @@ class FastRagService:
         self._max_context_tokens = max(1, max_context_tokens)
         self._gate_threshold = max(0.0, min(1.0, gate_threshold))
 
-    def prepare(self, messages: list[dict]) -> FastRagPlan:
+    def prepare(self, messages: list[dict], *, prefetched_documents: list[Any] | tuple[Any, ...] | None = None) -> FastRagPlan:
         query = str(messages[-1].get("content", "")).strip() if messages else ""
         plan = FastRagPlan(query=query)
         started = time.perf_counter()
-        docs = list(self._retrieve(query, self._fetch_k) or [])
+        docs = list(prefetched_documents) if prefetched_documents is not None else list(self._retrieve(query, self._fetch_k) or [])
         plan.timings["search_ms"] = self._elapsed(started)
         plan.raw_docs_count = len(docs)
 

@@ -29,6 +29,7 @@ class ConversationService:
         verify_agent_run: Callable[[str, list[dict], bool], dict],
         resume_command: Callable[[list[str], str | None], Any],
         fast_rag_service: Any,
+        smart_router: Any | None = None,
     ) -> None:
         self._store_factory = store_factory
         self._route_query = route_query
@@ -47,6 +48,7 @@ class ConversationService:
         self._verify_agent_run = verify_agent_run
         self._resume_command = resume_command
         self._fast_rag_service = fast_rag_service
+        self._smart_router = smart_router
 
     def _messages(self, query: str, session_id: str | None, store: Any) -> list[dict]:
         messages: list[dict] = []
@@ -75,7 +77,8 @@ class ConversationService:
             if not query:
                 raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            route = forced_route or self._route_query(query, messages[:-1])
+            decision = self._smart_router.decide(query, messages[:-1]) if forced_route is None and self._smart_router else None
+            route = forced_route or (decision.route if decision is not None else self._route_query(query, messages[:-1]))
             if route == self._direct_route:
                 answer = self._direct_answer(self._trim_direct_history(messages))
                 history = self._serialize_messages(messages) + [
@@ -84,7 +87,7 @@ class ConversationService:
                 return answer, store.save(history, session_id), round((time.time() - started) * 1000, 2)
 
             if route == self._fast_rag_route:
-                plan = self._fast_rag_service.prepare(self._trim_direct_history(messages))
+                plan = self._fast_rag_service.prepare(self._trim_direct_history(messages), prefetched_documents=decision.documents if decision else None)
                 if not plan.relevant:
                     answer = self._direct_answer(self._trim_direct_history(messages))
                     used_route = self._direct_route
@@ -115,12 +118,16 @@ class ConversationService:
             if not query:
                 raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            route = forced_route or self._route_query(query, messages[:-1])
+            decision = self._smart_router.decide(query, messages[:-1]) if forced_route is None and self._smart_router else None
+            route = forced_route or (decision.route if decision is not None else self._route_query(query, messages[:-1]))
             if route == self._direct_route:
-                yield from self._stream_direct(messages, session_id, stop_event, store, started)
+                yield from self._stream_direct(
+                    messages, session_id, stop_event, store, started,
+                    performance=self._routing_performance(decision) if decision is not None else None,
+                )
                 return
             if route == self._fast_rag_route:
-                yield from self._stream_fast_rag(messages, session_id, stop_event, store, started)
+                yield from self._stream_fast_rag(messages, session_id, stop_event, store, started, decision=decision)
                 return
             yield from self._stream_agent(messages, session_id, stop_event, store, started)
 
@@ -158,13 +165,19 @@ class ConversationService:
             **({"fast_rag": performance} if performance else {}),
         }}
 
-    def _stream_fast_rag(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
+    def _stream_fast_rag(self, messages, session_id, stop_event, store, started, *, decision=None) -> Iterator[dict]:
         model_messages = self._trim_direct_history(messages)
-        plan = self._fast_rag_service.prepare(model_messages)
+        plan = self._fast_rag_service.prepare(
+            model_messages,
+            prefetched_documents=decision.documents if decision is not None else None,
+        )
         if not plan.relevant:
+            performance = plan.snapshot()
+            if decision is not None:
+                performance["routing"] = decision.snapshot()
             yield from self._stream_direct(
                 messages, session_id, stop_event, store, started,
-                performance=plan.snapshot(),
+                performance=performance,
             )
             return
 
@@ -193,12 +206,29 @@ class ConversationService:
             new_session_id = store.save(self._serialize_messages(messages) + [assistant], session_id)
         yield {"type": "sources", "data": {"sources": self._build_sources(answer)}}
         performance = self._fast_rag_service.prepare_snapshot(plan, started)
+        if decision is not None:
+            performance["routing"] = decision.snapshot()
         yield {"type": "message_end", "data": {
             "session_id": new_session_id,
             "elapsed_ms": round((time.time() - started) * 1000, 2),
             "interrupted": interrupted, "waiting_approval": False,
             "route": self._fast_rag_route, "fast_rag": performance,
         }}
+
+    @staticmethod
+    def _routing_performance(decision) -> dict:
+        signals = decision.signals
+        return {
+            "route": decision.route.value,
+            "total_ms": float(signals.get("routing_ms", 0.0)),
+            "stages": {"routing_ms": float(signals.get("routing_ms", 0.0))},
+            "llm_calls": 0,
+            "raw_docs_count": int(signals.get("hit_count", 0)),
+            "selected_docs_count": 0,
+            "context_tokens": 0,
+            "relevant": False,
+            "routing": decision.snapshot(),
+        }
 
     def _stream_agent(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
         tools: list[str] = []
