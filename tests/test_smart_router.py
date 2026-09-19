@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from src.application.smart_router import SmartRouteService
 from src.domain.routing import Route, ScoredDocument
 
@@ -56,3 +58,21 @@ def test_smart_router_does_not_inherit_an_unrelated_short_follow_up():
     decision = router.decide("那今天吃什么？", history)
     assert decision.signals["context"] == 0.0
     assert decision.signals["context_topic_similarity"] == 0.1
+
+
+@pytest.mark.parametrize("query", [
+    "我那个异常检测模型最后保存成什么文件名",
+    "之前相机实时推理准备多久保存一次图片",
+])
+def test_smart_router_keeps_historical_save_questions_on_the_rag_path(query):
+    decision = _router([_scored(query)]).decide(query, [])
+    assert decision.route == Route.FAST_RAG
+
+
+@pytest.mark.parametrize("query", [
+    "请去 GitHub 看一下这个项目最新的 commit",
+    "去网页搜索 BEIR 的官方评测指标",
+])
+def test_smart_router_recognizes_external_reading_actions(query):
+    decision = _router([]).decide(query, [])
+    assert decision.route == Route.AGENT
