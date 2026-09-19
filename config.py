@@ -88,6 +88,8 @@ FAST_RAG_GATE_THRESHOLD = float(os.getenv("FAST_RAG_GATE_THRESHOLD", "0.12"))
 # Routing confidence is deliberately independent from Fast RAG's document
 # gate.  A low document gate must never make every broad retrieval a RAG hit.
 ROUTE_RAG_THRESHOLD = float(os.getenv("ROUTE_RAG_THRESHOLD", "0.55"))
+# Topic inheritance is only allowed for semantically related short follow-ups.
+ROUTE_CONTEXT_SIMILARITY_THRESHOLD = float(os.getenv("ROUTE_CONTEXT_SIMILARITY_THRESHOLD", "0.55"))
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")

@@ -41,3 +41,18 @@ def test_smart_router_uses_fast_rag_history_for_short_follow_up():
     decision = _router(docs).decide("第二种呢？", history)
     assert decision.route == Route.FAST_RAG
     assert decision.signals["context"] == 1.0
+
+
+def test_smart_router_does_not_inherit_an_unrelated_short_follow_up():
+    docs = [_scored("HALCON 第二种异常检测方案")]
+    history = [
+        {"role": "user", "content": "HALCON 异常检测训练参数"},
+        {"role": "assistant", "content": "资料回答", "route": "fast_rag"},
+    ]
+    router = SmartRouteService(
+        lambda _query, _k: docs, fetch_k=8, rag_threshold=0.2,
+        topic_similarity=lambda _current, _previous: 0.1,
+    )
+    decision = router.decide("那今天吃什么？", history)
+    assert decision.signals["context"] == 0.0
+    assert decision.signals["context_topic_similarity"] == 0.1

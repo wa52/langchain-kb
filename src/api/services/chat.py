@@ -8,6 +8,7 @@ from config import (
     FAST_RAG_FETCH_K, FAST_RAG_GATE_THRESHOLD, FAST_RAG_MAX_CONTEXT_TOKENS,
     FAST_RAG_TOP_K,
     ROUTE_RAG_THRESHOLD,
+    ROUTE_CONTEXT_SIMILARITY_THRESHOLD,
 )
 from src.agent.chat_history import allocate_session_id, load_history, save_history, session_lock
 from src.agent.harness import verify_agent_run
@@ -146,6 +147,8 @@ def _smart_router() -> SmartRouteService:
         fetch_k=FAST_RAG_FETCH_K,
         rag_threshold=ROUTE_RAG_THRESHOLD,
         intent_classifier=_intent_classifier,
+        topic_similarity=_intent_classifier.similarity,
+        context_similarity_threshold=ROUTE_CONTEXT_SIMILARITY_THRESHOLD,
     )
 
 

@@ -30,6 +30,11 @@ class IntentPrototypeClassifier:
         query_vector = self._embed([query])[0]
         return {name: round(max((self._cosine(query_vector, vector) for vector in vectors), default=0.0), 3) for name, vectors in self._vectors.items()}
 
+    def similarity(self, left: str, right: str) -> float:
+        """Compare two conversation topics without involving an LLM."""
+        left_vector, right_vector = self._embed([left, right])
+        return round(self._cosine(left_vector, right_vector), 3)
+
     @staticmethod
     def _cosine(left, right) -> float:
         denominator = sqrt(sum(x * x for x in left)) * sqrt(sum(x * x for x in right))

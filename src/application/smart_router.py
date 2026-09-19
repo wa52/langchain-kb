@@ -29,11 +29,17 @@ _NOISE = frozenset("的是了在和与及对用有这那一个什么怎么如何
 class SmartRouteService:
     """Use one retrieved candidate set for both routing and Fast RAG."""
 
-    def __init__(self, retrieve: Callable[[str, int], list[Any]], *, fetch_k: int, rag_threshold: float, intent_classifier=None) -> None:
+    def __init__(
+        self, retrieve: Callable[[str, int], list[Any]], *, fetch_k: int, rag_threshold: float,
+        intent_classifier=None, topic_similarity: Callable[[str, str], float] | None = None,
+        context_similarity_threshold: float = 0.55,
+    ) -> None:
         self._retrieve = retrieve
         self._fetch_k = max(1, fetch_k)
         self._rag_threshold = max(0.0, min(1.0, rag_threshold))
         self._intent_classifier = intent_classifier
+        self._topic_similarity = topic_similarity
+        self._context_similarity_threshold = max(0.0, min(1.0, context_similarity_threshold))
 
     def decide(self, query: str, history: list[dict]) -> RoutingDecision:
         started = time.perf_counter()
@@ -46,10 +52,10 @@ class SmartRouteService:
         if any(action in text for action in _DIRECT_ACTIONS) and not any(hint in text for hint in _RAG_HINTS):
             return self._decision(Route.DIRECT, 0.95, ("direct_task_intent",), {"direct_intent": 0.95, "routing_ms": self._elapsed(started)})
 
-        context_route, context_query = self._context(history, text)
+        context_route, context_query, context_similarity = self._context(history, text)
         retrieval_query = f"{context_query} {query}".strip() if context_query else query
         docs = tuple(self._retrieve(retrieval_query, self._fetch_k) or [])
-        signals = self._signals(text, docs, context_route)
+        signals = self._signals(text, docs, context_route, context_similarity)
         signals.update({f"intent_{name}": value for name, value in intents.items()})
         signals["routing_ms"] = self._elapsed(started)
         confidence = round(
@@ -71,19 +77,25 @@ class SmartRouteService:
         route = Route.FAST_RAG if confidence >= self._rag_threshold else Route.DIRECT
         return self._decision(route, confidence, tuple(reasons or ["low_retrieval_confidence"]), signals, docs)
 
-    @staticmethod
-    def _context(history: list[dict], text: str) -> tuple[str | None, str | None]:
+    def _context(self, history: list[dict], text: str) -> tuple[str | None, str | None, float]:
         if not history or not (len(text) <= 28 or _FOLLOW_UP.match(text)):
-            return None, None
-        for message in reversed(history[-4:]):
+            return None, None, 0.0
+        for index in range(len(history) - 1, max(-1, len(history) - 5), -1):
+            message = history[index]
             if message.get("role") == "assistant" and message.get("route") == Route.FAST_RAG.value:
-                for user in reversed(history[:history.index(message)]):
+                for user in reversed(history[:index]):
                     if user.get("role") == "user":
-                        return Route.FAST_RAG.value, str(user.get("content", ""))
-        return None, None
+                        previous_topic = str(user.get("content", ""))
+                        if self._topic_similarity is not None:
+                            similarity = self._topic_similarity(text, previous_topic)
+                            if similarity < self._context_similarity_threshold:
+                                return None, None, similarity
+                            return Route.FAST_RAG.value, previous_topic, similarity
+                        return Route.FAST_RAG.value, previous_topic, 1.0
+        return None, None, 0.0
 
     @staticmethod
-    def _signals(query: str, docs: tuple[Any, ...], context_route: str | None) -> dict[str, float | bool | int]:
+    def _signals(query: str, docs: tuple[Any, ...], context_route: str | None, context_similarity: float) -> dict[str, float | bool | int]:
         terms = {term.lower() for term in _TERMS.findall(query) if term not in _NOISE}
         corpus = "\n".join(str(getattr(doc, "page_content", "")) for doc in docs).lower()
         lexical = sum(term in corpus for term in terms) / max(1, len(terms))
@@ -99,6 +111,7 @@ class SmartRouteService:
             "rank": round(gap, 3), "top1_score": round(top1, 3),
             "top3_mean": round(top3_mean, 3), "top1_top2_gap": round(gap, 3),
             "context": 1.0 if context_route else 0.0,
+            "context_topic_similarity": round(context_similarity, 3),
             "hit_count": len(docs), "dense_bm25_agreement": agreement,
         }
 
