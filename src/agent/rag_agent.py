@@ -13,7 +13,7 @@ from src.agent.harness import ToolRecoveryMiddleware
 SYSTEM_PROMPT = build_agent_prompt()
 
 
-def create_rag_agent(tool_registry=None):
+def create_rag_agent(tool_registry=None, tool_names: tuple[str, ...] | None = None):
     import os as _os
     import time as _time
     from src.status import get_registry
@@ -40,22 +40,12 @@ def create_rag_agent(tool_registry=None):
     model = get_llm(temperature=0)
     print(f"  [计时] 初始化 LLM: {_time.time() - _t3:.2f}s")
 
-    tools = tool_registry.langchain_tools() if tool_registry is not None else []
+    tools = tool_registry.langchain_tools(tool_names) if tool_registry is not None else []
     if tool_registry is not None:
         try:
-            from src.agent.mcp_client import default_mcp_config_path, load_mcp_tool_entries
-            for entry in load_mcp_tool_entries(default_mcp_config_path()):
-                tool_registry.register_tool(
-                    entry.tool,
-                    plugin_id="mcp",
-                    source="mcp",
-                    server_id=entry.server_id,
-                    tags=entry.tags,
-                    risk_level=entry.risk_level,
-                    retryable=entry.retryable,
-                    read_only=entry.read_only,
-                )
-            tools = tool_registry.langchain_tools()
+            from src.agent.mcp_client import ensure_mcp_tools_registered
+            ensure_mcp_tools_registered(tool_registry)
+            tools = tool_registry.langchain_tools(tool_names)
         except Exception as exc:
             print(f"  [MCP] 外部工具加载失败（不影响本地工具）: {exc}")
     if not tools:

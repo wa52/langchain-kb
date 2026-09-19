@@ -21,15 +21,15 @@ _basename_index: dict[str, str] | None = None
 _basename_index_ts = 0.0
 
 
-def _get_agent():
+def _get_agent(tool_names: tuple[str, ...] | None = None):
     from src.resources import ResourceManager
     try:
         manager = ResourceManager.get_instance()
         if manager.is_ready():
-            return manager.get_agent()
+            return manager.get_agent(tool_names=tool_names)
     except Exception:
         pass
-    agent = create_rag_agent()
+    agent = create_rag_agent(tool_names=tool_names)
     try:
         manager = ResourceManager.get_instance()
         if manager.is_ready():
@@ -40,6 +40,24 @@ def _get_agent():
 
 
 def _agent_runtime():
+    tool_registry = None
+    try:
+        from src.resources import ResourceManager
+        manager = ResourceManager.get_instance()
+        tool_registry = getattr(manager, "tool_registry", None)
+        if tool_registry is not None:
+            from src.agent.mcp_client import ensure_mcp_tools_registered
+            ensure_mcp_tools_registered(tool_registry)
+    except Exception:
+        tool_registry = None
+    if tool_registry is not None:
+        from src.harness import ToolSelector
+        return create_agent_runtime(
+            agent_factory=_get_agent,
+            stream_fn=stream_rag_response,
+            tool_registry=tool_registry,
+            tool_selector=ToolSelector(),
+        )
     return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 
 

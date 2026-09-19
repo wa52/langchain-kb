@@ -299,6 +299,36 @@ def load_mcp_tools(config_path, tool_name_prefix: bool = True, tool_mode: str | 
     return [entry.tool for entry in load_mcp_tool_entries(config_path, tool_name_prefix, tool_mode)]
 
 
+def ensure_mcp_tools_registered(tool_registry, config_path=None) -> None:
+    """Populate a registry's MCP catalog once, on the first Agent request.
+
+    This preserves fast API startup while ensuring ToolSelector sees the same
+    MCP catalog that the eventual Agent can receive.  A failed discovery is
+    remembered for this runtime; changing MCP settings creates a fresh Agent
+    lifecycle and therefore retries discovery.
+    """
+    if getattr(tool_registry, "_mcp_catalog_discovered", False):
+        return
+    tool_registry._mcp_catalog_discovered = True
+    for entry in load_mcp_tool_entries(config_path or default_mcp_config_path()):
+        try:
+            existing = tool_registry.get(getattr(entry.tool, "name", ""))
+        except KeyError:
+            existing = None
+        if existing is not None:
+            continue
+        tool_registry.register_tool(
+            entry.tool,
+            plugin_id="mcp",
+            source="mcp",
+            server_id=entry.server_id,
+            tags=entry.tags,
+            risk_level=entry.risk_level,
+            retryable=entry.retryable,
+            read_only=entry.read_only,
+        )
+
+
 def default_mcp_config_path() -> str:
     """Default mcp.json location (MCP_CONFIG_PATH or <KNOWLEDGE_HOME>/mcp.json)."""
     from config import MCP_CONFIG_PATH

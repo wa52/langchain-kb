@@ -1,4 +1,5 @@
 from src.adapters.agent import LangGraphAgentRuntime
+from src.harness import ToolRegistry, ToolSelector
 
 
 class FakeAgent:
@@ -45,3 +46,24 @@ def test_langgraph_adapter_forwards_agent_tool_events():
         [{"role": "user", "content": "hi"}], "session-3", on_tool=tools.append
     )) == ["answer"]
     assert tools == ["retrieve_knowledge"]
+
+
+def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
+    registry = ToolRegistry()
+    registry.register("retrieve_knowledge", lambda: None, description="检索本地知识库", tags=("knowledge", "search"))
+    registry.register("save_material", lambda: None, tags=("knowledge", "write"), read_only=False)
+    selected = []
+
+    def factory(*, tool_names=None):
+        selected.append(tool_names)
+        return FakeAgent()
+
+    runtime = LangGraphAgentRuntime(
+        agent_factory=factory,
+        stream_fn=lambda _agent, _messages: ["answer"],
+        tool_registry=registry,
+        tool_selector=ToolSelector(max_candidates=3, min_candidates=1),
+    )
+
+    assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4")) == ["answer"]
+    assert selected == [("retrieve_knowledge",)]

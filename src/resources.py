@@ -23,6 +23,7 @@ class ResourceManager:
         self.llm: Any = None
         self.graph: Any = None
         self.agent: Any = None
+        self._agents_by_tool_set: dict[tuple[str, ...] | None, Any] = {}
         self._initialized: bool = False
         self._shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
@@ -134,10 +135,11 @@ class ResourceManager:
 
         self._ensemble_retriever = None
         self._cached_k = None
-        if self.agent is not None:
+        if self._agents_by_tool_set or self.agent is not None:
             try:
                 from src.agent.rag_agent import close_agent_checkpoint
-                close_agent_checkpoint(self.agent)
+                for agent in {id(item): item for item in [self.agent, *self._agents_by_tool_set.values()] if item is not None}.values():
+                    close_agent_checkpoint(agent)
             except Exception as exc:
                 logger.warning("Failed to close agent checkpoint: %s", exc)
         self.embedding_model = None
@@ -145,6 +147,7 @@ class ResourceManager:
         self.llm = None
         self.graph = None
         self.agent = None
+        self._agents_by_tool_set.clear()
         self._initialized = False
         from src.status import reset_status
         reset_status()
@@ -153,16 +156,30 @@ class ResourceManager:
     def is_ready(self) -> bool:
         return self._initialized
 
-    def get_agent(self):
+    def clear_agent_cache(self) -> None:
+        """Close and forget every Agent variant cached for a tool selection."""
+        with self._agent_lock:
+            agents = {id(item): item for item in [self.agent, *self._agents_by_tool_set.values()] if item is not None}
+            try:
+                from src.agent.rag_agent import close_agent_checkpoint
+                for agent in agents.values():
+                    close_agent_checkpoint(agent)
+            except Exception as exc:
+                logger.warning("Failed to close agent checkpoint: %s", exc)
+            self.agent = None
+            self._agents_by_tool_set.clear()
+
+    def get_agent(self, tool_names: tuple[str, ...] | None = None):
         """Return the cached RAG agent, building it lazily on first call.
         The agent is stateless (messages are passed per-call), so it is safe
         to reuse across chat requests. Double-checked locking prevents
         concurrent first calls from building duplicate agents."""
-        if self.agent is not None:
-            return self.agent
+        key = tuple(sorted(tool_names)) if tool_names is not None else None
+        if key in self._agents_by_tool_set:
+            return self._agents_by_tool_set[key]
         with self._agent_lock:
-            if self.agent is not None:
-                return self.agent
+            if key in self._agents_by_tool_set:
+                return self._agents_by_tool_set[key]
             if not self._initialized:
                 raise RuntimeError("ResourceManager not initialized. Call startup() first.")
             import time as _t
@@ -171,13 +188,16 @@ class ResourceManager:
             reg = get_registry()
             reg.set_loading("agent", "构建 RAG Agent")
             try:
-                self.agent = create_rag_agent(getattr(self, "tool_registry", None))
+                agent = create_rag_agent(getattr(self, "tool_registry", None), tool_names=key)
+                self._agents_by_tool_set[key] = agent
+                if key is None:
+                    self.agent = agent
             except Exception as e:
                 reg.set_error("agent", e, "构建 RAG Agent")
                 raise
             reg.set_ready("agent", "Deep Agent")
             print(f"  [计时] 首次构建 RAG Agent（缓存复用）: {_t.time() - t0:.2f}s")
-            return self.agent
+            return agent
 
     def get_retriever(self, k: int | None = None):
         if not self._initialized:

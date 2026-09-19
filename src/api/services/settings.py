@@ -146,14 +146,11 @@ def _drop_agent_for_mcp_reload() -> None:
     from src.resources import ResourceManager
 
     manager = ResourceManager.get_instance()
-    with manager._agent_lock:
-        if manager.agent is not None:
-            try:
-                from src.agent.rag_agent import close_agent_checkpoint
-                close_agent_checkpoint(manager.agent)
-            except Exception:
-                pass
-        manager.agent = None
+    manager.clear_agent_cache()
+    registry = getattr(manager, "tool_registry", None)
+    if registry is not None:
+        registry.unregister_plugin("mcp")
+        registry._mcp_catalog_discovered = False
 
 
 def set_mcp_enabled(enabled: bool) -> dict:
@@ -242,15 +239,8 @@ def set_llm_config(provider: str, model: str, base_url: str, api_key: str | None
     # Bump the answer-cache generation so an in-flight response from the old
     # model can never become a hit for the new model configuration.
     rm.invalidate_answer_cache()
-    with rm._agent_lock:
-        if rm.agent is not None:
-            try:
-                from src.agent.rag_agent import close_agent_checkpoint
-                close_agent_checkpoint(rm.agent)
-            except Exception:
-                pass
-        rm.agent = None
-        rm.llm = None
+    rm.clear_agent_cache()
+    rm.llm = None
     return {"ok": True, "provider": provider, "model": model, "requires_restart": False}
 
 

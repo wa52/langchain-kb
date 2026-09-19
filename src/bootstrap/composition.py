@@ -23,8 +23,13 @@ def create_query_service(resource_manager):
     return QueryService(CurrentRetrieverAdapter(resource_manager.vector_store))
 
 
-def create_agent_runtime(*, agent_factory, stream_fn):
+def create_agent_runtime(*, agent_factory, stream_fn, tool_registry=None, tool_selector=None):
     """Compose the current AgentRuntime without exposing LangGraph to callers."""
     from src.adapters.agent import LangGraphAgentRuntime
 
-    return LangGraphAgentRuntime(agent_factory=agent_factory, stream_fn=stream_fn)
+    return LangGraphAgentRuntime(
+        agent_factory=agent_factory,
+        stream_fn=stream_fn,
+        tool_registry=tool_registry,
+        tool_selector=tool_selector,
+    )

@@ -1,7 +1,7 @@
 """Scoped tool registry; Agent code depends on this interface, not adapters."""
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Iterable, Literal
 
 
 ToolSource = Literal["local", "mcp", "plugin"]
@@ -42,9 +42,13 @@ class ToolRegistry:
         schema = getattr(tool, "args_schema", None)
         self.register(name, tool, description=getattr(tool, "description", ""), plugin_id=plugin_id, source=source, server_id=server_id, tags=tags, risk_level=risk_level, timeout_seconds=timeout_seconds, retryable=retryable, read_only=read_only, input_schema=getattr(schema, "model_json_schema", lambda: None)(), enabled=enabled)
 
-    def langchain_tools(self) -> list[Any]:
-        """Return registered tool objects for an agent adapter."""
-        return [spec.handler for spec in self._tools.values() if spec.enabled]
+    def langchain_tools(self, names: Iterable[str] | None = None) -> list[Any]:
+        """Return enabled tool objects, optionally limited to a selected catalog slice."""
+        selected = set(names) if names is not None else None
+        return [
+            spec.handler for spec in self._tools.values()
+            if spec.enabled and (selected is None or spec.name in selected)
+        ]
 
     def catalog(self, *, source: ToolSource | None = None, tags: tuple[str, ...] = (), include_disabled: bool = False) -> tuple[ToolSpec, ...]:
         """Return discoverable metadata without exposing tool handlers."""

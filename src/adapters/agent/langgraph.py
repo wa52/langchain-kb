@@ -14,22 +14,46 @@ class LangGraphAgentRuntime:
 
     def __init__(
         self,
-        agent_factory: Callable[[], Any] | None = None,
+        agent_factory: Callable[..., Any] | None = None,
         stream_fn: Callable[..., Iterable[str]] | None = None,
+        tool_registry: Any = None,
+        tool_selector: Any = None,
     ) -> None:
         self._agent_factory = agent_factory
         self._stream_fn = stream_fn
         self._agent: Any = None
+        self._agents: dict[tuple[str, ...] | None, Any] = {}
+        self._tool_registry = tool_registry
+        self._tool_selector = tool_selector
         self._cancelled: set[str] = set()
 
-    def _get_agent(self) -> Any:
-        if self._agent is None:
+    def _get_agent(self, tool_names: tuple[str, ...] | None = None) -> Any:
+        if self._tool_selector is None and self._agent is not None:
+            return self._agent
+        if tool_names not in self._agents:
             factory = self._agent_factory
             if factory is None:
                 from src.agent.rag_agent import create_rag_agent
                 factory = create_rag_agent
-            self._agent = factory()
-        return self._agent
+            try:
+                signature = inspect.signature(factory)
+                supports_selection = "tool_names" in signature.parameters
+            except (TypeError, ValueError):
+                supports_selection = False
+            self._agents[tool_names] = factory(tool_names=tool_names) if supports_selection else factory()
+        agent = self._agents[tool_names]
+        if self._tool_selector is None:
+            self._agent = agent
+        return agent
+
+    def _select_tools(self, messages: list[dict[str, Any]]) -> tuple[str, ...] | None:
+        if self._tool_selector is None or self._tool_registry is None:
+            return None
+        query = next(
+            (str(message.get("content", "")) for message in reversed(messages) if message.get("role") == "user"),
+            "",
+        )
+        return self._tool_selector.select_names(query, self._tool_registry.catalog())
 
     @staticmethod
     def _bind_session(agent: Any, session_id: str) -> Any:
@@ -88,7 +112,8 @@ class LangGraphAgentRuntime:
     ) -> Iterable[str]:
         """Run a prepared chat turn with LangGraph state and tool callbacks."""
         self._cancelled.discard(session_id)
-        configured = self._bind_session(self._get_agent(), session_id)
+        selected_tools = self._select_tools(messages)
+        configured = self._bind_session(self._get_agent(selected_tools), session_id)
         prepared = self._messages_for_session(configured, messages, session_id)
         for chunk in self._stream(
             configured,
