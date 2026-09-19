@@ -5,6 +5,28 @@ from langchain_openai import ChatOpenAI
 import config
 
 
+_REQUEST_TIMEOUT_SECONDS = 90.0
+_STREAM_CHUNK_TIMEOUT_SECONDS = 45.0
+
+
+def _provider_runtime_options() -> dict:
+    """Return safe model options for the configured OpenAI-compatible API."""
+    options: dict = {
+        "timeout": _REQUEST_TIMEOUT_SECONDS,
+        "stream_chunk_timeout": _STREAM_CHUNK_TIMEOUT_SECONDS,
+    }
+    # GLM-5.3 always reasons. Its default is the most expensive/slowest tier,
+    # which can leave a tool-using turn with no visible output for a long time.
+    # The provider accepts only low/high/max; low keeps ordinary KB and code
+    # requests responsive while preserving native tool calling.
+    if (
+        config.LLM_PROVIDER == "zhipu"
+        and config.LLM_MODEL.strip().lower().startswith("glm-5.3")
+    ):
+        options["reasoning_effort"] = "low"
+    return options
+
+
 @lru_cache(maxsize=2)
 def get_llm(temperature: float = 0) -> ChatOpenAI:
     return ChatOpenAI(
@@ -15,6 +37,7 @@ def get_llm(temperature: float = 0) -> ChatOpenAI:
             or ("ollama" if config.LLM_PROVIDER == "ollama" else config.DEEPSEEK_API_KEY)
         ),
         base_url=config.LLM_API_BASE or config.DEEPSEEK_API_BASE,
+        **_provider_runtime_options(),
     )
 
 
