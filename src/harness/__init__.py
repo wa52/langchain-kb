@@ -5,6 +5,7 @@ from src.harness.plugins import HarnessPlugin, PluginContext
 from src.harness.runtime import HarnessRuntime
 from src.harness.selector import RuleBasedToolSelector, ToolCandidate, ToolSelector
 from src.harness.jev_selector import JevToolSelector
+from src.harness.execution import ExecutionPolicy, ToolExecutor, ToolResult
 from src.harness.sessions import SessionEvent, SessionLog
 from src.harness.tools import ToolRegistry
 
@@ -21,4 +22,7 @@ __all__ = [
     "ToolSelector",
     "RuleBasedToolSelector",
     "JevToolSelector",
+    "ExecutionPolicy",
+    "ToolExecutor",
+    "ToolResult",
 ]

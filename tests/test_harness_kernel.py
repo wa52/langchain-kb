@@ -1,6 +1,6 @@
 import asyncio
 
-from src.harness import Event, EventBus, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolRegistry
+from src.harness import Event, EventBus, ExecutionPolicy, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolExecutor, ToolRegistry
 
 
 def test_event_bus_and_tool_registry_are_isolated():
@@ -74,6 +74,26 @@ def test_jev_selector_ranks_recalled_tools_and_falls_back_without_key():
     response = {"answers": {"tool": {"probabilities": {"retrieve_knowledge": 0.2, "retrieve_graph": 0.8}}}}
     selector = JevToolSelector(fallback, api_key="test", request=lambda _payload, _key: response)
     assert selector.select_names("search knowledge", tools.catalog()) == ("retrieve_graph", "retrieve_knowledge")
+
+
+def test_tool_executor_retries_only_read_only_retryable_tools():
+    calls = []
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("temporary")
+        return "ok"
+    spec = ToolRegistry()
+    spec.register("search", flaky, retryable=True, read_only=True)
+    result = ToolExecutor().execute(spec.get("search"), {})
+    assert result.success and result.data == "ok" and result.retry_count == 1
+
+
+def test_tool_executor_requires_approval_for_high_risk_tool():
+    registry = ToolRegistry()
+    registry.register("delete", lambda: "done", risk_level="high", read_only=False)
+    result = ToolExecutor().execute(registry.get("delete"), {})
+    assert not result.success and result.error_type == "APPROVAL_REQUIRED"
 
 
 def test_session_log_is_append_only_snapshot():
