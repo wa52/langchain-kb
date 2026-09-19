@@ -1,119 +1,67 @@
+"""Compatibility composition for the transport-neutral conversation use case."""
+
 import time
-import inspect
 from typing import Iterator
 
-from src.application.citations import _CITATION_PATTERN, extract_sources
-from src.application.direct_chat import DirectChatEngine
-from src.application.conversation_store import ConversationStore
-from src.application.source_enrichment import enrich_sources
-from src.agent.rag_agent import create_rag_agent, stream_rag_response
+from config import ENABLE_GRAPH, ENABLE_HYBRID_SEARCH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
+from src.agent.chat_history import allocate_session_id, load_history, save_history, session_lock
 from src.agent.harness import verify_agent_run
 from src.agent.query_router import DIRECT_SYSTEM_PROMPT, QueryRoute, route_query
-from src.agent.chat_history import allocate_session_id, save_history, load_history, session_lock
+from src.agent.rag_agent import create_rag_agent, stream_rag_response
+from src.application.citations import _CITATION_PATTERN, extract_sources
+from src.application.conversation_service import ConversationService
+from src.application.conversation_store import ConversationStore
+from src.application.direct_chat import DirectChatEngine
+from src.application.source_enrichment import enrich_sources
 from src.bootstrap.composition import create_agent_runtime
-from config import ENABLE_HYBRID_SEARCH, ENABLE_GRAPH, HISTORY_COMPRESS_ROUNDS, HISTORY_MAX_TOKENS
 
 _EXCERPT_LIMIT = 200
 _BASENAME_TTL = 60.0
+_basename_index: dict[str, str] | None = None
+_basename_index_ts = 0.0
 
 
 def _get_agent():
-    """Return the RAG agent, reused across requests via ResourceManager.
-
-    Delegates to the thread-safe, lock-protected ResourceManager.get_agent()
-    so concurrent first requests build exactly one agent. Falls back to a
-    local build only when the manager is not ready. Keeps a module-level
-    reference to create_rag_agent so tests can patch it."""
     from src.resources import ResourceManager
     try:
-        rm = ResourceManager.get_instance()
-        if rm.is_ready():
-            return rm.get_agent()
+        manager = ResourceManager.get_instance()
+        if manager.is_ready():
+            return manager.get_agent()
     except Exception:
         pass
     agent = create_rag_agent()
     try:
-        rm = ResourceManager.get_instance()
-        if rm.is_ready():
-            rm.agent = agent
+        manager = ResourceManager.get_instance()
+        if manager.is_ready():
+            manager.agent = agent
     except Exception:
         pass
     return agent
 
 
-def _bind_agent_thread(agent, session_id: str):
-    """Bind a conversation id to the compiled agent's checkpoint config."""
-    try:
-        return agent.with_config({"configurable": {"thread_id": session_id}})
-    except (AttributeError, TypeError):
-        # Test doubles and legacy custom runnables may not implement with_config.
-        return agent
-
-
-def _agent_messages(agent, messages: list[dict], session_id: str) -> list[dict]:
-    """Avoid replaying messages when the Agent already has this thread state."""
-    try:
-        state = agent.get_state({"configurable": {"thread_id": session_id}})
-        values = getattr(state, "values", None) or {}
-        if values.get("messages"):
-            return messages[-1:]
-    except (AttributeError, KeyError, TypeError, ValueError):
-        pass
-    return messages
-
-
-def _stream_with_callbacks(agent, messages, on_tool, on_interrupt, on_tool_result=None, stream_input=None):
-    kwargs = {"on_tool": on_tool}
-    try:
-        if "on_interrupt" in inspect.signature(stream_rag_response).parameters:
-            kwargs["on_interrupt"] = on_interrupt
-        if "on_tool_result" in inspect.signature(stream_rag_response).parameters:
-            kwargs["on_tool_result"] = on_tool_result
-        if stream_input is not None and "stream_input" in inspect.signature(stream_rag_response).parameters:
-            kwargs["stream_input"] = stream_input
-    except (TypeError, ValueError):
-        pass
-    return stream_rag_response(agent, messages, **kwargs)
-
-
 def _agent_runtime():
-    """Compatibility composition for the main AgentRuntime execution path."""
     return create_agent_runtime(agent_factory=_get_agent, stream_fn=stream_rag_response)
 
 
-def _build_messages(query: str, session_id: str | None) -> list[dict]:
-    messages: list[dict] = []
-    if session_id:
-        saved = _conversation_store().load(session_id)
-        for m in saved or []:
-            if isinstance(m, dict):
-                message = {"role": m.get("role", ""), "content": m.get("content", "")}
-                # Routing metadata is kept in persistence, but stripped again
-                # before messages are passed to a model.
-                for key in ("route", "tools"):
-                    if key in m:
-                        message[key] = m[key]
-                messages.append(message)
-            else:
-                messages.append({
-                    "role": getattr(m, "type", getattr(m, "role", "")),
-                    "content": getattr(m, "content", ""),
-                })
-    messages.append({"role": "user", "content": query})
-    return messages
-
-
 def _get_direct_llm():
-    """Reuse the initialized model without constructing the RAG Agent."""
     try:
         from src.resources import ResourceManager
-        rm = ResourceManager.get_instance()
-        if rm.is_ready() and getattr(rm, "llm", None) is not None:
-            return rm.llm
+        manager = ResourceManager.get_instance()
+        if manager.is_ready() and manager.llm is not None:
+            return manager.llm
     except Exception:
         pass
     from src.llm import get_llm
     return get_llm(temperature=0)
+
+
+def _estimated_tokens(text: str) -> int:
+    cjk = sum("\u4e00" <= char <= "\u9fff" for char in text)
+    return cjk + max(0, len(text) - cjk) // 4
+
+
+def _direct_engine() -> DirectChatEngine:
+    return DirectChatEngine(_get_direct_llm, DIRECT_SYSTEM_PROMPT, _estimated_tokens, HISTORY_MAX_TOKENS)
 
 
 def _direct_messages(messages: list[dict]) -> list[dict]:
@@ -121,12 +69,10 @@ def _direct_messages(messages: list[dict]) -> list[dict]:
 
 
 def _model_messages(messages: list[dict]) -> list[dict]:
-    """Remove service-only metadata before invoking LangChain models/agents."""
     return DirectChatEngine.model_messages(messages)
 
 
 def _trim_direct_history(messages: list[dict]) -> list[dict]:
-    """Bound direct-chat context locally without paying for an LLM summary."""
     return _direct_engine().trim_history(messages)
 
 
@@ -138,449 +84,140 @@ def _stream_direct_answer(messages: list[dict]):
     yield from _direct_engine().stream(messages)
 
 
-def _direct_engine() -> DirectChatEngine:
-    """Create a lightweight engine while keeping legacy patch seams intact."""
-    return DirectChatEngine(
-        llm_factory=_get_direct_llm,
-        system_prompt=DIRECT_SYSTEM_PROMPT,
-        token_estimator=_estimated_tokens,
-        max_tokens=HISTORY_MAX_TOKENS,
-    )
-
-
-def _conversation_store() -> ConversationStore:
-    """Build persistence boundary while retaining legacy patch seams."""
-    return ConversationStore(allocate_session_id, load_history, save_history, session_lock)
-
-
-def _estimated_tokens(text: str) -> int:
-    """Rough token estimate: CJK ≈ 1 token/char, latin ≈ 1 token/4 chars."""
-    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
-    other = max(0, len(text) - cjk)
-    return cjk + other // 4
-
-
 def _maybe_compress_history(messages: list[dict]) -> list[dict]:
-    """Keep the history sent to the agent within budget. The current user
-    message is never touched.
-
-    - Too many rounds  -> LLM summary of the old part + recent rounds.
-    - Only over token budget -> drop the oldest user/assistant pairs until
-      the estimated tokens fit (no API cost).
-    Falls back to the raw history on any failure.
-    """
     if len(messages) < 2:
         return messages
-    history = messages[:-1]
-    current = messages[-1]
-    user_turns = [m for m in history if m.get("role") == "user"]
-    est = sum(_estimated_tokens(str(m.get("content", ""))) for m in history)
-    if len(user_turns) <= HISTORY_COMPRESS_ROUNDS and est <= HISTORY_MAX_TOKENS:
+    history, current = messages[:-1], messages[-1]
+    turns = [message for message in history if message.get("role") == "user"]
+    estimate = sum(_estimated_tokens(str(message.get("content", ""))) for message in history)
+    if len(turns) <= HISTORY_COMPRESS_ROUNDS and estimate <= HISTORY_MAX_TOKENS:
         return messages
-    if len(user_turns) > HISTORY_COMPRESS_ROUNDS:
-        from src.resources import ResourceManager
-        rm = ResourceManager.get_instance()
-        llm = rm.llm if (rm.is_ready() and getattr(rm, "llm", None) is not None) else None
+    if len(turns) > HISTORY_COMPRESS_ROUNDS:
         try:
+            from src.resources import ResourceManager
             from src.agent.chat_history import compress_history
+            manager = ResourceManager.get_instance()
+            llm = manager.llm if manager.is_ready() else None
             compressed = compress_history(history, llm, keep_rounds=HISTORY_COMPRESS_ROUNDS)
             if compressed and compressed != history:
-                print(f"  [上下文] 历史过长（{len(user_turns)} 轮 / {est} tokens），压缩为摘要 + 最近 {HISTORY_COMPRESS_ROUNDS} 轮")
                 return compressed + [current]
         except Exception:
             pass
     trimmed = history
     while len(trimmed) > 2 and sum(_estimated_tokens(str(m.get("content", ""))) for m in trimmed) > HISTORY_MAX_TOKENS:
         trimmed = trimmed[2:]
-    if len(trimmed) != len(history):
-        print(f"  [上下文] 历史超出 token 预算，截断最早 {len(history) - len(trimmed)} 条消息")
-        return trimmed + [current]
-    return messages
+    return trimmed + [current]
 
 
 def _serialize_messages(messages: list) -> list[dict]:
-    serializable = []
-    for m in messages:
-        if isinstance(m, dict):
-            serializable.append(m)
-        else:
-            serializable.append({
-                "role": getattr(m, "type", getattr(m, "role", "")),
-                "content": getattr(m, "content", ""),
-            })
-    return serializable
+    return [
+        message if isinstance(message, dict) else {
+            "role": getattr(message, "type", getattr(message, "role", "")),
+            "content": getattr(message, "content", ""),
+        }
+        for message in messages
+    ]
 
 
-_basename_index: dict[str, str] | None = None
-_basename_index_ts: float = 0.0
+def _conversation_store() -> ConversationStore:
+    return ConversationStore(allocate_session_id, load_history, save_history, session_lock)
+
+
+def _build_messages(query: str, session_id: str | None) -> list[dict]:
+    """Compatibility helper; primary message assembly lives in ConversationService."""
+    messages: list[dict] = []
+    if session_id:
+        for item in _conversation_store().load(session_id) or []:
+            if isinstance(item, dict):
+                message = {"role": item.get("role", ""), "content": item.get("content", "")}
+                for key in ("route", "tools"):
+                    if key in item:
+                        message[key] = item[key]
+                messages.append(message)
+            else:
+                messages.append({"role": getattr(item, "type", getattr(item, "role", "")), "content": getattr(item, "content", "")})
+    return messages + [{"role": "user", "content": query}]
 
 
 def _query_source(name: str) -> dict:
-    """Fetch the first vector-store chunk whose ``source`` equals ``name``."""
     try:
         from src.vector_store.chroma_client import get_vector_store
-        vs = get_vector_store()
-        col = vs._collection
-        res = col.get(where={"source": name}, include=["documents", "metadatas"], limit=1)
-        ids = res.get("ids") or []
-        docs = res.get("documents") or []
-        metas = res.get("metadatas") or []
+        result = get_vector_store()._collection.get(where={"source": name}, include=["documents", "metadatas"], limit=1)
+        ids, docs, metas = result.get("ids") or [], result.get("documents") or [], result.get("metadatas") or []
         if ids and docs:
             text = docs[0] or ""
-            meta = (metas[0] or {}) if metas else {}
-            excerpt = text
-            if len(excerpt) > _EXCERPT_LIMIT:
-                excerpt = excerpt[:_EXCERPT_LIMIT] + "…"
-            return {"chunk_id": ids[0] or meta.get("chunk_id", ""), "excerpt": excerpt}
+            excerpt = text[:_EXCERPT_LIMIT] + ("…" if len(text) > _EXCERPT_LIMIT else "")
+            metadata = metas[0] if metas else {}
+            return {"chunk_id": ids[0] or (metadata or {}).get("chunk_id", ""), "excerpt": excerpt}
     except Exception:
         pass
     return {"chunk_id": "", "excerpt": None}
 
 
 def _build_basename_index() -> dict[str, str]:
-    """Map stored ``source`` basename -> full stored path (metadata scan).
-
-    Stored sources are relative paths (``sub/dir.md``) for directory loads
-    while the agent cites basenames; the index lets a basename citation fall
-    back to the real chunk. Metadata-only scan, cached briefly below."""
     from src.vector_store.chroma_client import get_vector_store
-    vs = get_vector_store()
-    col = vs._collection
-    mapping: dict[str, str] = {}
-    batch_size = 500
-    offset = 0
+    collection, mapping, offset = get_vector_store()._collection, {}, 0
     while True:
-        batch = col.get(include=["metadatas"], limit=batch_size, offset=offset)
-        metas = batch.get("metadatas", []) if batch else []
-        if not metas:
-            break
-        for m in metas:
-            src = (m or {}).get("source", "")
-            if src:
-                base = src.replace("\\", "/").rsplit("/", 1)[-1]
-                mapping.setdefault(base, src)
-        offset += batch_size
-    return mapping
+        batch = collection.get(include=["metadatas"], limit=500, offset=offset)
+        metadata = batch.get("metadatas", []) if batch else []
+        if not metadata:
+            return mapping
+        for item in metadata:
+            source = (item or {}).get("source", "")
+            if source:
+                mapping.setdefault(source.replace("\\", "/").rsplit("/", 1)[-1], source)
+        offset += 500
 
 
 def _basename_to_source(name: str) -> str | None:
-    """Full stored source path for a basename, using a short-TTL cache."""
     global _basename_index, _basename_index_ts
-    now = time.time()
-    if _basename_index is None or (now - _basename_index_ts) > _BASENAME_TTL:
+    if _basename_index is None or time.time() - _basename_index_ts > _BASENAME_TTL:
         try:
             _basename_index = _build_basename_index()
         except Exception:
             _basename_index = {}
-        _basename_index_ts = now
+        _basename_index_ts = time.time()
     return _basename_index.get(name)
 
 
 def _source_lookup(name: str) -> dict:
-    """Best-effort: chunk_id + excerpt for a cited source filename.
-
-    Exact-match first; when the name is a bare basename and the exact match
-    misses, fall back through the stored-source basename index (handles
-    nested directory loads). Never raises."""
     found = _query_source(name)
-    if found.get("chunk_id"):
+    if found["chunk_id"] or "/" in name or "\\" in name:
         return found
-    if "/" not in name and "\\" not in name:
-        full = _basename_to_source(name)
-        if full and full != name:
-            found = _query_source(full)
-            if found.get("chunk_id"):
-                return found
-    return {"chunk_id": "", "excerpt": None}
+    full_name = _basename_to_source(name)
+    return _query_source(full_name) if full_name and full_name != name else found
 
 
 def _hit_chain() -> list[str]:
-    """Engines the retrieval pipeline may have contributed for an answer."""
-    chain = ["vector"]
-    if ENABLE_HYBRID_SEARCH:
-        chain.append("bm25")
-    if ENABLE_GRAPH:
-        chain.append("graph")
-    return chain
+    return ["vector", *(["bm25"] if ENABLE_HYBRID_SEARCH else []), *(["graph"] if ENABLE_GRAPH else [])]
 
 
 def build_sources(answer: str) -> list[dict]:
-    """Extract source markers and enrich them with chunk/excerpt/chain."""
-    return enrich_sources(
-        answer,
-        extract_sources=extract_sources,
-        source_lookup=_source_lookup,
-        hit_chain=_hit_chain,
+    return enrich_sources(answer, extract_sources=extract_sources, source_lookup=_source_lookup, hit_chain=_hit_chain)
+
+
+def _resume_command(decisions: list[str], message: str | None):
+    from langgraph.types import Command
+    return Command(resume={"decisions": [{"type": item, **({"message": message} if message else {})} for item in decisions]})
+
+
+def _conversation_service() -> ConversationService:
+    return ConversationService(
+        store_factory=_conversation_store, route_query=route_query, direct_route=QueryRoute.DIRECT,
+        agent_route=QueryRoute.AGENT, direct_answer=_direct_answer, stream_direct_answer=_stream_direct_answer,
+        trim_direct_history=_trim_direct_history, model_messages=_model_messages, compress_history=_maybe_compress_history,
+        agent_runtime_factory=_agent_runtime, serialize_messages=_serialize_messages, build_sources=build_sources,
+        verify_agent_run=verify_agent_run, resume_command=_resume_command,
     )
 
 
-def chat_with_rag(query: str, session_id: str | None) -> tuple[str, str, float]:
-    t0 = time.time()
-    store = _conversation_store()
-    session_id = session_id or store.allocate()
-    with store.lock(session_id):
-        messages = _build_messages(query, session_id)
-        print(f"  [计时] 加载会话历史: {time.time() - t0:.2f}s")
-
-        route = route_query(query, messages[:-1])
-        if route == QueryRoute.DIRECT:
-            t_direct = time.time()
-            answer = _direct_answer(_trim_direct_history(messages))
-            history = _serialize_messages(messages) + [
-                {"role": "assistant", "content": answer, "route": QueryRoute.DIRECT}
-            ]
-            new_session_id = store.save(history, session_id)
-            print(f"  [路由] direct，无 RAG 检索 ({time.time() - t_direct:.2f}s)")
-            return answer, new_session_id, round((time.time() - t0) * 1000, 2)
-
-        t1 = time.time()
-        agent_messages = _model_messages(_maybe_compress_history(messages))
-        print(f"  [计时] 获取/构建 RAG Agent: {time.time() - t1:.2f}s")
-
-        t2 = time.time()
-        answer_parts = []
-        for chunk in _agent_runtime().stream_messages(agent_messages, session_id):
-            if chunk:
-                answer_parts.append(chunk)
-        answer = "".join(answer_parts)
-        print(f"  [计时] Agent 流式回答: {time.time() - t2:.2f}s")
-
-        history = _serialize_messages(messages) + [
-            {"role": "assistant", "content": answer, "route": QueryRoute.AGENT}
-        ]
-        t3 = time.time()
-        new_session_id = store.save(history, session_id)
-        print(f"  [计时] 保存会话历史: {time.time() - t3:.2f}s")
-
-    elapsed_ms = (time.time() - t0) * 1000
-    print(f"  [计时] chat_with_rag 总计: {elapsed_ms / 1000:.2f}s")
-    return answer, new_session_id, round(elapsed_ms, 2)
+def chat_with_rag(query: str, session_id: str | None = None) -> tuple[str, str, float]:
+    return _conversation_service().answer(query, session_id)
 
 
-def stream_chat_events(
-    query: str,
-    session_id: str | None,
-    stop_event,
-) -> Iterator[dict]:
-    """Yield chat stream events; persist history (including interrupted runs).
-
-    Event types: message_start, token, tool, sources, message_end.
-
-    ``tool`` is emitted only when the agent called at least one tool, with
-    the ordered list of tool names; it is a lightweight trace intended for
-    developer mode and carries no prompt or raw chunk data.
-
-    ``stop_event`` is a threading.Event the caller can set to stop token
-    generation. Whatever text was already produced is persisted as an
-    assistant message with ``interrupted=True``.
-
-    For brand-new sessions the session id is pre-allocated up front and
-    carried by ``message_start``, so an interrupted run remains
-    recoverable on the client even if the connection dies before
-    ``message_end``.
-    """
-    store = _conversation_store()
-    if session_id is None:
-        session_id = store.allocate()
-    with store.lock(session_id):
-        yield {"type": "message_start", "data": {"session_id": session_id}}
-        t0 = time.time()
-
-        messages = _build_messages(query, session_id)
-        route = route_query(query, messages[:-1])
-        if route == QueryRoute.DIRECT:
-            answer_parts: list[str] = []
-            failed = False
-            try:
-                for chunk in _stream_direct_answer(_trim_direct_history(messages)):
-                    if stop_event.is_set():
-                        break
-                    answer_parts.append(chunk)
-                    yield {"type": "token", "data": {"text": chunk}}
-            except Exception:
-                failed = True
-                raise
-            finally:
-                answer = "".join(answer_parts)
-                interrupted = stop_event.is_set() or failed
-                history = _serialize_messages(messages) + [{
-                    "role": "assistant",
-                    "content": answer,
-                    "interrupted": interrupted,
-                    "route": QueryRoute.DIRECT,
-                }]
-                new_session_id = store.save(history, session_id)
-            elapsed_ms = (time.time() - t0) * 1000
-            yield {"type": "sources", "data": {"sources": []}}
-            yield {
-                "type": "message_end",
-                "data": {
-                    "session_id": new_session_id,
-                    "elapsed_ms": round(elapsed_ms, 2),
-                    "interrupted": interrupted,
-                    "waiting_approval": False,
-                    "route": QueryRoute.DIRECT,
-                },
-            }
-            return
-
-        agent_messages = _model_messages(_maybe_compress_history(messages))
-
-        tool_names: list[str] = []
-        interrupt_payload = []
-        tool_results: list[dict] = []
-
-        def _on_tool(name: str) -> None:
-            if name not in tool_names:
-                tool_names.append(name)
-
-        def _on_interrupt(value) -> None:
-            interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
-
-        def _on_tool_result(result: dict) -> None:
-            tool_results.append(result)
-
-        answer_parts = []
-        failed = False
-        new_session_id = session_id
-        try:
-            for chunk in _agent_runtime().stream_messages(
-                agent_messages,
-                session_id,
-                on_tool=_on_tool,
-                on_interrupt=_on_interrupt,
-                on_tool_result=_on_tool_result,
-            ):
-                if stop_event.is_set():
-                    break
-                if chunk:
-                    answer_parts.append(chunk)
-                    yield {"type": "token", "data": {"text": chunk}}
-        except Exception:
-            failed = True
-            raise
-        finally:
-            answer = "".join(answer_parts)
-            interrupted = stop_event.is_set() or failed
-            assistant_message = {
-                "role": "assistant",
-                "content": answer,
-                "interrupted": interrupted,
-                "route": QueryRoute.AGENT,
-            }
-            if tool_names:
-                assistant_message["tools"] = list(tool_names)
-            if interrupt_payload:
-                assistant_message["pending_approval"] = True
-            if tool_results or interrupt_payload:
-                assistant_message["verification"] = verify_agent_run(
-                    answer, tool_results, bool(interrupt_payload)
-                )
-            history = _serialize_messages(messages) + [assistant_message]
-            new_session_id = store.save(history, session_id)
-
-        if interrupt_payload:
-            yield {
-                "type": "approval_required",
-                "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupt_payload]},
-            }
-        if tool_names:
-            yield {"type": "tool", "data": {"tools": tool_names}}
-        if tool_results or interrupt_payload:
-            yield {
-                "type": "verification",
-                "data": verify_agent_run(answer, tool_results, bool(interrupt_payload)),
-            }
-        elapsed_ms = (time.time() - t0) * 1000
-
-        yield {"type": "sources", "data": {"sources": build_sources(answer)}}
-        yield {
-            "type": "message_end",
-            "data": {
-                "session_id": new_session_id,
-                "elapsed_ms": round(elapsed_ms, 2),
-                "interrupted": interrupted,
-                "waiting_approval": bool(interrupt_payload),
-                "route": QueryRoute.AGENT,
-            },
-        }
+def stream_chat_events(query: str, session_id: str | None, stop_event) -> Iterator[dict]:
+    yield from _conversation_service().stream(query, session_id, stop_event)
 
 
-def resume_chat_events(
-    session_id: str,
-    decision: str,
-    message: str | None,
-    stop_event,
-    decisions: list[str] | None = None,
-) -> Iterator[dict]:
-    """Resume an interrupted Deep Agent thread after an approval decision."""
-    from langgraph.types import Command
-
-    store = _conversation_store()
-    with store.lock(session_id):
-        tool_names: list[str] = []
-        interrupt_payload = []
-        tool_results: list[dict] = []
-
-        def _on_tool(name: str) -> None:
-            if name not in tool_names:
-                tool_names.append(name)
-
-        def _on_interrupt(value) -> None:
-            interrupt_payload.extend(value if isinstance(value, (list, tuple)) else [value])
-
-        def _on_tool_result(result: dict) -> None:
-            tool_results.append(result)
-
-        selected = decisions or [decision]
-        command = Command(resume={"decisions": [
-            {"type": item, **({"message": message} if message else {})}
-            for item in selected
-        ]})
-        parts: list[str] = []
-        for chunk in _agent_runtime().stream_messages(
-            [],
-            session_id,
-            on_tool=_on_tool,
-            on_interrupt=_on_interrupt,
-            on_tool_result=_on_tool_result,
-            stream_input=command,
-        ):
-            if stop_event.is_set():
-                break
-            if chunk:
-                parts.append(chunk)
-
-        answer = "".join(parts)
-        history = store.load(session_id) or []
-        if history and history[-1].get("pending_approval"):
-            history.pop()
-        assistant = {"role": "assistant", "content": answer, "interrupted": bool(stop_event.is_set())}
-        if tool_names:
-            assistant["tools"] = tool_names
-        if interrupt_payload:
-            assistant["pending_approval"] = True
-        if tool_results or interrupt_payload:
-            assistant["verification"] = verify_agent_run(
-                answer, tool_results, bool(interrupt_payload)
-            )
-        store.save(history + [assistant], session_id)
-        yield {"type": "token", "data": {"text": answer}}
-        if interrupt_payload:
-            yield {
-                "type": "approval_required",
-                "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupt_payload]},
-            }
-        if tool_results or interrupt_payload:
-            yield {
-                "type": "verification",
-                "data": verify_agent_run(answer, tool_results, bool(interrupt_payload)),
-            }
-        yield {
-            "type": "message_end",
-            "data": {
-                "session_id": session_id,
-                "interrupted": bool(stop_event.is_set()),
-                "waiting_approval": bool(interrupt_payload),
-            },
-        }
+def resume_chat_events(session_id: str, decision: str, message: str | None, stop_event, decisions: list[str] | None = None) -> Iterator[dict]:
+    yield from _conversation_service().resume(session_id, decision, message, stop_event, decisions)
