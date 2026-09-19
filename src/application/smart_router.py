@@ -11,16 +11,20 @@ from src.domain.routing import Route, RoutingDecision
 
 
 _MUTATING_ACTION = re.compile(
-    r"^(?:创建|删除|修改|发送|保存|发布|写入|执行|运行)"
+    r"^(?:创建|新建|删除|修改|发送|保存|发布|写入|执行|运行)"
     r"|^(?:把|将).{0,30}(?:删除|修改|发送|保存|发布|写入)"
-    r"|(?:帮我|请|给我).{0,16}(?:创建|删除|修改|发送|保存|发布|写入|执行|运行)",
+    r"|(?:帮我|请|给我).{0,16}(?:创建|新建|删除|修改|发送|保存|发布|写入|执行|运行)",
+    re.I,
+)
+_ACTION_CONCEPT_QUESTION = re.compile(
+    r"(?:创建|新建|删除|修改|发送|保存|发布|写入|执行|运行).{0,18}(?:是什么|为什么|哪些|怎么|如何|通常|一般)",
     re.I,
 )
 _EXTERNAL_ACTION = re.compile(
     r"(?:帮我|请|去|给我).{0,36}(?:(?:查|搜索|看看|看一下|查看|检查).{0,24}(?:github|仓库|网页|官网|最新|commit|提交|issue)|(?:github|仓库|网页|官网).{0,24}(?:查|搜索|看看|看一下|查看|检查))"
     r"|(?:查|搜索|检查).{0,20}(?:github|仓库|网页|官网)"
     r"|(?:帮我|请).{0,12}(?:联网|调用工具|mcp)"
-    r"|(?:调用|使用).{0,8}(?:mcp|工具)"
+    r"|(?:用|调用|使用).{0,8}(?:mcp|工具)"
     r"|(?:读取|查看).{0,12}(?:仓库|文件)",
     re.I,
 )
@@ -50,6 +54,8 @@ class SmartRouteService:
         started = time.perf_counter()
         text = " ".join(query.strip().lower().split())
         intents = self._intent_classifier.classify(query) if self._intent_classifier is not None else {}
+        if _ACTION_CONCEPT_QUESTION.search(text):
+            return self._decision(Route.DIRECT, 0.95, ("action_concept_question",), {"direct_intent": 0.95, "routing_ms": self._elapsed(started)})
         if _MUTATING_ACTION.search(text) or _EXTERNAL_ACTION.search(text):
             return self._decision(Route.AGENT, 1.0, ("tool_or_side_effect_intent",), {"agent_intent": 1.0, "routing_ms": self._elapsed(started)})
         if intents.get("agent", 0.0) >= 0.82 and intents.get("agent", 0.0) > intents.get("direct", 0.0):

@@ -76,3 +76,19 @@ def test_smart_router_keeps_historical_save_questions_on_the_rag_path(query):
 def test_smart_router_recognizes_external_reading_actions(query):
     decision = _router([]).decide(query, [])
     assert decision.route == Route.AGENT
+
+
+@pytest.mark.parametrize("query", [
+    "保存文件时为什么要用原子写入",
+    "创建 issue 通常需要哪些字段",
+])
+def test_smart_router_keeps_action_concept_questions_direct(query):
+    assert _router([]).decide(query, []).route == Route.DIRECT
+
+
+@pytest.mark.parametrize("query", [
+    "用 MCP 获取当前知识库健康状态",
+    "请新建一个 issue 来追踪这个错误",
+])
+def test_smart_router_recognizes_colloquial_tool_commands(query):
+    assert _router([]).decide(query, []).route == Route.AGENT
