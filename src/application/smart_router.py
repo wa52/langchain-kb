@@ -37,7 +37,7 @@ _TERMS = re.compile(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]")
 _NOISE = frozenset("的是了在和与及对用有这那一个什么怎么如何可以请帮我把的")
 
 
-class SmartRouteService:
+class _LegacySmartRouteService:
     """Use one retrieved candidate set for both routing and Fast RAG."""
 
     def __init__(
@@ -136,3 +136,9 @@ class SmartRouteService:
     @staticmethod
     def _elapsed(started: float) -> float:
         return round((time.perf_counter() - started) * 1000, 2)
+
+
+# Preserve the import seam while moving callers to the composed Decision Layer.
+from src.application.routing.service import SmartRouteService
+
+__all__ = ["SmartRouteService"]
