@@ -113,6 +113,10 @@ class LangGraphAgentRuntime:
     ) -> Iterable[str]:
         """Run a prepared chat turn with LangGraph state and tool callbacks."""
         self._cancelled.discard(session_id)
+        owned_trace = trace is None
+        if owned_trace:
+            from src.harness import AgentRunTrace
+            trace = AgentRunTrace(run_id=f"{session_id}:{id(self)}", query=str(messages[-1].get("content", "")) if messages else "")
         if trace is not None:
             trace.emit("agent.run.started", session_id=session_id)
             trace.emit("selector.started")
@@ -131,6 +135,9 @@ class LangGraphAgentRuntime:
         finally:
             if trace is not None:
                 trace.emit("agent.run.completed", session_id=session_id)
+                if owned_trace:
+                    from src.harness import trace_store
+                    trace_store.put(trace)
 
     def cancel(self, session_id: str) -> None:
         self._cancelled.add(session_id)

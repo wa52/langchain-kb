@@ -7,6 +7,7 @@ from src.harness.selector import RuleBasedToolSelector, ToolCandidate, ToolSelec
 from src.harness.jev_selector import JevToolSelector
 from src.harness.execution import ExecutionPolicy, ToolExecutor, ToolResult
 from src.harness.trace import AgentRunTrace
+from src.harness.trace_store import TraceStore, trace_store
 from src.harness.sessions import SessionEvent, SessionLog
 from src.harness.tools import ToolRegistry
 
@@ -27,4 +28,6 @@ __all__ = [
     "ToolExecutor",
     "ToolResult",
     "AgentRunTrace",
+    "TraceStore",
+    "trace_store",
 ]

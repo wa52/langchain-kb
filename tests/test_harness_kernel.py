@@ -1,6 +1,6 @@
 import asyncio
 
-from src.harness import AgentRunTrace, Event, EventBus, ExecutionPolicy, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolExecutor, ToolRegistry
+from src.harness import AgentRunTrace, Event, EventBus, ExecutionPolicy, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolExecutor, ToolRegistry, TraceStore
 
 
 def test_event_bus_and_tool_registry_are_isolated():
@@ -110,6 +110,13 @@ def test_tool_executor_emits_trace_events():
     result = ToolExecutor(trace=trace).execute(registry.get("search"), {"query": "docs"})
     assert result.success
     assert [event.type for event in trace.events] == ["tool.call.started", "tool.call.completed"]
+
+
+def test_trace_store_reads_completed_runs_by_id():
+    store = TraceStore(max_runs=2)
+    trace = AgentRunTrace(run_id="run-1", query="hello")
+    store.put(trace)
+    assert store.get("run-1")["query"] == "hello"
 
 
 def test_session_log_is_append_only_snapshot():

@@ -8,8 +8,17 @@ from fastapi.responses import StreamingResponse
 
 from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, ChatResumeRequest, CitationItem
 from src.application.chat import chat_with_rag, extract_sources, stream_chat_events, resume_chat_events
+from src.harness import trace_store
 
 router = APIRouter()
+
+
+@router.get("/traces/{run_id}", operation_id="get_agent_trace", summary="查询已完成 Agent Trace")
+def get_agent_trace(run_id: str):
+    trace = trace_store.get(run_id)
+    if trace is None:
+        return {"run_id": run_id, "status": "not_found"}
+    return {"status": "completed", "trace": trace}
 
 _END = object()
 

@@ -1,11 +1,9 @@
 """Deep application module for direct and Agent-backed conversations."""
 
 import time
-from uuid import uuid4
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from src.harness import AgentRunTrace
 
 
 class ConversationService:
@@ -77,10 +75,9 @@ class ConversationService:
                 return answer, store.save(history, session_id), round((time.time() - started) * 1000, 2)
 
             agent_messages = self._model_messages(self._compress_history(messages))
-            trace = AgentRunTrace(run_id=uuid4().hex, query=query)
-            answer = "".join(self._agent_runtime_factory().stream_messages(agent_messages, session_id, trace=trace))
+            answer = "".join(self._agent_runtime_factory().stream_messages(agent_messages, session_id))
             history = self._serialize_messages(messages) + [
-                {"role": "assistant", "content": answer, "route": self._agent_route, "trace": trace.snapshot()}
+                {"role": "assistant", "content": answer, "route": self._agent_route}
             ]
             new_session_id = store.save(history, session_id)
         return answer, new_session_id, round((time.time() - started) * 1000, 2)
@@ -127,7 +124,6 @@ class ConversationService:
         tools: list[str] = []
         interrupts: list[Any] = []
         results: list[dict] = []
-        trace = AgentRunTrace(run_id=uuid4().hex, query=messages[-1].get("content", ""))
         parts: list[str] = []
         failed = False
 
@@ -141,7 +137,7 @@ class ConversationService:
         try:
             for chunk in self._agent_runtime_factory().stream_messages(
                 self._model_messages(self._compress_history(messages)), session_id,
-                on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=results.append, trace=trace,
+                on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=results.append,
             ):
                 if stop_event.is_set():
                     break
@@ -161,7 +157,6 @@ class ConversationService:
                 assistant["pending_approval"] = True
             if results or interrupts:
                 assistant["verification"] = self._verify_agent_run(answer, results, bool(interrupts))
-            assistant["trace"] = trace.snapshot()
             new_session_id = store.save(self._serialize_messages(messages) + [assistant], session_id)
         if interrupts:
             yield {"type": "approval_required", "data": {"session_id": session_id, "interrupts": [str(x) for x in interrupts]}}
@@ -190,11 +185,10 @@ class ConversationService:
                 interrupts.extend(value if isinstance(value, (list, tuple)) else [value])
 
             parts = []
-            trace = AgentRunTrace(run_id=uuid4().hex, query=message or "")
             command = self._resume_command(decisions or [decision], message)
             for chunk in self._agent_runtime_factory().stream_messages(
                 [], session_id, on_tool=on_tool, on_interrupt=on_interrupt,
-                on_tool_result=results.append, stream_input=command, trace=trace,
+                on_tool_result=results.append, stream_input=command,
             ):
                 if stop_event.is_set():
                     break
@@ -211,7 +205,6 @@ class ConversationService:
                 assistant["pending_approval"] = True
             if results or interrupts:
                 assistant["verification"] = self._verify_agent_run(answer, results, bool(interrupts))
-            assistant["trace"] = trace.snapshot()
             store.save(history + [assistant], session_id)
             yield {"type": "token", "data": {"text": answer}}
             if interrupts:
