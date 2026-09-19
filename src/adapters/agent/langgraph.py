@@ -133,6 +133,43 @@ class LangGraphAgentRuntime:
         try:
             sequence = 0
 
+            def on_completed_tool(payload):
+                """Record framework tool completions in the side-channel Trace.
+
+                Deep Agents executes LangChain tools itself, so this is the
+                observation boundary.  It deliberately does not affect the
+                streaming generator or the caller's callback lifecycle.
+                """
+                if trace is not None:
+                    retrieval = payload.get("retrieval")
+                    if isinstance(retrieval, dict):
+                        from src.retrieval.telemetry import retrieval_record_store
+
+                        record_id = retrieval.get("record_id")
+                        if isinstance(record_id, str):
+                            linked = retrieval_record_store.link_to_tool(
+                                record_id,
+                                run_id=trace.run_id,
+                                tool_call_id=payload.get("tool_call_id"),
+                                tool_name=str(payload.get("name", "tool")),
+                            )
+                            if linked is not None:
+                                retrieval = linked
+                    elapsed_ms = payload.get("elapsed_ms")
+                    if not isinstance(elapsed_ms, (int, float)):
+                        elapsed_ms = None
+                    trace.emit(
+                        "tool.call.completed",
+                        tool_name=str(payload.get("name", "tool")),
+                        tool_call_id=payload.get("tool_call_id"),
+                        arguments=payload.get("arguments", {}),
+                        success=payload.get("status") != "error",
+                        elapsed_ms=elapsed_ms,
+                        retrieval=retrieval,
+                    )
+                if on_tool_result is not None:
+                    on_tool_result(payload)
+
             def on_model_start(payload):
                 nonlocal sequence
                 sequence += 1
@@ -163,7 +200,7 @@ class LangGraphAgentRuntime:
                     )
                     trace.record_llm_response(**payload, sequence=1)
 
-            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, on_llm=on_llm, on_model_start=on_model_start, on_model_end=on_model_end, on_model_error=on_model_error, stream_input=stream_input):
+            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_completed_tool, on_llm=on_llm, on_model_start=on_model_start, on_model_end=on_model_end, on_model_error=on_model_error, stream_input=stream_input):
                 if session_id in self._cancelled:
                     break
                 if chunk:

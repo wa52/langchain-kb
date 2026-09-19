@@ -63,3 +63,23 @@ def test_cached_retrieval_adds_a_cache_hit_record():
     records = retrieval_record_store.recent(2)
     assert records[0]["cache_hit"] is True
     assert records[0]["stages"] == {}
+
+
+def test_retrieval_record_can_be_linked_to_its_agent_tool_call():
+    from src.retrieval.telemetry import RetrievalRecord, RetrievalRecordStore
+
+    store = RetrievalRecordStore()
+    record = RetrievalRecord(query="相机标定")
+    store.put(record)
+
+    linked = store.link_to_tool(
+        record.record_id,
+        run_id="agent-run-1",
+        tool_call_id="tool-call-1",
+        tool_name="retrieve_knowledge",
+    )
+
+    assert linked is not None
+    assert linked["run_id"] == "agent-run-1"
+    assert linked["tool_call_id"] == "tool-call-1"
+    assert linked["tool_name"] == "retrieve_knowledge"

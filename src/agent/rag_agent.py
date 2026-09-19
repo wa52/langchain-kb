@@ -219,6 +219,37 @@ def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, 
 
     tool_called = False
     seen_tool_ids = set()
+    pending_tool_calls: dict[str, dict] = {}
+
+    def remember_tool_calls(message) -> None:
+        """Keep the arguments until the matching ToolMessage arrives."""
+        for call in getattr(message, "tool_calls", None) or []:
+            if not isinstance(call, dict):
+                continue
+            call_id = call.get("id")
+            if call_id is None:
+                continue
+            arguments = call.get("args", call.get("arguments", {}))
+            pending_tool_calls[str(call_id)] = {
+                "name": str(call.get("name", "") or "tool"),
+                "arguments": arguments if isinstance(arguments, dict) else {},
+            }
+
+    def attach_retrieval_timing(result: dict) -> dict:
+        """Attach the completed RAG record without changing Tool/SSE behavior."""
+        if result["name"] != "retrieve_knowledge":
+            return result
+        query = result.get("arguments", {}).get("query")
+        if not isinstance(query, str):
+            return result
+        from src.retrieval.telemetry import retrieval_record_store
+
+        record = retrieval_record_store.latest_for_query(" ".join(query.strip().split()))
+        if record is not None:
+            result["retrieval"] = record
+            result["elapsed_ms"] = record.get("elapsed_ms")
+        return result
+
     input_value = stream_input if stream_input is not None else {"messages": messages}
     callbacks = _ModelTraceCallbacks(on_model_start, on_model_end, on_model_error)
     for event in _stream_with_callbacks(agent, input_value, callbacks):
@@ -232,6 +263,8 @@ def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, 
             for msg in value["messages"]:
                 mtype = getattr(msg, "type", "")
                 content = getattr(msg, "content", "") or ""
+                if mtype == "ai":
+                    remember_tool_calls(msg)
                 if mtype == "ai" and content:
                     if on_llm is not None:
                         on_llm({"has_tool_calls": bool(getattr(msg, "tool_calls", None)), "content_length": len(str(content))})
@@ -248,8 +281,12 @@ def stream_rag_response(agent, messages: list, on_tool=None, on_interrupt=None, 
                         seen_tool_ids.add(tid)
                     on_tool(getattr(msg, "name", "") or "tool")
                     if on_tool_result is not None:
-                        on_tool_result({
+                        tool_call = pending_tool_calls.get(str(tid), {}) if tid is not None else {}
+                        result = attach_retrieval_timing({
                             "name": getattr(msg, "name", "") or "tool",
                             "status": getattr(msg, "status", None) or "success",
                             "content": content,
+                            "tool_call_id": str(tid) if tid is not None else None,
+                            "arguments": tool_call.get("arguments", {}),
                         })
+                        on_tool_result(result)

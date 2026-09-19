@@ -87,3 +87,31 @@ def test_langgraph_adapter_records_each_model_callback_boundary():
     assert [call["request"]["llm_call_id"] for call in trace.snapshot()["llm_calls"]] == ["model-1", "model-2"]
     assert [event.type for event in trace.events].count("llm.request") == 2
     assert [event.type for event in trace.events].count("llm.response") == 2
+
+
+def test_langgraph_adapter_links_retrieval_result_into_trace():
+    from src.retrieval.telemetry import RetrievalRecord, retrieval_record_store
+
+    retrieval_record_store.clear()
+    record = RetrievalRecord(query="标定")
+    record.finish(42.0)
+    retrieval_record_store.put(record)
+
+    def stream_fn(_agent, _messages, on_tool_result=None):
+        on_tool_result({
+            "name": "retrieve_knowledge",
+            "tool_call_id": "tool-1",
+            "arguments": {"query": "标定"},
+            "elapsed_ms": 42.0,
+            "status": "success",
+            "retrieval": retrieval_record_store.get(record.record_id),
+        })
+        return ["answer"]
+
+    trace = AgentRunTrace(run_id="run-linked")
+    runtime = LangGraphAgentRuntime(agent_factory=lambda: FakeAgent(), stream_fn=stream_fn)
+    assert list(runtime.stream_messages([{"role": "user", "content": "标定"}], "session-linked", trace=trace)) == ["answer"]
+
+    event = next(item for item in trace.events if item.type == "tool.call.completed")
+    assert event.payload["retrieval"]["run_id"] == "run-linked"
+    assert retrieval_record_store.get(record.record_id)["tool_call_id"] == "tool-1"

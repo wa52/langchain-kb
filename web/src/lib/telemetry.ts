@@ -17,6 +17,7 @@ export interface ActionTelemetry {
   elapsedMs: number | null;
   status?: string;
   detail?: string;
+  children?: ActionTelemetry[];
 }
 
 export interface ApiErrorEntry {
@@ -120,30 +121,91 @@ export function recordAgentTrace(trace: {
   run_id: string;
   events: Array<{ type: string; payload?: Record<string, unknown>; created_at: string }>;
 }): void {
-  let previous: number | null = null;
-  const actions = (trace.events ?? []).map((event) => {
+  const startedAt = new Map<string, number>();
+  const actions: ActionTelemetry[] = [];
+  for (const event of trace.events ?? []) {
     const parsed = Date.parse(event.created_at);
     const at = Number.isFinite(parsed) ? parsed : Date.now();
     const payload = event.payload ?? {};
-    const status = typeof payload.status === "string" ? payload.status : undefined;
-    const detail = typeof payload.tool_name === "string"
-      ? payload.tool_name
-      : typeof payload.error === "string" ? payload.error : undefined;
-    const action: ActionTelemetry = {
-      name: event.type,
-      at,
-      elapsedMs: previous == null ? null : Math.max(0, at - previous),
-      status,
-      detail,
-    };
-    previous = at;
-    return action;
-  });
+    if (event.type === "selector.started") {
+      startedAt.set("selector", at);
+      continue;
+    }
+    if (event.type === "selector.completed") {
+      const selected = Array.isArray(payload.selected_tools)
+        ? payload.selected_tools.map(String)
+        : [];
+      actions.push({
+        name: "工具选择",
+        at,
+        elapsedMs: startedAt.has("selector") ? at - (startedAt.get("selector") ?? at) : null,
+        detail: selected.length ? selected.join(", ") : "未选择工具",
+      });
+      continue;
+    }
+    if (event.type === "llm.response") {
+      const duration = payload.duration_ms;
+      const sequence = payload.sequence;
+      const toolCalls = Array.isArray(payload.tool_calls) ? payload.tool_calls.map(String) : [];
+      actions.push({
+        name: `LLM #${typeof sequence === "number" ? sequence : actions.length + 1}`,
+        at,
+        elapsedMs: typeof duration === "number" ? duration : null,
+        status: typeof payload.status === "string" ? payload.status : undefined,
+        detail: toolCalls.length ? `调用：${toolCalls.join(", ")}` : "生成回答",
+      });
+      continue;
+    }
+    if (event.type === "tool.call.completed") {
+      const retrieval = isRecord(payload.retrieval) ? payload.retrieval : null;
+      const stageValues = retrieval && isRecord(retrieval.stages) ? retrieval.stages : null;
+      const children = stageValues
+        ? Object.entries(stageValues)
+          .filter(([, value]) => typeof value === "number")
+          .map(([stage, value]) => ({
+            name: retrievalStageName(stage),
+            at,
+            elapsedMs: value as number,
+          }))
+        : undefined;
+      const elapsed = typeof payload.elapsed_ms === "number"
+        ? payload.elapsed_ms
+        : retrieval && typeof retrieval.elapsed_ms === "number" ? retrieval.elapsed_ms : null;
+      const rawCount = retrieval && typeof retrieval.raw_docs_count === "number"
+        ? `原始 ${retrieval.raw_docs_count} 篇`
+        : "";
+      const selectedCount = retrieval && typeof retrieval.selected_docs_count === "number"
+        ? `保留 ${retrieval.selected_docs_count} 篇`
+        : "";
+      actions.push({
+        name: typeof payload.tool_name === "string" ? payload.tool_name : "工具调用",
+        at,
+        elapsedMs: elapsed,
+        status: retrieval?.cache_hit === true ? "缓存命中" : undefined,
+        detail: [rawCount, selectedCount].filter(Boolean).join(" · ") || undefined,
+        children,
+      });
+    }
+  }
   telemetry = {
     ...telemetry,
     lastRun: { ...telemetry.lastRun, traceRunId: trace.run_id, actions },
   };
   emit();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function retrievalStageName(stage: string): string {
+  const names: Record<string, string> = {
+    search_ms: "混合检索",
+    grading_ms: "文档评分",
+    compression_ms: "上下文压缩",
+    graph_ms: "知识图谱检索",
+  };
+  return names[stage] ?? stage;
 }
 
 export function recordRunSources(sources: Array<{ hit_chain?: string[] }>): void {

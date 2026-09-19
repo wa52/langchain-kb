@@ -231,6 +231,25 @@ button.primary:not(:disabled):hover {
   font-size: 11px;
 }
 
+.dev-action-children {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding: 5px 0 2px 9px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.dev-action-children li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  font-size: 11px;
+}
+
 .dev-count {
   margin-left: auto;
   white-space: nowrap;

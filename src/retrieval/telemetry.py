@@ -28,6 +28,9 @@ class RetrievalRecord:
     selected_docs_count: int = 0
     flags: dict[str, bool] = field(default_factory=dict)
     error: str | None = None
+    run_id: str | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
 
     def finish(self, elapsed_ms: float, *, status: str = "completed") -> None:
         self.elapsed_ms = round(elapsed_ms, 2)
@@ -48,6 +51,9 @@ class RetrievalRecord:
             "selected_docs_count": self.selected_docs_count,
             "flags": dict(self.flags),
             "error": self.error,
+            "run_id": self.run_id,
+            "tool_call_id": self.tool_call_id,
+            "tool_name": self.tool_name,
         }
 
 
@@ -76,6 +82,39 @@ class RetrievalRecordStore:
         with self._lock:
             values = list(self._items.values())[-limit:]
             return [dict(value) for value in reversed(values)]
+
+    def latest_for_query(self, query: str) -> dict[str, Any] | None:
+        """Return the newest record for one normalized tool query.
+
+        A record is created by ``retrieve_knowledge`` before its LangChain
+        ToolMessage is emitted, so this provides a deterministic, in-process
+        bridge from that result back to its detailed timing record.
+        """
+        with self._lock:
+            for value in reversed(self._items.values()):
+                if value.get("query") == query:
+                    return dict(value)
+        return None
+
+    def link_to_tool(
+        self,
+        record_id: str,
+        *,
+        run_id: str,
+        tool_call_id: str | None,
+        tool_name: str,
+    ) -> dict[str, Any] | None:
+        """Associate an already-completed retrieval with its Agent tool call."""
+        with self._lock:
+            value = self._items.get(record_id)
+            if value is None:
+                return None
+            value.update({
+                "run_id": run_id,
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+            })
+            return dict(value)
 
     def clear(self) -> None:
         with self._lock:

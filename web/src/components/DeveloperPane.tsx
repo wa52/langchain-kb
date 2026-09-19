@@ -94,7 +94,18 @@ export function DeveloperPane() {
                 <span className="dev-action-index">{index + 1}</span>
                 <code>{action.name}</code>
                 <span className="dev-count">{fmtMs(action.elapsedMs)}</span>
+                {action.status ? <span className="dev-muted">{action.status}</span> : null}
                 {action.detail ? <span className="dev-muted">{action.detail}</span> : null}
+                {action.children?.length ? (
+                  <ul className="dev-action-children">
+                    {action.children.map((child, childIndex) => (
+                      <li key={`${child.name}-${childIndex}`}>
+                        <code>{child.name}</code>
+                        <span className="dev-count">{fmtMs(child.elapsedMs)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ol>
