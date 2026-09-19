@@ -68,4 +68,22 @@ def test_langgraph_adapter_builds_agent_with_selected_tool_catalog():
     trace = AgentRunTrace(run_id="run-4")
     assert list(runtime.stream_messages([{"role": "user", "content": "查询知识库资料"}], "session-4", trace=trace)) == ["answer"]
     assert selected == [("retrieve_knowledge",)]
-    assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "llm.request", "agent.run.completed"]
+    assert [event.type for event in trace.events] == ["agent.run.started", "selector.started", "selector.completed", "agent.run.completed"]
+
+
+def test_langgraph_adapter_records_each_model_callback_boundary():
+    agent = FakeAgent()
+
+    def stream_fn(_agent, _messages, on_model_start=None, on_model_end=None):
+        on_model_start({"llm_call_id": "model-1", "input_messages": 2})
+        on_model_end({"llm_call_id": "model-1", "duration_ms": 12.5, "content_length": 4})
+        on_model_start({"llm_call_id": "model-2", "input_messages": 4})
+        on_model_end({"llm_call_id": "model-2", "duration_ms": 8.5, "content_length": 7})
+        return ["answer"]
+
+    runtime = LangGraphAgentRuntime(agent_factory=lambda: agent, stream_fn=stream_fn)
+    trace = AgentRunTrace(run_id="run-models")
+    assert list(runtime.stream_messages([{"role": "user", "content": "hi"}], "session-models", trace=trace)) == ["answer"]
+    assert [call["request"]["llm_call_id"] for call in trace.snapshot()["llm_calls"]] == ["model-1", "model-2"]
+    assert [event.type for event in trace.events].count("llm.request") == 2
+    assert [event.type for event in trace.events].count("llm.response") == 2

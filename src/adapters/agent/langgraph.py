@@ -128,12 +128,39 @@ class LangGraphAgentRuntime:
         configured = self._bind_session(self._get_agent(selected_tools), session_id)
         prepared = self._messages_for_session(configured, messages, session_id)
         try:
-            if trace is not None:
-                trace.emit("llm.request", messages=len(prepared), selected_tools=list(selected_tools or ()))
-            def on_llm(payload):
+            sequence = 0
+
+            def on_model_start(payload):
+                nonlocal sequence
+                sequence += 1
                 if trace is not None:
-                    trace.emit("llm.response", **payload)
-            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, on_llm=on_llm, stream_input=stream_input):
+                    trace.record_llm_request(
+                        **payload,
+                        sequence=sequence,
+                        selected_tools=list(selected_tools or ()),
+                    )
+
+            def on_model_end(payload):
+                if trace is not None:
+                    trace.record_llm_response(**payload, sequence=sequence)
+
+            def on_model_error(payload):
+                if trace is not None:
+                    trace.record_llm_response(**payload, sequence=sequence, status="error")
+
+            def on_llm(payload):
+                # Compatibility fallback for stream adapters that expose only
+                # message-level callbacks and no LangChain model callbacks.
+                if trace is not None and not trace.llm_calls:
+                    trace.record_llm_request(
+                        llm_call_id=f"fallback-{uuid4().hex}",
+                        sequence=1,
+                        selected_tools=list(selected_tools or ()),
+                        input_messages=len(prepared),
+                    )
+                    trace.record_llm_response(**payload, sequence=1)
+
+            for chunk in self._stream(configured, prepared, on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=on_tool_result, on_llm=on_llm, on_model_start=on_model_start, on_model_end=on_model_end, on_model_error=on_model_error, stream_input=stream_input):
                 if session_id in self._cancelled:
                     break
                 if chunk:
