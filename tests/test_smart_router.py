@@ -97,3 +97,14 @@ def test_smart_router_allows_personal_action_concepts_to_use_rag():
 ])
 def test_smart_router_recognizes_colloquial_tool_commands(query):
     assert _router([]).decide(query, []).route == Route.AGENT
+
+
+@pytest.mark.parametrize("query", [
+    "劳烦到 GitHub 查看这个项目最新一次发布",
+    "麻烦通过网页查询最新的 LangGraph 文档",
+    "替我把这次结论存入经验库",
+    "请建立一个 issue 来跟踪这个回归",
+    "现在执行一遍路由基准测试",
+])
+def test_smart_router_recognizes_polite_and_synonym_action_commands(query):
+    assert _router([]).decide(query, []).route == Route.AGENT
