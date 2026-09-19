@@ -11,7 +11,14 @@ from src.domain.routing import Route, RoutingDecision
 
 
 _MUTATING_ACTIONS = frozenset(("创建", "删除", "修改", "发送", "保存", "发布", "写入", "执行", "运行"))
-_EXTERNAL_ACTION = re.compile(r"(?:帮我|请|去|给我).{0,10}(?:查|搜索|看看).{0,20}(?:github|仓库|网页|官网|最新)|(?:帮我|请).{0,12}(?:联网|调用工具|mcp)", re.I)
+_EXTERNAL_ACTION = re.compile(
+    r"(?:帮我|请|去|给我).{0,10}(?:查|搜索|看看|检查).{0,20}(?:github|仓库|网页|官网|最新)"
+    r"|(?:查|搜索|检查).{0,20}(?:github|仓库|网页|官网)"
+    r"|(?:帮我|请).{0,12}(?:联网|调用工具|mcp)"
+    r"|(?:调用|使用).{0,8}(?:mcp|工具)"
+    r"|(?:读取|查看).{0,12}(?:仓库|文件)",
+    re.I,
+)
 _DIRECT_ACTIONS = frozenset(("翻译", "润色", "改写", "写一封", "解释", "计算"))
 _RAG_HINTS = frozenset(("知识库", "资料", "文档", "之前", "项目", "参数", "方案", "训练", "检测", "标定", "halcon", "aoi", "ocr"))
 _FOLLOW_UP = re.compile(r"^(那|这个|那个|第二种|参数呢|为什么|怎么|如何|继续|具体)")
