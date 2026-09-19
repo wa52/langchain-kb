@@ -19,6 +19,7 @@ from src.application.conversation_store import ConversationStore
 from src.application.direct_chat import DirectChatEngine
 from src.application.fast_rag import FastRagService
 from src.application.smart_router import SmartRouteService
+from src.application.intent_prototypes import IntentPrototypeClassifier
 from src.application.source_enrichment import enrich_sources
 from src.bootstrap.composition import create_agent_runtime
 
@@ -26,6 +27,7 @@ _EXCERPT_LIMIT = 200
 _BASENAME_TTL = 60.0
 _basename_index: dict[str, str] | None = None
 _basename_index_ts = 0.0
+_intent_classifier = None
 
 
 def _get_agent(tool_names: tuple[str, ...] | None = None):
@@ -132,10 +134,18 @@ def _smart_router() -> SmartRouteService:
         from src.application.knowledge import retrieve_scored_documents
         return retrieve_scored_documents(query, k)
 
+    global _intent_classifier
+    def embed(texts: list[str]):
+        from src.vector_store.embedding import get_embedding_model
+        return get_embedding_model().embed_documents(texts)
+
+    if _intent_classifier is None:
+        _intent_classifier = IntentPrototypeClassifier(embed)
     return SmartRouteService(
         retrieve,
         fetch_k=FAST_RAG_FETCH_K,
         rag_threshold=ROUTE_RAG_THRESHOLD,
+        intent_classifier=_intent_classifier,
     )
 
 

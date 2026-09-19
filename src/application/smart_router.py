@@ -22,16 +22,20 @@ _NOISE = frozenset("的是了在和与及对用有这那一个什么怎么如何
 class SmartRouteService:
     """Use one retrieved candidate set for both routing and Fast RAG."""
 
-    def __init__(self, retrieve: Callable[[str, int], list[Any]], *, fetch_k: int, rag_threshold: float) -> None:
+    def __init__(self, retrieve: Callable[[str, int], list[Any]], *, fetch_k: int, rag_threshold: float, intent_classifier=None) -> None:
         self._retrieve = retrieve
         self._fetch_k = max(1, fetch_k)
         self._rag_threshold = max(0.0, min(1.0, rag_threshold))
+        self._intent_classifier = intent_classifier
 
     def decide(self, query: str, history: list[dict]) -> RoutingDecision:
         started = time.perf_counter()
         text = " ".join(query.strip().lower().split())
+        intents = self._intent_classifier.classify(query) if self._intent_classifier is not None else {}
         if any(action in text for action in _MUTATING_ACTIONS) or _EXTERNAL_ACTION.search(text):
             return self._decision(Route.AGENT, 1.0, ("tool_or_side_effect_intent",), {"agent_intent": 1.0, "routing_ms": self._elapsed(started)})
+        if intents.get("agent", 0.0) >= 0.82 and intents.get("agent", 0.0) > intents.get("direct", 0.0):
+            return self._decision(Route.AGENT, intents["agent"], ("intent_prototype_agent",), {"agent_intent": intents["agent"], "routing_ms": self._elapsed(started)})
         if any(action in text for action in _DIRECT_ACTIONS) and not any(hint in text for hint in _RAG_HINTS):
             return self._decision(Route.DIRECT, 0.95, ("direct_task_intent",), {"direct_intent": 0.95, "routing_ms": self._elapsed(started)})
 
@@ -39,6 +43,7 @@ class SmartRouteService:
         retrieval_query = f"{context_query} {query}".strip() if context_query else query
         docs = tuple(self._retrieve(retrieval_query, self._fetch_k) or [])
         signals = self._signals(text, docs, context_route)
+        signals.update({f"intent_{name}": value for name, value in intents.items()})
         signals["routing_ms"] = self._elapsed(started)
         confidence = round(
             0.58 * float(signals["semantic"])
@@ -46,6 +51,7 @@ class SmartRouteService:
             + 0.12 * float(signals["rank"])
             + 0.10 * float(signals["context"]), 3,
         )
+        confidence = round(min(1.0, confidence + 0.08 * float(intents.get("fast_rag", 0.0))), 3)
         reasons = []
         if signals["semantic"] >= self._rag_threshold:
             reasons.append("retrieval_semantic_hit")
