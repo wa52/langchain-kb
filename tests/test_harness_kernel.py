@@ -1,6 +1,6 @@
 import asyncio
 
-from src.harness import Event, EventBus, ExecutionPolicy, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolExecutor, ToolRegistry
+from src.harness import AgentRunTrace, Event, EventBus, ExecutionPolicy, HarnessRuntime, JevToolSelector, RuleBasedToolSelector, SessionLog, ToolExecutor, ToolRegistry
 
 
 def test_event_bus_and_tool_registry_are_isolated():
@@ -94,6 +94,13 @@ def test_tool_executor_requires_approval_for_high_risk_tool():
     registry.register("delete", lambda: "done", risk_level="high", read_only=False)
     result = ToolExecutor().execute(registry.get("delete"), {})
     assert not result.success and result.error_type == "APPROVAL_REQUIRED"
+
+
+def test_agent_run_trace_records_tool_result_summary():
+    trace = AgentRunTrace(query="search docs", selected_tools=("search",))
+    from src.harness import ToolResult
+    trace.record(ToolResult(True, "search", data="ok", elapsed_ms=4.2))
+    assert trace.snapshot()["selected_tools"] == ["search"]
 
 
 def test_session_log_is_append_only_snapshot():
