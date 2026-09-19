@@ -29,15 +29,24 @@ class ToolCandidate:
     """A selected ToolSpec plus the deterministic score used to select it."""
 
     spec: ToolSpec
-    score: int
+    score: float
+
+
+@dataclass(frozen=True)
+class ToolSelectionContext:
+    """Structured route facts supplied by the Decision Layer."""
+
+    intent: str
+    domain: str = "general"
+    side_effect: bool = False
 
 
 class ToolSelector(Protocol):
     """Stable selection port implemented by rule-based and remote adapters."""
 
-    def select(self, query: str, tools: Iterable[ToolSpec]) -> tuple[ToolCandidate, ...]: ...
+    def select(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[ToolCandidate, ...]: ...
 
-    def select_names(self, query: str, tools: Iterable[ToolSpec]) -> tuple[str, ...]: ...
+    def select_names(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[str, ...]: ...
 
 
 class RuleBasedToolSelector:
@@ -68,11 +77,15 @@ class RuleBasedToolSelector:
         tags = {alias for keyword, aliases in _QUERY_TAG_ALIASES.items() if keyword in normalized for alias in aliases}
         return tags | (set(re.findall(r"[a-z0-9_]+", normalized)) & {"github", "feishu"})
 
-    def select(self, query: str, tools: Iterable[ToolSpec]) -> tuple[ToolCandidate, ...]:
+    def select(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[ToolCandidate, ...]:
         """Return up to ``max_candidates`` enabled tools ordered by relevance."""
         terms = self._terms(query)
         requested_tags = self._query_tags(query)
         write_requested = bool(requested_tags & {"write", "create"})
+        if context is not None:
+            if context.domain != "general":
+                requested_tags.add(context.domain)
+            write_requested = context.side_effect
         candidates: list[ToolCandidate] = []
         fallback: list[ToolSpec] = []
 
@@ -106,5 +119,5 @@ class RuleBasedToolSelector:
                 selected_names.add(spec.name)
         return tuple(selected)
 
-    def select_names(self, query: str, tools: Iterable[ToolSpec]) -> tuple[str, ...]:
-        return tuple(candidate.spec.name for candidate in self.select(query, tools))
+    def select_names(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[str, ...]:
+        return tuple(candidate.spec.name for candidate in self.select(query, tools, context=context))

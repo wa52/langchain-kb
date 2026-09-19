@@ -47,14 +47,14 @@ class LangGraphAgentRuntime:
             self._agent = agent
         return agent
 
-    def _select_tools(self, messages: list[dict[str, Any]]) -> tuple[str, ...] | None:
+    def _select_tools(self, messages: list[dict[str, Any]], selection_context: Any = None) -> tuple[str, ...] | None:
         if self._tool_selector is None or self._tool_registry is None:
             return None
         query = next(
             (str(message.get("content", "")) for message in reversed(messages) if message.get("role") == "user"),
             "",
         )
-        return self._tool_selector.select_names(query, self._tool_registry.catalog())
+        return self._tool_selector.select_names(query, self._tool_registry.catalog(), context=selection_context)
 
     @staticmethod
     def _bind_session(agent: Any, session_id: str) -> Any:
@@ -112,6 +112,7 @@ class LangGraphAgentRuntime:
         on_trace_run: Callable[[str], None] | None = None,
         stream_input: Any = None,
         trace: Any = None,
+        selection_context: Any = None,
     ) -> Iterable[str]:
         """Run a prepared chat turn with LangGraph state and tool callbacks."""
         self._cancelled.discard(session_id)
@@ -124,7 +125,7 @@ class LangGraphAgentRuntime:
         if trace is not None:
             trace.emit("agent.run.started", session_id=session_id)
             trace.emit("selector.started")
-        selected_tools = self._select_tools(messages)
+        selected_tools = self._select_tools(messages, selection_context)
         if trace is not None:
             trace.selected_tools = tuple(selected_tools or ())
             trace.emit("selector.completed", selected_tools=list(selected_tools or ()))

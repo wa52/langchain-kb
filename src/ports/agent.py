@@ -19,6 +19,7 @@ class AgentRuntime(Protocol):
         on_tool_result: Callable[[dict], None] | None = None,
         on_trace_run: Callable[[str], None] | None = None,
         stream_input: Any = None,
+        selection_context: Any = None,
     ) -> Iterable[str]: ...
 
     def cancel(self, session_id: str) -> None: ...

@@ -101,7 +101,9 @@ class ConversationService:
                 return answer, store.save(history, session_id), round((time.time() - started) * 1000, 2)
 
             agent_messages = self._model_messages(self._compress_history(messages))
-            answer = "".join(self._agent_runtime_factory().stream_messages(agent_messages, session_id))
+            answer = "".join(self._agent_runtime_factory().stream_messages(
+                agent_messages, session_id, selection_context=self._selection_context(decision),
+            ))
             history = self._serialize_messages(messages) + [
                 {"role": "assistant", "content": answer, "route": self._agent_route}
             ]
@@ -129,7 +131,7 @@ class ConversationService:
             if route == self._fast_rag_route:
                 yield from self._stream_fast_rag(messages, session_id, stop_event, store, started, decision=decision)
                 return
-            yield from self._stream_agent(messages, session_id, stop_event, store, started)
+            yield from self._stream_agent(messages, session_id, stop_event, store, started, decision=decision)
 
     def _stream_direct(self, messages, session_id, stop_event, store, started, *, performance=None) -> Iterator[dict]:
         parts: list[str] = []
@@ -230,7 +232,21 @@ class ConversationService:
             "routing": decision.snapshot(),
         }
 
-    def _stream_agent(self, messages, session_id, stop_event, store, started) -> Iterator[dict]:
+    @staticmethod
+    def _selection_context(decision):
+        """Translate a route decision once for the ToolSelector seam."""
+        if decision is None or getattr(decision, "intent", None) is None:
+            return None
+        from src.harness import ToolSelectionContext
+
+        intent = decision.intent
+        return ToolSelectionContext(
+            intent=getattr(intent, "value", str(intent)),
+            domain=str(getattr(decision, "domain", "general")),
+            side_effect=bool(getattr(decision, "side_effect", False)),
+        )
+
+    def _stream_agent(self, messages, session_id, stop_event, store, started, *, decision=None) -> Iterator[dict]:
         tools: list[str] = []
         interrupts: list[Any] = []
         results: list[dict] = []
@@ -253,7 +269,7 @@ class ConversationService:
             for chunk in self._agent_runtime_factory().stream_messages(
                 self._model_messages(self._compress_history(messages)), session_id,
                 on_tool=on_tool, on_interrupt=on_interrupt, on_tool_result=results.append,
-                on_trace_run=on_trace_run,
+                on_trace_run=on_trace_run, selection_context=self._selection_context(decision),
             ):
                 if stop_event.is_set():
                     break

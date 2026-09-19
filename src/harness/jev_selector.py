@@ -4,7 +4,7 @@ from collections.abc import Iterable
 import os
 from typing import Callable
 
-from src.harness.selector import ToolCandidate, ToolSelector
+from src.harness.selector import ToolCandidate, ToolSelectionContext, ToolSelector
 from src.harness.tools import ToolSpec
 
 
@@ -17,8 +17,8 @@ class JevToolSelector:
         self._max_candidates = max_candidates
         self._request = request
 
-    def select(self, query: str, tools: Iterable[ToolSpec]) -> tuple[ToolCandidate, ...]:
-        recalled = self._fallback.select(query, tools)
+    def select(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[ToolCandidate, ...]:
+        recalled = self._fallback.select(query, tools, context=context)
         if not self._api_key or not recalled:
             return recalled
         criteria = {
@@ -46,5 +46,5 @@ class JevToolSelector:
         except Exception:
             return recalled
 
-    def select_names(self, query: str, tools: Iterable[ToolSpec]) -> tuple[str, ...]:
-        return tuple(item.spec.name for item in self.select(query, tools))
+    def select_names(self, query: str, tools: Iterable[ToolSpec], *, context: ToolSelectionContext | None = None) -> tuple[str, ...]:
+        return tuple(item.spec.name for item in self.select(query, tools, context=context))

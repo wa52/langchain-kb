@@ -66,6 +66,19 @@ def test_tool_selector_finds_mcp_server_from_query_keyword():
     assert selected == ("github_create_issue",)
 
 
+def test_tool_selector_uses_structured_routing_context_before_query_keywords():
+    from src.harness import ToolSelectionContext
+
+    tools = ToolRegistry()
+    tools.register("retrieve_knowledge", lambda: None, tags=("knowledge", "search"))
+    tools.register("github_list_issues", lambda: None, source="mcp", server_id="github", tags=("github", "mcp", "read"))
+    context = ToolSelectionContext(intent="action", domain="github", side_effect=False)
+
+    selected = RuleBasedToolSelector(max_candidates=3, min_candidates=1).select_names("帮我看一下", tools.catalog(), context=context)
+
+    assert selected == ("github_list_issues",)
+
+
 def test_jev_selector_ranks_recalled_tools_and_falls_back_without_key():
     tools = ToolRegistry()
     tools.register("retrieve_knowledge", lambda: None, description="search knowledge", tags=("knowledge", "search"))
