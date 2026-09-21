@@ -17,6 +17,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
 
 import httpx
 
@@ -33,6 +34,9 @@ HELP_WORDS = {"/help", "/帮助"}
 FEISHU_MAX_CONCURRENCY = max(1, int(os.getenv("FEISHU_MAX_CONCURRENCY", "10")))
 FEISHU_QUEUE_SIZE = max(0, int(os.getenv("FEISHU_QUEUE_SIZE", "50")))
 FEISHU_DEDUPE_TTL = max(60.0, float(os.getenv("FEISHU_DEDUPE_TTL", "600")))
+FEISHU_STREAM_UPDATE_INTERVAL_SECONDS = max(
+    0.2, float(os.getenv("FEISHU_STREAM_UPDATE_INTERVAL_SECONDS", "0.8"))
+)
 
 
 class _MessageDeduper:
@@ -56,6 +60,70 @@ class _MessageDeduper:
             while len(self._items) > self.max_entries:
                 self._items.pop(next(iter(self._items)))
             return False
+
+
+class _StreamingMessageUpdater:
+    """Coalesce slow Feishu updates outside the SSE token-reading thread.
+
+    Feishu's update-message request is a remote write.  Performing it inline
+    means a slow request blocks ``iter_lines()`` and makes an otherwise smooth
+    model stream appear to emit only a few characters every few seconds.
+    This worker always keeps only the newest text and rate-limits writes.
+    """
+
+    def __init__(self, update: Callable[[str], None], *, interval_seconds: float = FEISHU_STREAM_UPDATE_INTERVAL_SECONDS) -> None:
+        self._update = update
+        self._interval = interval_seconds
+        self._latest = ""
+        self._finished = False
+        self._last_sent = ""
+        self._lock = threading.Lock()
+        self._wake = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="feishu-message-update", daemon=True)
+        self._thread.start()
+
+    def submit(self, text: str) -> None:
+        with self._lock:
+            self._latest = text
+        self._wake.set()
+
+    def finish(self, text: str) -> None:
+        with self._lock:
+            self._latest = text
+            self._finished = True
+        self._wake.set()
+        # Do not allow a stalled remote update to delay session completion.
+        # The daemon keeps the final coalesced update alive after the SSE turn
+        # has already released its worker slot.
+
+    def _snapshot(self) -> tuple[str, bool]:
+        with self._lock:
+            return self._latest, self._finished
+
+    def _run(self) -> None:
+        next_allowed = 0.0
+        while True:
+            self._wake.wait()
+            self._wake.clear()
+            text, finished = self._snapshot()
+            if not text and finished:
+                return
+            remaining = next_allowed - time.monotonic()
+            if remaining > 0 and self._wake.wait(remaining):
+                self._wake.clear()
+                continue
+            if text and text != self._last_sent:
+                try:
+                    self._update(text)
+                    self._last_sent = text
+                except Exception:
+                    log.exception("failed to update streaming Feishu message")
+                next_allowed = time.monotonic() + self._interval
+            latest, finished = self._snapshot()
+            if finished and latest == self._last_sent:
+                return
+            if latest != self._last_sent:
+                self._wake.set()
 
 
 def _message_text(event) -> str | None:
@@ -441,19 +509,18 @@ class FeishuBot:
             raise RuntimeError("无法发送飞书占位消息")
         parts: list[str] = []
         new_session_id = session_id
-        last_update = 0.0
+        updater = _StreamingMessageUpdater(
+            lambda text: self._update_message(placeholder_id, text)
+        )
         for event_type, data in stream_knowledge_base(query_or_text, session_id):
             if event_type == "token":
                 parts.append(str(data.get("text", "")))
-                now = time.monotonic()
-                if now - last_update >= 0.8:
-                    self._update_message(placeholder_id, "".join(parts))
-                    last_update = now
+                updater.submit("".join(parts))
             elif event_type == "message_end":
                 new_session_id = data.get("session_id") or new_session_id
             elif event_type == "error":
                 raise RuntimeError(str(data.get("error", "知识库暂时不可用")))
-        self._update_message(placeholder_id, "".join(parts) or "没有找到相关内容，换个问法试试？")
+        updater.finish("".join(parts) or "没有找到相关内容，换个问法试试？")
         return new_session_id
 
     def start(self) -> None:

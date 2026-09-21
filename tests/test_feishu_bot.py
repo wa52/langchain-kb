@@ -1,4 +1,5 @@
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -68,6 +69,58 @@ class TestMessageDeduper:
         deduper.seen("msg_2")
         deduper.seen("msg_3")
         assert deduper.seen("msg_1") is False
+
+
+class TestStreamingMessageUpdater:
+    def test_slow_remote_update_does_not_block_submit(self):
+        from src.feishu.bot import _StreamingMessageUpdater
+
+        sent = []
+
+        def slow_update(text):
+            time.sleep(0.15)
+            sent.append(text)
+
+        updater = _StreamingMessageUpdater(slow_update, interval_seconds=0.01)
+        started = time.perf_counter()
+        updater.submit("一")
+        updater.submit("一个更完整的回答")
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        updater.finish("一个更完整的回答")
+        time.sleep(0.2)
+
+        assert elapsed_ms < 30
+        assert sent[-1] == "一个更完整的回答"
+
+    def test_stream_reply_keeps_consuming_sse_while_updates_are_slow(self):
+        from src.feishu.bot import FeishuBot
+
+        bot = FeishuBot.__new__(FeishuBot)
+        bot._reply = Mock(return_value="placeholder")
+        updates = []
+
+        def slow_update(_message_id, text):
+            time.sleep(0.15)
+            updates.append(text)
+
+        bot._update_message = slow_update
+        events = iter([
+            ("token", {"text": "第"}),
+            ("token", {"text": "一段"}),
+            ("message_end", {"session_id": "session_1"}),
+        ])
+        with patch("src.feishu.bot.stream_knowledge_base", return_value=events):
+            started = time.perf_counter()
+            session_id = bot._stream_reply("source", "chat", "p2p", "问题", None)
+            elapsed_ms = (time.perf_counter() - started) * 1000
+
+        assert session_id == "session_1"
+        assert elapsed_ms < 50
+        for _ in range(20):
+            if updates and updates[-1] == "第一段":
+                break
+            time.sleep(0.02)
+        assert updates[-1] == "第一段"
 
 
 class TestFeishuWelcome:
