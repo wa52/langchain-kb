@@ -24,6 +24,8 @@ from config import PRODUCT_NAME, PROJECT_ROOT
 
 _PID_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web.pid"
 _WORKER_PID_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web-worker.pid"
+_PORT_FILE = PROJECT_ROOT / ".tmp" / "knowledge-web.port"
+_FALLBACK_WEB_PORTS = range(18000, 18100)
 
 app = typer.Typer(
     add_completion=False,
@@ -302,6 +304,7 @@ def _stop_service(as_json: bool):
         pid = int(_PID_FILE.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         _PID_FILE.unlink(missing_ok=True)
+        _PORT_FILE.unlink(missing_ok=True)
         _fail(as_json, EXIT_NOT_FOUND, "服务 PID 文件无效，已清理", "NOT_RUNNING", "not_running")
     try:
         worker_pid = int(_WORKER_PID_FILE.read_text(encoding="utf-8").strip())
@@ -338,6 +341,35 @@ def _stop_service(as_json: bool):
 
     _PID_FILE.unlink(missing_ok=True)
     _WORKER_PID_FILE.unlink(missing_ok=True)
+    _PORT_FILE.unlink(missing_ok=True)
+
+
+def _port_is_listening(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
+def _find_available_web_port(host: str) -> int | None:
+    """Find a predictable fallback instead of failing on a shared 8000 port."""
+    for candidate in _FALLBACK_WEB_PORTS:
+        if not _port_is_listening(host, candidate):
+            return candidate
+    return None
+
+
+def _running_project_url(host: str) -> str | None:
+    """Return the URL of this project's managed Web process, if still alive."""
+    try:
+        pid = int(_PID_FILE.read_text(encoding="utf-8").strip())
+        port = int(_PORT_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    if _pid_is_running(pid) and _port_is_listening(host, port):
+        return f"http://{host}:{port}"
+    return None
     if as_json:
         _emit_json({"status": "ok", "data": {"stopped": True, "pid": pid}})
     else:
@@ -368,26 +400,43 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
         _stop_service(as_json)
         return
 
-    url = f"http://{host}:{port}"
-    # Give a useful message before Uvicorn emits the opaque Windows
-    # ``WinError 10013`` when another instance already owns the port.
-    try:
-        with socket.create_connection((host, port), timeout=0.25):
+    managed_url = _running_project_url(host)
+    if managed_url:
+        if as_json:
+            _emit_json({"status": "ok", "data": {
+                "url": managed_url,
+                "web": f"{managed_url}/",
+                "swagger": f"{managed_url}/docs",
+                "mcp": f"{managed_url}/mcp",
+                "already_running": True,
+            }})
+        else:
+            _data_console().print(f"[cyan]当前项目服务已运行:[/cyan] {managed_url}/")
+            if open_browser:
+                threading.Thread(
+                    target=_open_browser_when_ready,
+                    args=(managed_url, threading.Event()),
+                    name="knowledge-web-browser",
+                    daemon=True,
+                ).start()
+        return
+
+    requested_url = f"http://{host}:{port}"
+    if _port_is_listening(host, port):
+        fallback_port = _find_available_web_port(host)
+        if fallback_port is None:
             _fail(
-                as_json,
-                EXIT_TRANSIENT,
-                f"端口 {port} 已被占用，已有服务正在运行: {url}",
-                "PORT_BUSY",
-                "port_busy",
-                recoverable=True,
-                suggestions=[
-                    f"打开现有服务: {url}",
-                    f"换一个端口: knowledge web --port {port + 1}",
-                    f"检查占用进程: netstat -ano | findstr :{port}",
-                ],
+                as_json, EXIT_TRANSIENT,
+                f"端口 {port} 已被占用，且没有找到可用的备用端口",
+                "PORT_BUSY", "port_busy", recoverable=True,
             )
-    except OSError:
-        pass
+        if not as_json:
+            _data_console().print(
+                f"[yellow]端口 {port} 被其他服务占用，改用 {fallback_port} 启动当前项目。[/yellow]"
+            )
+        port = fallback_port
+
+    url = f"http://{host}:{port}"
     if as_json:
         _emit_json({"status": "ok", "data": {
             "url": url,
@@ -407,6 +456,7 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
     try:
         _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
         _PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        _PORT_FILE.write_text(str(port), encoding="utf-8")
         os.environ["KNOWLEDGE_WORKER_PID_FILE"] = str(_WORKER_PID_FILE)
         browser_stop = threading.Event()
         if open_browser and not as_json:
@@ -443,6 +493,7 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
         try:
             if _PID_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 _PID_FILE.unlink(missing_ok=True)
+                _PORT_FILE.unlink(missing_ok=True)
         except OSError:
             pass
 

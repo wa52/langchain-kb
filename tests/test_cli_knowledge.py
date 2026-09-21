@@ -592,6 +592,8 @@ class TestWebCommand:
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._port_is_listening", return_value=False),
         ):
             result = runner.invoke(app, ["web", "--json"])
         assert result.exit_code == 0
@@ -604,11 +606,27 @@ class TestWebCommand:
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._port_is_listening", return_value=False),
             patch("src.cli.knowledge._open_browser_when_ready") as mock_open,
         ):
             result = runner.invoke(app, ["web"])
         assert result.exit_code == 0
         mock_open.assert_called_once()
+
+    def test_web_falls_back_when_default_port_is_owned_by_another_service(self):
+        with (
+            patch("src.api.app.create_app"),
+            patch("uvicorn.run") as run,
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._port_is_listening", side_effect=lambda _host, port: port == 8000),
+            patch("src.cli.knowledge._find_available_web_port", return_value=18000),
+        ):
+            result = runner.invoke(app, ["web", "--json"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.output)["data"]["url"] == "http://127.0.0.1:18000"
+        assert run.call_args.kwargs["port"] == 18000
 
     def test_web_open_calls_browser(self):
         with (
