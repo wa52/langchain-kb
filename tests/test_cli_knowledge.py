@@ -593,6 +593,7 @@ class TestWebCommand:
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
             patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
             patch("src.cli.knowledge._port_is_listening", return_value=False),
         ):
             result = runner.invoke(app, ["web", "--json"])
@@ -607,6 +608,7 @@ class TestWebCommand:
             patch("src.api.app.create_app"),
             patch("uvicorn.run"),
             patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
             patch("src.cli.knowledge._port_is_listening", return_value=False),
             patch("src.cli.knowledge._open_browser_when_ready") as mock_open,
         ):
@@ -619,6 +621,7 @@ class TestWebCommand:
             patch("src.api.app.create_app"),
             patch("uvicorn.run") as run,
             patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
             patch("src.cli.knowledge._port_is_listening", side_effect=lambda _host, port: port == 8000),
             patch("src.cli.knowledge._find_available_web_port", return_value=18000),
         ):

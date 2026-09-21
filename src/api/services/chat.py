@@ -17,7 +17,7 @@ from src.agent.rag_agent import create_rag_agent, stream_rag_response
 from src.application.citations import _CITATION_PATTERN, extract_sources
 from src.application.conversation_service import ConversationService
 from src.application.conversation_store import ConversationStore
-from src.application.direct_chat import DirectChatEngine
+from src.application.direct_chat import DirectChatEngine, is_pure_greeting
 from src.application.fast_rag import FastRagService
 from src.application.smart_router import SmartRouteService
 from src.application.intent_prototypes import IntentPrototypeClassifier
@@ -286,6 +286,7 @@ def _conversation_service() -> ConversationService:
         verify_agent_run=verify_agent_run, resume_command=_resume_command,
         fast_rag_service=_fast_rag_service(),
         smart_router=_smart_router(),
+        is_trivial_direct=is_pure_greeting,
     )
 
 

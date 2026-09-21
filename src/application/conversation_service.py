@@ -30,6 +30,7 @@ class ConversationService:
         resume_command: Callable[[list[str], str | None], Any],
         fast_rag_service: Any,
         smart_router: Any | None = None,
+        is_trivial_direct: Callable[[str], bool] | None = None,
     ) -> None:
         self._store_factory = store_factory
         self._route_query = route_query
@@ -49,6 +50,16 @@ class ConversationService:
         self._resume_command = resume_command
         self._fast_rag_service = fast_rag_service
         self._smart_router = smart_router
+        self._is_trivial_direct = is_trivial_direct
+
+    def _decide_route(self, query: str, history: list[dict], forced_route: Any | None):
+        """Keep deterministic trivial turns off the embedding/router hot path."""
+        if forced_route is not None:
+            return forced_route, None
+        if self._is_trivial_direct is not None and self._is_trivial_direct(query):
+            return self._direct_route, None
+        decision = self._smart_router.decide(query, history) if self._smart_router else None
+        return (decision.route if decision is not None else self._route_query(query, history)), decision
 
     def _messages(self, query: str, session_id: str | None, store: Any) -> list[dict]:
         messages: list[dict] = []
@@ -77,8 +88,7 @@ class ConversationService:
             if not query:
                 raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            decision = self._smart_router.decide(query, messages[:-1]) if forced_route is None and self._smart_router else None
-            route = forced_route or (decision.route if decision is not None else self._route_query(query, messages[:-1]))
+            route, decision = self._decide_route(query, messages[:-1], forced_route)
             if route == self._direct_route:
                 answer = self._direct_answer(self._trim_direct_history(messages))
                 history = self._serialize_messages(messages) + [
@@ -120,8 +130,7 @@ class ConversationService:
             if not query:
                 raise ValueError("命令后需要提供问题")
             messages = self._messages(query, session_id, store)
-            decision = self._smart_router.decide(query, messages[:-1]) if forced_route is None and self._smart_router else None
-            route = forced_route or (decision.route if decision is not None else self._route_query(query, messages[:-1]))
+            route, decision = self._decide_route(query, messages[:-1], forced_route)
             if route == self._direct_route:
                 yield from self._stream_direct(
                     messages, session_id, stop_event, store, started,

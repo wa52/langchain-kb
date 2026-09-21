@@ -1,7 +1,20 @@
 """Provider-agnostic direct (non-RAG) chat engine."""
 
 from collections.abc import Callable, Iterable
+import re
 from typing import Any
+
+
+_GREETING = re.compile(
+    r"^(?:你好|您好|嗨|hello|hi|早上好|下午好|晚上好)[！!。,.，\s]*$",
+    re.IGNORECASE,
+)
+_GREETING_REPLY = "你好，请直接发送问题。"
+
+
+def is_pure_greeting(text: str) -> bool:
+    """Whether a message has a deterministic reply and needs no routing."""
+    return bool(_GREETING.fullmatch((text or "").strip()))
 
 
 class DirectChatEngine:
@@ -44,12 +57,27 @@ class DirectChatEngine:
             history = history[2:]
         return history + [current]
 
+    @staticmethod
+    def _fixed_reply(messages: list[dict]) -> str | None:
+        """Answer a pure greeting locally; no model call or welcome push."""
+        if not messages:
+            return None
+        text = str(messages[-1].get("content", "")).strip()
+        return _GREETING_REPLY if is_pure_greeting(text) else None
+
     def answer(self, messages: list[dict]) -> str:
+        fixed = self._fixed_reply(messages)
+        if fixed is not None:
+            return fixed
         response = self._llm_factory().invoke(self.prompt_messages(messages))
         content = getattr(response, "content", response)
         return str(content or "").strip()
 
     def stream(self, messages: list[dict]) -> Iterable[str]:
+        fixed = self._fixed_reply(messages)
+        if fixed is not None:
+            yield fixed
+            return
         for chunk in self._llm_factory().stream(self.prompt_messages(messages)):
             content = getattr(chunk, "content", chunk)
             if content:

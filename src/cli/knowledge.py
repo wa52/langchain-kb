@@ -360,15 +360,42 @@ def _find_available_web_port(host: str) -> int | None:
     return None
 
 
+def _managed_pid_is_running() -> bool:
+    try:
+        return _pid_is_running(int(_PID_FILE.read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        return False
+
+
+def _is_knowledge_service(host: str, port: int) -> bool:
+    """Identify this project without trusting a stale PID/port file."""
+    if not _port_is_listening(host, port):
+        return False
+    try:
+        with urllib.request.urlopen(
+            f"http://{host}:{port}/api/v1/health", timeout=1.5
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return isinstance(payload, dict) and {"index_version", "vector_count", "entity_count"}.issubset(payload)
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+
 def _running_project_url(host: str) -> str | None:
     """Return the URL of this project's managed Web process, if still alive."""
     try:
-        pid = int(_PID_FILE.read_text(encoding="utf-8").strip())
         port = int(_PORT_FILE.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
-        return None
-    if _pid_is_running(pid) and _port_is_listening(host, port):
+        port = None
+    if port is not None and _managed_pid_is_running() and _is_knowledge_service(host, port):
         return f"http://{host}:{port}"
+    # Versions before the port file existed can still be alive.  When a
+    # managed PID is present, find its healthy project service before starting
+    # another copy and overwriting the lifecycle records again.
+    if _managed_pid_is_running():
+        for candidate in (8000, *_FALLBACK_WEB_PORTS):
+            if candidate != port and _is_knowledge_service(host, candidate):
+                return f"http://{host}:{candidate}"
     return None
     if as_json:
         _emit_json({"status": "ok", "data": {"stopped": True, "pid": pid}})
@@ -421,7 +448,13 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
                 ).start()
         return
 
-    requested_url = f"http://{host}:{port}"
+    if _managed_pid_is_running():
+        _fail(
+            as_json, EXIT_TRANSIENT,
+            "当前项目服务仍在启动或未通过健康检查，请稍候；如持续失败可运行 knowledge web --stop 后重试。",
+            "SERVICE_STARTING", "service_starting", recoverable=True,
+        )
+
     if _port_is_listening(host, port):
         fallback_port = _find_available_web_port(host)
         if fallback_port is None:

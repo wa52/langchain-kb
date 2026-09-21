@@ -55,7 +55,7 @@ class _AgentRuntime:
         yield "Agent 回答"
 
 
-def _service(fast, *, route=lambda _query, _history: "fast_rag"):
+def _service(fast, *, route=lambda _query, _history: "fast_rag", smart_router=None, is_trivial_direct=None):
     store = _Store()
 
     def parse_command(query):
@@ -82,6 +82,8 @@ def _service(fast, *, route=lambda _query, _history: "fast_rag"):
         verify_agent_run=lambda *_args: {"complete": True},
         resume_command=lambda *_args: None,
         fast_rag_service=fast,
+        smart_router=smart_router,
+        is_trivial_direct=is_trivial_direct,
     )
     return service, store
 
@@ -107,6 +109,24 @@ def test_force_direct_command_skips_fast_rag():
 
     assert fast.prepared == []
     assert events[-1]["data"]["route"] == "direct"
+
+
+def test_trivial_greeting_skips_smart_router_embedding_work():
+    class Router:
+        def decide(self, *_args):
+            raise AssertionError("a greeting must not invoke Smart Router")
+
+    fast = _FastRag()
+    service, _store = _service(
+        fast,
+        smart_router=Router(),
+        is_trivial_direct=lambda text: text == "你好",
+    )
+
+    events = list(service.stream("你好", None, SimpleNamespace(is_set=lambda: False)))
+
+    assert events[-1]["data"]["route"] == "direct"
+    assert fast.prepared == []
 
 
 def test_force_agent_command_keeps_agent_runtime_path():
