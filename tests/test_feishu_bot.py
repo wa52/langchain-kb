@@ -122,6 +122,44 @@ class TestStreamingMessageUpdater:
             time.sleep(0.02)
         assert updates[-1] == "第一段"
 
+    def test_short_stream_sends_only_the_final_feishu_update(self):
+        from src.feishu.bot import FeishuBot
+
+        bot = FeishuBot.__new__(FeishuBot)
+        bot._reply = Mock(return_value="placeholder")
+        updates = []
+        bot._update_message = lambda _message_id, text: updates.append(text)
+        events = iter([
+            ("token", {"text": "短"}),
+            ("token", {"text": "回答"}),
+            ("message_end", {"session_id": "session_1"}),
+        ])
+        with patch("src.feishu.bot.stream_knowledge_base", return_value=events):
+            bot._stream_reply("source", "chat", "p2p", "问题", None)
+
+        for _ in range(20):
+            if updates:
+                break
+            time.sleep(0.02)
+        assert updates == ["短回答"]
+
+    def test_incomplete_sse_never_publishes_a_partial_answer(self):
+        from src.feishu.bot import FeishuBot
+
+        bot = FeishuBot.__new__(FeishuBot)
+        bot._reply = Mock(return_value="placeholder")
+        updates = []
+        bot._update_message = lambda _message_id, text: updates.append(text)
+        events = iter([("token", {"text": "不完整"})])
+        with patch("src.feishu.bot.stream_knowledge_base", return_value=events):
+            bot._stream_reply("source", "chat", "p2p", "问题", "existing-session")
+
+        for _ in range(20):
+            if updates:
+                break
+            time.sleep(0.02)
+        assert updates == ["回答传输中断，请重新发送一次。"]
+
 
 class TestFeishuWelcome:
     def test_p2p_entered_event_does_not_send_unsolicited_message(self):

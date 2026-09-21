@@ -31,11 +31,22 @@ CHAT_URL = f"{KB_API_BASE}/api/v1/chat"
 CHAT_STREAM_URL = f"{KB_API_BASE}/api/v1/chat/stream"
 RESET_WORDS = {"/new", "/新会话"}
 HELP_WORDS = {"/help", "/帮助"}
+_STATIC_FEISHU_REPLIES = {
+    "目前仅支持文本消息，请直接发送文字提问。",
+    "已开启新会话，你可以开始提问了。",
+    "知识库暂时不可用，请稍后再试。",
+}
 FEISHU_MAX_CONCURRENCY = max(1, int(os.getenv("FEISHU_MAX_CONCURRENCY", "10")))
 FEISHU_QUEUE_SIZE = max(0, int(os.getenv("FEISHU_QUEUE_SIZE", "50")))
 FEISHU_DEDUPE_TTL = max(60.0, float(os.getenv("FEISHU_DEDUPE_TTL", "600")))
 FEISHU_STREAM_UPDATE_INTERVAL_SECONDS = max(
-    0.2, float(os.getenv("FEISHU_STREAM_UPDATE_INTERVAL_SECONDS", "0.8"))
+    0.2, float(os.getenv("FEISHU_STREAM_UPDATE_INTERVAL_SECONDS", "2.0"))
+)
+# A short RAG answer should arrive as one final Feishu update.  Repeatedly
+# replacing a message over the public IM API is far slower than Web SSE.
+# Longer answers still get progressive updates after this many characters.
+FEISHU_STREAM_PARTIAL_MIN_CHARS = max(
+    1, int(os.getenv("FEISHU_STREAM_PARTIAL_MIN_CHARS", "240"))
 )
 
 
@@ -497,11 +508,7 @@ class FeishuBot:
         session_id: str | None,
     ) -> str | None:
         """Send a placeholder, then update it as SSE tokens arrive."""
-        if session_id is None and query_or_text in {
-            "目前仅支持文本消息，请直接发送文字提问。",
-            "已开启新会话，你可以开始提问了。",
-            "知识库暂时不可用，请稍后再试。",
-        }:
+        if query_or_text in _STATIC_FEISHU_REPLIES:
             self._reply(message_id, chat_id, chat_type, query_or_text)
             return None
         placeholder_id = self._reply(message_id, chat_id, chat_type, "正在思考…")
@@ -509,17 +516,27 @@ class FeishuBot:
             raise RuntimeError("无法发送飞书占位消息")
         parts: list[str] = []
         new_session_id = session_id
+        completed = False
         updater = _StreamingMessageUpdater(
             lambda text: self._update_message(placeholder_id, text)
         )
         for event_type, data in stream_knowledge_base(query_or_text, session_id):
             if event_type == "token":
                 parts.append(str(data.get("text", "")))
-                updater.submit("".join(parts))
+                answer_so_far = "".join(parts)
+                # Do not turn a fast, short answer into several slow remote
+                # message-update requests.  The final answer is always sent
+                # below; this is only for genuinely long responses.
+                if len(answer_so_far) >= FEISHU_STREAM_PARTIAL_MIN_CHARS:
+                    updater.submit(answer_so_far)
             elif event_type == "message_end":
                 new_session_id = data.get("session_id") or new_session_id
+                completed = True
             elif event_type == "error":
                 raise RuntimeError(str(data.get("error", "知识库暂时不可用")))
+        if not completed:
+            updater.finish("回答传输中断，请重新发送一次。")
+            return new_session_id
         updater.finish("".join(parts) or "没有找到相关内容，换个问法试试？")
         return new_session_id
 
