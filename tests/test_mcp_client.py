@@ -164,10 +164,10 @@ class TestRagAgentIntegration:
             assert "ext_tool_1" in tools
             assert "ext_tool_2" in tools
 
-    def test_agent_registers_mcp_tool_metadata(self):
-        from unittest.mock import MagicMock, patch
-        from src.agent import rag_agent
-        from src.agent.mcp_client import McpToolEntry
+    def test_catalog_registration_keeps_mcp_tool_metadata(self):
+        """Discovery owns registration; it must retain execution metadata."""
+        from unittest.mock import MagicMock
+        from src.agent.mcp_client import McpToolEntry, _register_mcp_entries
         from src.harness import ToolRegistry
 
         tool = MagicMock()
@@ -184,15 +184,7 @@ class TestRagAgentIntegration:
         )
         registry = ToolRegistry()
 
-        with (
-            patch("src.agent.mcp_client.load_mcp_tool_entries", return_value=[entry]),
-            patch("src.agent.rag_agent.get_embedding_model"),
-            patch("src.agent.rag_agent.get_vector_store"),
-            patch("src.agent.rag_agent.VectorStoreService"),
-            patch("src.agent.rag_agent.get_llm"),
-            patch("src.agent.rag_agent.create_deep_agent"),
-        ):
-            rag_agent.create_rag_agent(registry)
+        _register_mcp_entries(registry, [entry])
 
         spec = registry.get("github_create_issue")
         assert spec.source == "mcp"
@@ -201,6 +193,25 @@ class TestRagAgentIntegration:
         assert spec.risk_level == "medium"
         assert not spec.read_only
         assert not spec.retryable
+
+    def test_agent_starts_mcp_catalog_discovery(self):
+        """The agent triggers asynchronous discovery without blocking startup."""
+        from unittest.mock import patch
+        from src.agent import rag_agent
+        from src.harness import ToolRegistry
+
+        registry = ToolRegistry()
+        with (
+            patch("src.agent.rag_agent.get_embedding_model"),
+            patch("src.agent.rag_agent.get_vector_store"),
+            patch("src.agent.rag_agent.VectorStoreService"),
+            patch("src.agent.rag_agent.get_llm"),
+            patch("src.agent.rag_agent.create_deep_agent"),
+            patch("src.agent.mcp_client.ensure_mcp_tools_registered") as discover,
+        ):
+            rag_agent.create_rag_agent(registry)
+
+        discover.assert_called_once_with(registry)
 
 
 class TestSyncCompatible:
