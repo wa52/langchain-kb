@@ -65,7 +65,25 @@ export interface FastRagTrace {
   };
 }
 
-export type ViewId = "chat" | "knowledge" | "status" | "settings";
+export type ViewId = "chat" | "knowledge" | "retrieval" | "status" | "settings";
+
+export interface RetrievalDebugResult {
+  source: string;
+  chunk_id: string;
+  content: string;
+  dense_score: number;
+  bm25_score: number;
+  fusion_score: number;
+  dense_rank: number | null;
+  bm25_rank: number | null;
+  rank: number;
+}
+
+export interface RetrievalDebugResponse {
+  query: string;
+  results: RetrievalDebugResult[];
+  elapsed_ms: number;
+}
 
 export interface SessionSummary {
   id: string;

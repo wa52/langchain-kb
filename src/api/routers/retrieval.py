@@ -1,8 +1,45 @@
+import time
+
 from fastapi import APIRouter, Query
 
+from src.api.schemas import RetrievalDebugResponse, RetrievalDebugResultItem, SearchRequest
 from src.retrieval.telemetry import retrieval_record_store
 
 router = APIRouter()
+
+
+@router.post(
+    "/retrieval/debug",
+    response_model=RetrievalDebugResponse,
+    operation_id="debug_retrieval",
+    summary="调试知识检索",
+    description="执行 Dense 与 BM25 检索并返回融合排序、各通道分数和总耗时。",
+)
+def debug_retrieval(request: SearchRequest) -> RetrievalDebugResponse:
+    started = time.perf_counter()
+    from src.application.knowledge import retrieve_scored_documents
+
+    scored_documents = retrieve_scored_documents(request.query, request.top_k)
+    results = []
+    for item in scored_documents:
+        metadata = item.metadata
+        document = item.document
+        results.append(RetrievalDebugResultItem(
+            source=str(metadata.get("source") or "unknown"),
+            chunk_id=str(getattr(document, "id", "") or metadata.get("chunk_id", "")),
+            content=item.page_content,
+            dense_score=round(float(item.dense_score), 4),
+            bm25_score=round(float(item.bm25_score), 4),
+            fusion_score=round(float(item.fusion_score), 4),
+            dense_rank=item.dense_rank,
+            bm25_rank=item.bm25_rank,
+            rank=int(item.final_rank),
+        ))
+    return RetrievalDebugResponse(
+        query=request.query,
+        results=results,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
 
 
 @router.get(

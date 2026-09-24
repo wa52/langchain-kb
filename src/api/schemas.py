@@ -49,6 +49,24 @@ class SearchResponse(BaseModel):
     elapsed_ms: float
 
 
+class RetrievalDebugResultItem(BaseModel):
+    source: str
+    chunk_id: str
+    content: str
+    dense_score: float
+    bm25_score: float
+    fusion_score: float
+    dense_rank: int | None = None
+    bm25_rank: int | None = None
+    rank: int
+
+
+class RetrievalDebugResponse(BaseModel):
+    query: str
+    results: list[RetrievalDebugResultItem]
+    elapsed_ms: float
+
+
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000, examples=["什么是知识库？"])
     session_id: str | None = Field(

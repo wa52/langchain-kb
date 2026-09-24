@@ -190,6 +190,7 @@ class TestOpenAPISchema:
                      "list_llm_models", "set_mcp_enabled", "set_mcp_server_enabled",
                      "get_sync_status", "add_sync_dir", "remove_sync_dir", "run_sync",
                      "list_files", "remove_file", "get_agent_trace", "set_jev_api_key",
+                     "debug_retrieval",
                      "list_retrieval_records", "get_retrieval_record"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 

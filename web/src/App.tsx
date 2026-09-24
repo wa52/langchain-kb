@@ -8,6 +8,7 @@ import { useDeveloperMode } from "./hooks/useDeveloperMode";
 import { useSystemStatus } from "./hooks/useSystemStatus";
 import { ChatPage } from "./pages/ChatPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
+import { RetrievalPage } from "./pages/RetrievalPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatusPage } from "./pages/StatusPage";
 import type { SystemStatus, ViewId } from "./types/api";
@@ -15,6 +16,7 @@ import type { SystemStatus, ViewId } from "./types/api";
 const NAV_ITEMS: Array<{ id: ViewId; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "knowledge", label: "知识库" },
+  { id: "retrieval", label: "检索调试" },
   { id: "status", label: "状态" },
   { id: "settings", label: "设置" },
 ];
@@ -82,6 +84,8 @@ export default function App() {
             <ChatPage {...pageProps} onNavigate={(v) => navigate(v)} />
           ) : view === "knowledge" ? (
             <KnowledgePage />
+          ) : view === "retrieval" ? (
+            <RetrievalPage />
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (

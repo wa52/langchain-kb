@@ -102,6 +102,68 @@ class TestSearch:
         assert resp.status_code == 422
 
 
+class TestRetrievalDebugger:
+    def test_debug_returns_ranked_channel_scores_and_elapsed_time(self, client):
+        from types import SimpleNamespace
+        from src.domain.routing import ScoredDocument
+
+        scored = [
+            ScoredDocument(
+                document=SimpleNamespace(
+                    page_content="HALCON 找线例程代码",
+                    metadata={"source": "找线例程.hdev", "chunk_id": "chunk-7"},
+                ),
+                dense_score=0.91,
+                bm25_score=0.5,
+                fusion_score=0.705,
+                dense_rank=1,
+                bm25_rank=2,
+                final_rank=1,
+            ),
+        ]
+        with patch("src.application.knowledge.retrieve_scored_documents", return_value=scored) as retrieve:
+            response = client.post("/api/v1/retrieval/debug", json={
+                "query": "HALCON 找线例程",
+                "top_k": 4,
+            })
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["query"] == "HALCON 找线例程"
+        assert body["results"] == [{
+            "source": "找线例程.hdev",
+            "chunk_id": "chunk-7",
+            "content": "HALCON 找线例程代码",
+            "dense_score": 0.91,
+            "bm25_score": 0.5,
+            "fusion_score": 0.705,
+            "dense_rank": 1,
+            "bm25_rank": 2,
+            "rank": 1,
+        }]
+        assert isinstance(body["elapsed_ms"], (int, float))
+        retrieve.assert_called_once_with("HALCON 找线例程", 4)
+
+    def test_debug_rejects_empty_query_and_invalid_top_k(self, client):
+        empty = client.post("/api/v1/retrieval/debug", json={"query": ""})
+        too_many = client.post("/api/v1/retrieval/debug", json={
+            "query": "test", "top_k": 100,
+        })
+
+        assert empty.status_code == 422
+        assert too_many.status_code == 422
+
+    def test_debug_returns_empty_results_without_error(self, client):
+        with patch("src.application.knowledge.retrieve_scored_documents", return_value=[]):
+            response = client.post("/api/v1/retrieval/debug", json={
+                "query": "no matching source",
+                "top_k": 5,
+            })
+
+        assert response.status_code == 200
+        assert response.json()["results"] == []
+
+
 class TestChat:
     def test_chat_returns_answer(self, client):
         with (

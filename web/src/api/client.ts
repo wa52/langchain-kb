@@ -8,6 +8,7 @@ import type {
   SourceItem,
   AgentTrace,
   FastRagTrace,
+  RetrievalDebugResponse,
   TaskStatus,
   TrackedFilesResponse,
   UploadTasks,
@@ -154,6 +155,16 @@ export async function getAgentTrace(runId: string): Promise<AgentTrace | null> {
   if (!resp.ok) throw new Error(`Trace 请求失败 (${resp.status})`);
   const data = (await resp.json()) as { status?: string; trace?: AgentTrace };
   return data.status === "completed" ? data.trace ?? null : null;
+}
+
+export async function debugRetrieval(query: string, topK: number): Promise<RetrievalDebugResponse> {
+  const resp = await apiFetch("/api/v1/retrieval/debug", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, top_k: topK }),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `检索调试失败 (${resp.status})`));
+  return (await resp.json()) as RetrievalDebugResponse;
 }
 
 export async function streamChat(
