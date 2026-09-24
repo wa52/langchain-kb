@@ -13,6 +13,7 @@ import { KnowledgePage } from "./pages/KnowledgePage";
 import { RetrievalPage } from "./pages/RetrievalPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatusPage } from "./pages/StatusPage";
+import { TraceViewerPage } from "./pages/TraceViewerPage";
 import type { SystemStatus, ViewId } from "./types/api";
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string }> = [
@@ -21,6 +22,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string }> = [
   { id: "retrieval", label: "检索调试" },
   { id: "evaluation", label: "评测" },
   { id: "capabilities", label: "能力" },
+  { id: "traces", label: "Trace" },
   { id: "status", label: "状态" },
   { id: "settings", label: "设置" },
 ];
@@ -94,6 +96,8 @@ export default function App() {
             <EvaluationPage />
           ) : view === "capabilities" ? (
             <CapabilitiesPage onOpenSettings={() => navigate("settings")} />
+          ) : view === "traces" ? (
+            <TraceViewerPage />
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (

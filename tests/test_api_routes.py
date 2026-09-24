@@ -299,6 +299,34 @@ class TestCapabilityCatalog:
         assert response.json()["mcp_servers"][0]["status"] == "disabled"
 
 
+class TestAgentTraceLookup:
+    def test_completed_trace_can_be_read_by_run_id(self, client):
+        from types import SimpleNamespace
+        fixture = {
+            "run_id": "synthetic-run-001",
+            "query": "synthetic query",
+            "selected_tools": ["retrieve_knowledge"],
+            "llm_calls": [{"request": {"model": "fake-model"}, "response": {"duration_ms": 12}}],
+            "tool_calls": [],
+            "events": [{
+                "type": "llm.response",
+                "payload": {"run_id": "synthetic-run-001", "duration_ms": 12},
+                "created_at": "2026-09-24T00:00:00+00:00",
+            }],
+        }
+        with patch("src.api.routers.chat.trace_store", SimpleNamespace(get=lambda run_id: fixture if run_id == "synthetic-run-001" else None)):
+            response = client.get("/api/v1/traces/synthetic-run-001")
+        assert response.status_code == 200
+        assert response.json() == {"status": "completed", "trace": fixture}
+
+    def test_unknown_trace_id_returns_not_found_without_listing_runs(self, client):
+        from types import SimpleNamespace
+        with patch("src.api.routers.chat.trace_store", SimpleNamespace(get=lambda _run_id: None)):
+            response = client.get("/api/v1/traces/not-a-real-run")
+        assert response.status_code == 200
+        assert response.json() == {"run_id": "not-a-real-run", "status": "not_found"}
+
+
 class TestChat:
     def test_chat_returns_answer(self, client):
         with (

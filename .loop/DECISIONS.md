@@ -55,3 +55,12 @@ servers, or execute tools.
 
 **Reason:** MCP is an optional capability and must remain off the normal
 startup and browsing critical path.
+
+## ADR-0008 — Trace inspection is opt-in by run_id
+
+**Decision:** The Trace UI queries only a user-entered run_id and does not list
+or automatically load previous runs. Rendering omits hidden-reasoning fields
+and masks credential-like keys.
+
+**Reason:** Users can inspect a specific run without exposing unrelated chat
+history or turning observability into a new chat execution dependency.

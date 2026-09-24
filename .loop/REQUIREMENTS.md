@@ -20,9 +20,9 @@ mean the product has been release-accepted.
 | Agent | Policy, approval, retry | PARTIAL | Approval/recovery exists; policy acceptance coverage is incomplete. |
 | Quality | Routing evaluation | DONE | 100 labeled cases, macro-F1 gate. |
 | Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing eval and isolated retrieval fixture runner/report exist; answer/tool evals remain missing and real retrieval target remains unbaselined. |
-| Quality | Agent trace and timing | PARTIAL | Completed trace API and developer pane exist; dedicated Trace page/replay is missing. |
+| Quality | Agent trace and timing | DONE | Out-of-band completed-run query, per-run Trace Viewer, exact action durations, and secret/reasoning-safe display. Trace persistence/replay across process restarts remains out of scope. |
 | Interfaces | Web chat, sources/settings/status | DONE | React pages and API clients exist. |
-| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | PARTIAL | Retrieval debugger, Evaluation, and read-only Capability Catalog pages exist; dedicated Traces viewer remains missing. |
+| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | DONE | Retrieval debugger, Evaluation, read-only Capability Catalog, and run_id Trace Viewer pages are present. |
 | Interfaces | REST API, CLI, MCP | DONE | FastAPI routers, CLI, and MCP endpoint exist. |
 | Interfaces | Feishu | PARTIAL | Bridge works; real-delivery performance/reliability acceptance is pending. |
 | Reliability | Lifecycle, reload, port recovery | PARTIAL | Managed `knowledge web` lifecycle exists; endurance and shutdown acceptance is missing. |

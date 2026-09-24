@@ -65,7 +65,7 @@ export interface FastRagTrace {
   };
 }
 
-export type ViewId = "chat" | "knowledge" | "retrieval" | "evaluation" | "capabilities" | "status" | "settings";
+export type ViewId = "chat" | "knowledge" | "retrieval" | "evaluation" | "capabilities" | "traces" | "status" | "settings";
 
 export interface CapabilityTool {
   name: string;
