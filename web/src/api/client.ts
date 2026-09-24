@@ -10,6 +10,7 @@ import type {
   FastRagTrace,
   RetrievalDebugResponse,
   RetrievalEvaluationLatestResponse,
+  CapabilityCatalog,
   TaskStatus,
   TrackedFilesResponse,
   UploadTasks,
@@ -350,6 +351,12 @@ export async function getSettings(): Promise<AppSettings> {
   });
   if (!resp.ok) throw new Error(`配置读取失败 (${resp.status})`);
   return (await resp.json()) as AppSettings;
+}
+
+export async function getCapabilities(): Promise<CapabilityCatalog> {
+  const resp = await apiFetch("/api/v1/capabilities", { cache: "no-store" });
+  if (!resp.ok) throw new Error(await readError(resp, `能力目录读取失败 (${resp.status})`));
+  return (await resp.json()) as CapabilityCatalog;
 }
 
 export interface GraphModeResult {

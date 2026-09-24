@@ -65,7 +65,32 @@ export interface FastRagTrace {
   };
 }
 
-export type ViewId = "chat" | "knowledge" | "retrieval" | "evaluation" | "status" | "settings";
+export type ViewId = "chat" | "knowledge" | "retrieval" | "evaluation" | "capabilities" | "status" | "settings";
+
+export interface CapabilityTool {
+  name: string;
+  description: string;
+  source: "local" | "mcp" | "plugin";
+  server_id: string | null;
+  tags: string[];
+  risk_level: string;
+  read_only: boolean;
+  retryable: boolean;
+  enabled: boolean;
+}
+
+export interface CapabilityMcpServer {
+  name: string;
+  type: string;
+  enabled: boolean;
+  status: "ready" | "discovering" | "degraded" | "not_started" | "disabled";
+}
+
+export interface CapabilityCatalog {
+  tools: CapabilityTool[];
+  mcp_servers: CapabilityMcpServer[];
+  summary: { tools: number; mcp_servers: number; ready: number; degraded: number };
+}
 
 export interface RetrievalDebugResult {
   source: string;

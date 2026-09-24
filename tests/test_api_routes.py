@@ -216,6 +216,89 @@ class TestRetrievalEvaluationReport:
         assert "query" not in body["report"]["metrics"]["cases"][0]
 
 
+class TestCapabilityCatalog:
+    def test_lists_local_tools_and_mcp_readiness_without_secrets(self, client, rm):
+        from types import SimpleNamespace
+        from src.harness.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        registry.register(
+            "retrieve_knowledge", lambda **_: None,
+            description="Search the knowledge base", plugin_id="agent-tools",
+            source="local", tags=("knowledge", "search"), risk_level="low",
+            retryable=True, read_only=True,
+        )
+        registry._mcp_server_states = {
+            "github": "READY",
+            "browser": "DISCOVERING",
+            "filesystem": "DEGRADED",
+            "feishu": "NOT_STARTED",
+        }
+        rm.tool_registry = registry
+        client.app.state.harness = SimpleNamespace(tools=registry)
+
+        with patch("src.api.routers.capabilities.get_settings_view", return_value={
+            "mcp_enabled": True,
+            "mcp_servers": [
+                {"name": "github", "type": "remote", "enabled": True, "target": "https://user:secret@example.test"},
+                {"name": "browser", "type": "local", "enabled": True, "target": "secret-command"},
+                {"name": "filesystem", "type": "local", "enabled": True, "target": "secret-command"},
+                {"name": "feishu", "type": "local", "enabled": True, "target": "secret-command"},
+                {"name": "disabled-server", "type": "local", "enabled": False, "target": ""},
+            ],
+        }):
+            response = client.get("/api/v1/capabilities")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["tools"] == [{
+            "name": "retrieve_knowledge",
+            "description": "Search the knowledge base",
+            "source": "local",
+            "server_id": None,
+            "tags": ["knowledge", "search"],
+            "risk_level": "low",
+            "read_only": True,
+            "retryable": True,
+            "enabled": True,
+        }]
+        assert [(item["name"], item["status"]) for item in body["mcp_servers"]] == [
+            ("browser", "discovering"),
+            ("disabled-server", "disabled"),
+            ("feishu", "not_started"),
+            ("filesystem", "degraded"),
+            ("github", "ready"),
+        ]
+        assert "secret" not in response.text
+        assert body["summary"] == {"tools": 1, "mcp_servers": 5, "ready": 2, "degraded": 1}
+
+    def test_uninitialized_catalog_has_empty_state_without_triggering_discovery(self, client):
+        client.app.state.harness = None
+        with patch("src.api.routers.capabilities.get_settings_view", return_value={
+            "mcp_enabled": False,
+            "mcp_servers": [],
+        }):
+            response = client.get("/api/v1/capabilities")
+        assert response.status_code == 200
+        assert response.json()["tools"] == []
+        assert response.json()["mcp_servers"] == []
+        assert response.json()["summary"]["tools"] == 0
+
+    def test_global_mcp_switch_marks_configured_servers_disabled(self, client, rm):
+        from types import SimpleNamespace
+        from src.harness.tools import ToolRegistry
+        registry = ToolRegistry()
+        rm.tool_registry = registry
+        client.app.state.harness = SimpleNamespace(tools=registry)
+        with patch("src.api.routers.capabilities.get_settings_view", return_value={
+            "mcp_enabled": False,
+            "mcp_servers": [{"name": "github", "type": "remote", "enabled": True}],
+        }):
+            response = client.get("/api/v1/capabilities")
+        assert response.status_code == 200
+        assert response.json()["mcp_servers"][0]["status"] == "disabled"
+
+
 class TestChat:
     def test_chat_returns_answer(self, client):
         with (

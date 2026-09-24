@@ -46,3 +46,12 @@ offline embeddings and no LLM or external service credentials.
 user's personal knowledge corpus. The current small fixture validates the
 measurement pipeline only; its scores must not be represented as production
 quality evidence.
+
+## ADR-0007 — Capability catalog reads state but never initializes tools
+
+**Decision:** The Capability Catalog projects existing registry metadata and
+MCP readiness only. Page loads and refreshes do not start discovery, connect to
+servers, or execute tools.
+
+**Reason:** MCP is an optional capability and must remain off the normal
+startup and browsing critical path.

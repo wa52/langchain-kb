@@ -109,6 +109,38 @@ class RetrievalEvaluationLatestResponse(BaseModel):
     message: str | None = None
 
 
+class CapabilityToolResponse(BaseModel):
+    name: str
+    description: str = ""
+    source: str
+    server_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    risk_level: str
+    read_only: bool
+    retryable: bool
+    enabled: bool
+
+
+class CapabilityMcpServerResponse(BaseModel):
+    name: str
+    type: str
+    enabled: bool
+    status: str
+
+
+class CapabilitySummaryResponse(BaseModel):
+    tools: int
+    mcp_servers: int
+    ready: int
+    degraded: int
+
+
+class CapabilityCatalogResponse(BaseModel):
+    tools: list[CapabilityToolResponse]
+    mcp_servers: list[CapabilityMcpServerResponse]
+    summary: CapabilitySummaryResponse
+
+
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000, examples=["什么是知识库？"])
     session_id: str | None = Field(

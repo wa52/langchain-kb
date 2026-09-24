@@ -7,6 +7,7 @@ import { TokenDialog } from "./components/TokenDialog";
 import { useDeveloperMode } from "./hooks/useDeveloperMode";
 import { useSystemStatus } from "./hooks/useSystemStatus";
 import { ChatPage } from "./pages/ChatPage";
+import { CapabilitiesPage } from "./pages/CapabilitiesPage";
 import { EvaluationPage } from "./pages/EvaluationPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
 import { RetrievalPage } from "./pages/RetrievalPage";
@@ -19,6 +20,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string }> = [
   { id: "knowledge", label: "知识库" },
   { id: "retrieval", label: "检索调试" },
   { id: "evaluation", label: "评测" },
+  { id: "capabilities", label: "能力" },
   { id: "status", label: "状态" },
   { id: "settings", label: "设置" },
 ];
@@ -90,6 +92,8 @@ export default function App() {
             <RetrievalPage />
           ) : view === "evaluation" ? (
             <EvaluationPage />
+          ) : view === "capabilities" ? (
+            <CapabilitiesPage onOpenSettings={() => navigate("settings")} />
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (

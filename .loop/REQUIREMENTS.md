@@ -22,7 +22,7 @@ mean the product has been release-accepted.
 | Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing eval and isolated retrieval fixture runner/report exist; answer/tool evals remain missing and real retrieval target remains unbaselined. |
 | Quality | Agent trace and timing | PARTIAL | Completed trace API and developer pane exist; dedicated Trace page/replay is missing. |
 | Interfaces | Web chat, sources/settings/status | DONE | React pages and API clients exist. |
-| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | PARTIAL | Retrieval debugger and Evaluation report page exist; Capabilities and Traces remain missing. |
+| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | PARTIAL | Retrieval debugger, Evaluation, and read-only Capability Catalog pages exist; dedicated Traces viewer remains missing. |
 | Interfaces | REST API, CLI, MCP | DONE | FastAPI routers, CLI, and MCP endpoint exist. |
 | Interfaces | Feishu | PARTIAL | Bridge works; real-delivery performance/reliability acceptance is pending. |
 | Reliability | Lifecycle, reload, port recovery | PARTIAL | Managed `knowledge web` lifecycle exists; endurance and shutdown acceptance is missing. |

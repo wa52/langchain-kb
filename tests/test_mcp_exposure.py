@@ -192,7 +192,7 @@ class TestOpenAPISchema:
                      "list_files", "remove_file", "get_agent_trace", "set_jev_api_key",
                      "debug_retrieval",
                      "list_retrieval_records", "get_retrieval_record",
-                     "get_retrieval_evaluation"}
+                     "get_retrieval_evaluation", "list_capabilities"}
         assert oids == expected, f"Mismatch: {oids} vs {expected}"
 
     async def test_mcp_instance_stored_in_app_state(self, session):
