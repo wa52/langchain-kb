@@ -35,3 +35,14 @@ verify that agent creation starts asynchronous discovery.
 **Reason:** MCP catalog discovery is intentionally asynchronous. Testing an
 agent constructor as if it synchronously loaded all MCP servers contradicts
 the readiness/lifecycle design and produces a false regression.
+
+## ADR-0006 — Retrieval benchmark uses a frozen, isolated fixture corpus
+
+**Decision:** Keep the checked-in retrieval dataset limited to hash-pinned
+repository-owned examples. The runner builds an isolated temporary index with
+offline embeddings and no LLM or external service credentials.
+
+**Reason:** Benchmarking must be reproducible and must not scan or modify the
+user's personal knowledge corpus. The current small fixture validates the
+measurement pipeline only; its scores must not be represented as production
+quality evidence.

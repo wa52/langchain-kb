@@ -1355,6 +1355,78 @@ button.primary:not(:disabled):hover {
   .retrieval-excerpt { max-height: 180px; }
 }
 
+/* ---------- Retrieval evaluation report ---------- */
+
+.evaluation-page { width: 100%; max-width: 1280px; margin: 0 auto; }
+.evaluation-heading, .evaluation-section-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.evaluation-heading { min-height: 92px; }
+.evaluation-heading h1 { margin: 4px 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.6px; }
+.evaluation-heading .muted { font-size: 13px; }
+.evaluation-eyebrow { color: var(--laser-cyan); font: 600 11px/1.4 var(--font-mono); letter-spacing: 1.3px; }
+.evaluation-refresh, .evaluation-state .secondary { padding: 8px 13px; border: 1px solid var(--grid-line); border-radius: 8px; color: var(--ink); white-space: nowrap; }
+.evaluation-state { display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--grid-line); border-radius: 10px; background: var(--panel); font-size: 13px; }
+.evaluation-state.empty, .evaluation-state.error { align-items: flex-start; flex-direction: column; }
+.evaluation-state strong { font-size: 14px; }
+.evaluation-state span, .evaluation-state p { color: var(--muted); overflow-wrap: anywhere; }
+.evaluation-state code { padding: 2px 5px; border-radius: 4px; background: var(--bg); color: var(--ink); font-family: var(--font-mono); }
+.evaluation-state.error { border-color: color-mix(in srgb, var(--fail-red) 45%, var(--grid-line)); }
+.evaluation-banner { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border: 1px solid color-mix(in srgb, var(--warn-amber) 40%, var(--grid-line)); border-radius: 10px; background: color-mix(in srgb, var(--warn-amber) 7%, var(--panel)); }
+.evaluation-banner-mark { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 1px solid color-mix(in srgb, var(--warn-amber) 40%, var(--grid-line)); border-radius: 8px; color: var(--warn-amber); font: 700 14px var(--font-mono); }
+.evaluation-banner div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.evaluation-banner strong { font-size: 12px; }
+.evaluation-banner span, .evaluation-banner time { color: var(--muted); font-size: 11px; }
+.evaluation-banner time { white-space: nowrap; }
+.evaluation-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.evaluation-metric { display: flex; min-width: 0; min-height: 112px; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 14px; border: 1px solid var(--grid-line); border-radius: 10px; background: var(--panel); }
+.evaluation-metric > span { color: var(--muted); font-size: 11px; }
+.evaluation-metric > strong { font: 650 clamp(19px, 2.4vw, 27px)/1.2 var(--font-mono); letter-spacing: -1px; }
+.evaluation-metric small { color: var(--muted); font-size: 10px; }
+.evaluation-metric.highlight > strong { color: var(--laser-cyan); }
+.evaluation-metric.timing { grid-column: span 1; }
+.evaluation-metric.timing strong { white-space: nowrap; font-size: clamp(16px, 1.9vw, 22px); }
+.evaluation-metric.timing i { color: var(--muted); font-style: normal; }
+.evaluation-metric.timing em { margin-left: 4px; color: var(--muted); font: 10px var(--font-ui); }
+.evaluation-section-head { margin-top: 6px; }
+.evaluation-section-head h2 { font-size: 15px; }
+.evaluation-section-head p { font-size: 11px; }
+.evaluation-section-head .mono { color: var(--muted); font-size: 10px; }
+.evaluation-cases { display: flex; flex-direction: column; border: 1px solid var(--grid-line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.evaluation-case { display: grid; grid-template-columns: 56px minmax(0, 1fr) 118px; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--grid-line); }
+.evaluation-case:last-child { border-bottom: 0; }
+.evaluation-case-status { width: max-content; min-width: 39px; padding: 4px 6px; border-radius: 5px; text-align: center; font: 700 10px var(--font-mono); }
+.evaluation-case-status.hit { background: color-mix(in srgb, var(--pass-green) 13%, var(--panel)); color: var(--pass-green); }
+.evaluation-case-status.miss { background: color-mix(in srgb, var(--fail-red) 13%, var(--panel)); color: var(--fail-red); }
+.evaluation-case-main { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.evaluation-case-main strong { font: 600 12px var(--font-mono); }
+.evaluation-case-main span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.evaluation-case-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: var(--muted); font: 10px var(--font-mono); }
+.evaluation-provenance { border: 1px solid var(--grid-line); border-radius: 9px; background: var(--panel); color: var(--muted); font-size: 11px; }
+.evaluation-provenance summary { padding: 10px 13px; cursor: pointer; }
+.evaluation-provenance-body { display: flex; flex-direction: column; gap: 6px; padding: 0 13px 12px; }
+.evaluation-provenance-body p { overflow-wrap: anywhere; }
+.evaluation-provenance-body div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-top: 5px; border-top: 1px solid var(--grid-line); }
+.evaluation-provenance-body code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 9px var(--font-mono); }
+
+@media (max-width: 900px) {
+  .evaluation-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .evaluation-metric.timing { grid-column: span 2; }
+}
+
+@media (max-width: 640px) {
+  .evaluation-page { padding: 14px; gap: 12px; }
+  .evaluation-heading { min-height: 0; align-items: flex-start; }
+  .evaluation-heading .muted { max-width: 500px; }
+  .evaluation-banner { align-items: flex-start; }
+  .evaluation-banner time { display: none; }
+  .evaluation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .evaluation-metric.timing { grid-column: span 2; }
+  .evaluation-section-head { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .evaluation-case { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 9px 10px; }
+  .evaluation-case-meta { grid-column: 2; flex-direction: row; justify-content: space-between; }
+  .evaluation-provenance-body div { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .evaluation-provenance-body code { max-width: 100%; }
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 760px) {

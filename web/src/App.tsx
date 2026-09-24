@@ -7,6 +7,7 @@ import { TokenDialog } from "./components/TokenDialog";
 import { useDeveloperMode } from "./hooks/useDeveloperMode";
 import { useSystemStatus } from "./hooks/useSystemStatus";
 import { ChatPage } from "./pages/ChatPage";
+import { EvaluationPage } from "./pages/EvaluationPage";
 import { KnowledgePage } from "./pages/KnowledgePage";
 import { RetrievalPage } from "./pages/RetrievalPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -17,6 +18,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "knowledge", label: "知识库" },
   { id: "retrieval", label: "检索调试" },
+  { id: "evaluation", label: "评测" },
   { id: "status", label: "状态" },
   { id: "settings", label: "设置" },
 ];
@@ -86,6 +88,8 @@ export default function App() {
             <KnowledgePage />
           ) : view === "retrieval" ? (
             <RetrievalPage />
+          ) : view === "evaluation" ? (
+            <EvaluationPage />
           ) : view === "status" ? (
             <StatusPage {...pageProps} />
           ) : (

@@ -65,7 +65,7 @@ export interface FastRagTrace {
   };
 }
 
-export type ViewId = "chat" | "knowledge" | "retrieval" | "status" | "settings";
+export type ViewId = "chat" | "knowledge" | "retrieval" | "evaluation" | "status" | "settings";
 
 export interface RetrievalDebugResult {
   source: string;
@@ -83,6 +83,43 @@ export interface RetrievalDebugResponse {
   query: string;
   results: RetrievalDebugResult[];
   elapsed_ms: number;
+}
+
+export interface RetrievalEvaluationCaseResult {
+  case_id: string;
+  relevant_ids: string[];
+  retrieved_relevant_ids: string[];
+  first_relevant_rank: number | null;
+  hits_at_k: Record<string, number>;
+  reciprocal_rank: number;
+  elapsed_ms: number;
+}
+
+export interface RetrievalEvaluationMetrics {
+  total: number;
+  recall_at_k: Record<string, number>;
+  mrr: number;
+  latency_ms: { p50: number; p95: number };
+  cases: RetrievalEvaluationCaseResult[];
+}
+
+export interface RetrievalEvaluationReport {
+  report_version: number;
+  evaluated_at: string;
+  environment: string;
+  dataset_version: number;
+  dataset_sha256: string;
+  retrieval_profile: string;
+  embedding_model: string;
+  chunking: { size: number; overlap: number };
+  corpus: Array<{ source: string; sha256: string }>;
+  metrics: RetrievalEvaluationMetrics;
+}
+
+export interface RetrievalEvaluationLatestResponse {
+  status: "empty" | "completed";
+  report: RetrievalEvaluationReport | null;
+  message: string | null;
 }
 
 export interface SessionSummary {

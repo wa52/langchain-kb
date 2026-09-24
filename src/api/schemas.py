@@ -67,6 +67,48 @@ class RetrievalDebugResponse(BaseModel):
     elapsed_ms: float
 
 
+class RetrievalEvaluationCaseResultResponse(BaseModel):
+    case_id: str
+    relevant_ids: list[str]
+    retrieved_relevant_ids: list[str]
+    first_relevant_rank: int | None
+    hits_at_k: dict[str, int]
+    reciprocal_rank: float
+    elapsed_ms: float
+
+
+class RetrievalEvaluationMetricsResponse(BaseModel):
+    total: int
+    recall_at_k: dict[str, float]
+    mrr: float
+    latency_ms: dict[str, float]
+    cases: list[RetrievalEvaluationCaseResultResponse]
+
+
+class RetrievalEvaluationCorpusFileResponse(BaseModel):
+    source: str
+    sha256: str
+
+
+class RetrievalEvaluationReportResponse(BaseModel):
+    report_version: int
+    evaluated_at: str
+    environment: str
+    dataset_version: int
+    dataset_sha256: str
+    retrieval_profile: str
+    embedding_model: str
+    chunking: dict[str, int]
+    corpus: list[RetrievalEvaluationCorpusFileResponse]
+    metrics: RetrievalEvaluationMetricsResponse
+
+
+class RetrievalEvaluationLatestResponse(BaseModel):
+    status: str
+    report: RetrievalEvaluationReportResponse | None = None
+    message: str | None = None
+
+
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000, examples=["什么是知识库？"])
     session_id: str | None = Field(

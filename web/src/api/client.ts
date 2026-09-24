@@ -9,6 +9,7 @@ import type {
   AgentTrace,
   FastRagTrace,
   RetrievalDebugResponse,
+  RetrievalEvaluationLatestResponse,
   TaskStatus,
   TrackedFilesResponse,
   UploadTasks,
@@ -165,6 +166,14 @@ export async function debugRetrieval(query: string, topK: number): Promise<Retri
   });
   if (!resp.ok) throw new Error(await readError(resp, `检索调试失败 (${resp.status})`));
   return (await resp.json()) as RetrievalDebugResponse;
+}
+
+export async function getLatestRetrievalEvaluation(): Promise<RetrievalEvaluationLatestResponse> {
+  const resp = await apiFetch("/api/v1/evaluations/retrieval/latest", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `评测报告读取失败 (${resp.status})`));
+  return (await resp.json()) as RetrievalEvaluationLatestResponse;
 }
 
 export async function streamChat(

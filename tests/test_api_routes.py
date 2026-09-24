@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -162,6 +163,57 @@ class TestRetrievalDebugger:
 
         assert response.status_code == 200
         assert response.json()["results"] == []
+
+
+class TestRetrievalEvaluationReport:
+    def test_latest_report_returns_empty_state_when_no_baseline_exists(self, client, tmp_path):
+        with patch("src.api.routers.retrieval.RETRIEVAL_EVAL_REPORT_PATH", tmp_path / "missing.json"):
+            response = client.get("/api/v1/evaluations/retrieval/latest")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "empty",
+            "report": None,
+            "message": "尚无检索评测报告，请运行隔离基准后刷新。",
+        }
+
+    def test_latest_report_exposes_metrics_and_case_ranks_without_query_text(self, client, tmp_path):
+        report_path = tmp_path / "latest.json"
+        report_path.write_text(json.dumps({
+            "report_version": 1,
+            "evaluated_at": "2026-09-24T00:00:00+00:00",
+            "environment": "isolated-frozen-example-corpus",
+            "dataset_version": 1,
+            "dataset_sha256": "a" * 64,
+            "retrieval_profile": "src.application.knowledge.retrieve_scored_documents",
+            "embedding_model": "bge-small-zh",
+            "chunking": {"size": 500, "overlap": 80},
+            "corpus": [{"source": "rag_concepts.md", "sha256": "b" * 64}],
+            "metrics": {
+                "total": 1,
+                "recall_at_k": {"1": 1.0, "3": 1.0, "5": 1.0},
+                "mrr": 1.0,
+                "latency_ms": {"p50": 12.0, "p95": 12.0},
+                "cases": [{
+                    "case_id": "rag-core",
+                    "relevant_ids": ["rag_concepts.md::0"],
+                    "retrieved_relevant_ids": ["rag_concepts.md::0"],
+                    "first_relevant_rank": 1,
+                    "hits_at_k": {"1": 1, "3": 1, "5": 1},
+                    "reciprocal_rank": 1.0,
+                    "elapsed_ms": 12.0,
+                }],
+            },
+        }), encoding="utf-8")
+        with patch("src.api.routers.retrieval.RETRIEVAL_EVAL_REPORT_PATH", report_path):
+            response = client.get("/api/v1/evaluations/retrieval/latest")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "completed"
+        assert body["report"]["metrics"]["recall_at_k"]["5"] == 1.0
+        assert body["report"]["metrics"]["cases"][0]["first_relevant_rank"] == 1
+        assert "query" not in body["report"]["metrics"]["cases"][0]
 
 
 class TestChat:

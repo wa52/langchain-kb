@@ -1,11 +1,19 @@
 import time
+import json
+from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from src.api.schemas import RetrievalDebugResponse, RetrievalDebugResultItem, SearchRequest
+from src.api.schemas import (
+    RetrievalDebugResponse,
+    RetrievalDebugResultItem,
+    RetrievalEvaluationLatestResponse,
+    SearchRequest,
+)
 from src.retrieval.telemetry import retrieval_record_store
 
 router = APIRouter()
+RETRIEVAL_EVAL_REPORT_PATH = Path(__file__).resolve().parents[3] / "evals" / "retrieval" / "reports" / "latest.json"
 
 
 @router.post(
@@ -40,6 +48,26 @@ def debug_retrieval(request: SearchRequest) -> RetrievalDebugResponse:
         results=results,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
     )
+
+
+@router.get(
+    "/evaluations/retrieval/latest",
+    response_model=RetrievalEvaluationLatestResponse,
+    operation_id="get_retrieval_evaluation",
+    summary="查询最近的隔离检索评测",
+    description="读取基于仓库冻结示例语料生成的检索回归报告；不会读取当前用户知识库。",
+)
+def get_retrieval_evaluation() -> RetrievalEvaluationLatestResponse:
+    if not RETRIEVAL_EVAL_REPORT_PATH.is_file():
+        return RetrievalEvaluationLatestResponse(
+            status="empty",
+            message="尚无检索评测报告，请运行隔离基准后刷新。",
+        )
+    try:
+        report = json.loads(RETRIEVAL_EVAL_REPORT_PATH.read_text(encoding="utf-8"))
+        return RetrievalEvaluationLatestResponse(status="completed", report=report)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="检索评测报告不可读") from exc
 
 
 @router.get(

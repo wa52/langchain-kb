@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "top_k": 5,
+  "chunk_size": 500,
+  "chunk_overlap": 80,
+  "corpus": [
+    {"source": "rag_concepts.md", "path": "../knowledge/rag_concepts.md", "sha256": "6C847B846AA4BA4AF660533F482A24B2C114713FDEEF9FEED04180D9D17C4189"},
+    {"source": "agent_basics.md", "path": "../knowledge/agent_basics.md", "sha256": "919EF8309B3798E1622AEC9099A8C63E21266969F7DF22D0EE269A3BB6F075BC"},
+    {"source": "deep_agents.md", "path": "../knowledge/deep_agents.md", "sha256": "9D442ACA513F0CA3A4363FDB79E6EE44EBD7449403B5FBE93511F6F2A3A146BB"},
+    {"source": "langchain_intro.md", "path": "../knowledge/langchain_intro.md", "sha256": "27A0CBCB5B872858BA3141F0B012B8D04CFA68C024BB0F4D718005B4CEDDF84D"}
+  ],
+  "cases": [
+    {"id": "rag-definition-zh", "category": "natural_language", "query": "RAG 检索增强生成的核心思想是什么？", "relevant_ids": ["rag_concepts.md::0"]},
+    {"id": "rag-paraphrase", "category": "paraphrase", "query": "让大模型回答前先查知识库资料，这种方法如何运作？", "relevant_ids": ["rag_concepts.md::0"]},
+    {"id": "rag-before-generation", "category": "paraphrase", "query": "LLM 生成答案之前需要先做什么？", "relevant_ids": ["rag_concepts.md::0"]},
+    {"id": "rag-search-strategies", "category": "operator_names", "query": "Dense 向量和 BM25 关键词检索分别适合什么场景？", "relevant_ids": ["rag_concepts.md::1"]},
+    {"id": "rag-hybrid", "category": "operator_names", "query": "Hybrid retrieval 会融合哪些检索方式？", "relevant_ids": ["rag_concepts.md::1"]},
+    {"id": "agent-react-steps", "category": "operator_names", "query": "LangChain Agent 的 ReAct 会经过哪些步骤？", "relevant_ids": ["agent_basics.md::0"]},
+    {"id": "agent-executor-role", "category": "operator_names", "query": "AgentExecutor 在 Agent 执行环里负责什么？", "relevant_ids": ["agent_basics.md::0"]},
+    {"id": "agent-tool-definition", "category": "code_example", "query": "用 @tool 装饰器定义工具时，需要提供什么？", "relevant_ids": ["agent_basics.md::1"]},
+    {"id": "deep-agent-middleware", "category": "operator_names", "query": "Deep Agents Harness 能通过 Middleware 插入什么？", "relevant_ids": ["deep_agents.md::0"]},
+    {"id": "deep-agent-approval", "category": "operator_names", "query": "HumanInTheLoopMiddleware 用于什么场景？", "relevant_ids": ["deep_agents.md::0"]},
+    {"id": "deep-agent-code", "category": "code_example", "query": "create_deep_agent 创建时可以传入哪些关键参数？", "relevant_ids": ["deep_agents.md::1"]},
+    {"id": "langchain-founder", "category": "natural_language", "query": "LangChain 是谁在什么时候创建的？", "relevant_ids": ["langchain_intro.md::0"]},
+    {"id": "langchain-provider-list", "category": "natural_language", "query": "LangChain 支持哪些模型服务商？", "relevant_ids": ["langchain_intro.md::1"]},
+    {"id": "langchain-modules", "category": "natural_language", "query": "Model I/O、Retrieval、Chains 和 Agents 属于什么？", "relevant_ids": ["langchain_intro.md::0"]}
+  ]
+}
