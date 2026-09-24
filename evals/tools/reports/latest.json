@@ -1,0 +1,422 @@
+{
+  "report_version": 1,
+  "evaluated_at": "2026-09-24T13:49:46.334290+00:00",
+  "environment": "synthetic-offline",
+  "provider_mode": {
+    "rule": "deterministic-rule-based",
+    "jev": "simulated-local-adapter"
+  },
+  "dataset_version": 1,
+  "dataset_sha256": "6145d1a3a398faf20bffef0d7127d19a5487aa1fde670cea8c89872a1142a148",
+  "external_provider_called": false,
+  "results": {
+    "rule": {
+      "total": 11,
+      "top1_accuracy": 1.0,
+      "top3_recall": 1.0,
+      "write_false_exposure_rate": 0.0,
+      "write_false_exposure_cases": 0,
+      "latency_ms": {
+        "p50": 0.023,
+        "p95": 0.652
+      },
+      "cases": [
+        {
+          "case_id": "knowledge-01",
+          "expected": [
+            "retrieve_knowledge"
+          ],
+          "selected": [
+            "retrieve_knowledge",
+            "experience_search",
+            "github_search",
+            "retrieve_graph",
+            "github_read_file",
+            "project_workflow"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.652
+        },
+        {
+          "case_id": "knowledge-02",
+          "expected": [
+            "retrieve_knowledge"
+          ],
+          "selected": [
+            "retrieve_knowledge",
+            "experience_search",
+            "github_search",
+            "retrieve_graph",
+            "github_read_file",
+            "project_workflow"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.034
+        },
+        {
+          "case_id": "graph-01",
+          "expected": [
+            "retrieve_graph"
+          ],
+          "selected": [
+            "retrieve_graph",
+            "retrieve_knowledge",
+            "experience_search",
+            "github_search"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.027
+        },
+        {
+          "case_id": "graph-02",
+          "expected": [
+            "retrieve_graph"
+          ],
+          "selected": [
+            "retrieve_graph",
+            "retrieve_knowledge",
+            "experience_search",
+            "github_search",
+            "github_read_file",
+            "project_workflow"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.023
+        },
+        {
+          "case_id": "workflow-01",
+          "expected": [
+            "project_workflow"
+          ],
+          "selected": [
+            "project_workflow",
+            "experience_search",
+            "github_read_file"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.023
+        },
+        {
+          "case_id": "workflow-02",
+          "expected": [
+            "project_workflow"
+          ],
+          "selected": [
+            "project_workflow",
+            "experience_search",
+            "github_read_file"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.022
+        },
+        {
+          "case_id": "github-read-01",
+          "expected": [
+            "github_search"
+          ],
+          "selected": [
+            "github_search",
+            "github_read_file",
+            "experience_search",
+            "retrieve_knowledge",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.025
+        },
+        {
+          "case_id": "github-read-02",
+          "expected": [
+            "github_read_file"
+          ],
+          "selected": [
+            "github_read_file",
+            "github_search",
+            "experience_search"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.021
+        },
+        {
+          "case_id": "github-write-01",
+          "expected": [
+            "github_create_issue"
+          ],
+          "selected": [
+            "github_create_issue",
+            "github_search",
+            "github_read_file",
+            "experience_write"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.024
+        },
+        {
+          "case_id": "experience-read-01",
+          "expected": [
+            "experience_search"
+          ],
+          "selected": [
+            "experience_search",
+            "github_search",
+            "retrieve_knowledge",
+            "github_read_file",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.023
+        },
+        {
+          "case_id": "experience-write-01",
+          "expected": [
+            "experience_write"
+          ],
+          "selected": [
+            "experience_write",
+            "experience_search",
+            "github_create_issue"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.023
+        }
+      ]
+    },
+    "jev_simulated": {
+      "total": 11,
+      "top1_accuracy": 0.2727,
+      "top3_recall": 0.7273,
+      "write_false_exposure_rate": 0.0,
+      "write_false_exposure_cases": 0,
+      "latency_ms": {
+        "p50": 0.055,
+        "p95": 0.084
+      },
+      "cases": [
+        {
+          "case_id": "knowledge-01",
+          "expected": [
+            "retrieve_knowledge"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "github_search",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": null,
+          "top1_hit": false,
+          "top3_hit": false,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.084
+        },
+        {
+          "case_id": "knowledge-02",
+          "expected": [
+            "retrieve_knowledge"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "github_search",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": null,
+          "top1_hit": false,
+          "top3_hit": false,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.063
+        },
+        {
+          "case_id": "graph-01",
+          "expected": [
+            "retrieve_graph"
+          ],
+          "selected": [
+            "experience_search",
+            "github_search",
+            "retrieve_graph",
+            "retrieve_knowledge"
+          ],
+          "first_expected_rank": 3,
+          "top1_hit": false,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.058
+        },
+        {
+          "case_id": "graph-02",
+          "expected": [
+            "retrieve_graph"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "github_search",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": 5,
+          "top1_hit": false,
+          "top3_hit": false,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.055
+        },
+        {
+          "case_id": "workflow-01",
+          "expected": [
+            "project_workflow"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "project_workflow"
+          ],
+          "first_expected_rank": 3,
+          "top1_hit": false,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.039
+        },
+        {
+          "case_id": "workflow-02",
+          "expected": [
+            "project_workflow"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "project_workflow"
+          ],
+          "first_expected_rank": 3,
+          "top1_hit": false,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.038
+        },
+        {
+          "case_id": "github-read-01",
+          "expected": [
+            "github_search"
+          ],
+          "selected": [
+            "github_read_file",
+            "github_search",
+            "experience_search",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": 2,
+          "top1_hit": false,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.057
+        },
+        {
+          "case_id": "github-read-02",
+          "expected": [
+            "github_read_file"
+          ],
+          "selected": [
+            "github_read_file",
+            "github_search",
+            "experience_search"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.04
+        },
+        {
+          "case_id": "github-write-01",
+          "expected": [
+            "github_create_issue"
+          ],
+          "selected": [
+            "github_create_issue",
+            "github_read_file",
+            "github_search",
+            "experience_write"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.047
+        },
+        {
+          "case_id": "experience-read-01",
+          "expected": [
+            "experience_search"
+          ],
+          "selected": [
+            "experience_search",
+            "github_read_file",
+            "github_search",
+            "project_workflow",
+            "retrieve_graph"
+          ],
+          "first_expected_rank": 1,
+          "top1_hit": true,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.056
+        },
+        {
+          "case_id": "experience-write-01",
+          "expected": [
+            "experience_write"
+          ],
+          "selected": [
+            "experience_search",
+            "experience_write",
+            "github_create_issue"
+          ],
+          "first_expected_rank": 2,
+          "top1_hit": false,
+          "top3_hit": true,
+          "false_write_exposure": [],
+          "elapsed_ms": 0.042
+        }
+      ]
+    }
+  },
+  "limitations": "Jev mode is a deterministic local adapter simulation, not a real Jev model evaluation."
+}

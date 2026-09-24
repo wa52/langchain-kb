@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getLatestRetrievalEvaluation } from "../api/client";
-import type { RetrievalEvaluationLatestResponse } from "../types/api";
+import { getLatestRetrievalEvaluation, getLatestToolSelectionEvaluation } from "../api/client";
+import type { RetrievalEvaluationLatestResponse, ToolSelectionEvaluationLatestResponse, ToolSelectionEvaluationResult } from "../types/api";
 
 export function EvaluationPage() {
   const [data, setData] = useState<RetrievalEvaluationLatestResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toolData, setToolData] = useState<ToolSelectionEvaluationLatestResponse | null>(null);
+  const [toolLoading, setToolLoading] = useState(true);
+  const [toolError, setToolError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -21,11 +24,47 @@ export function EvaluationPage() {
     }
   }, []);
 
+  const refreshTools = useCallback(async () => {
+    setToolLoading(true);
+    setToolError(null);
+    try {
+      setToolData(await getLatestToolSelectionEvaluation());
+    } catch (reason) {
+      setToolData(null);
+      setToolError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setToolLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshTools();
+  }, [refresh, refreshTools]);
 
   const report = data?.status === "completed" ? data.report : null;
+  const toolReport = toolData?.status === "completed" ? toolData.report : null;
+
+  const renderToolMetrics = (title: string, result: ToolSelectionEvaluationResult) => (
+    <div className="evaluation-tool-result">
+      <h3>{title}</h3>
+      <div className="evaluation-metrics" aria-label={`${title} 工具选择指标`}>
+        <article className="evaluation-metric"><span>Top-1</span><strong>{(result.top1_accuracy * 100).toFixed(1)}%</strong><small>首选工具命中</small></article>
+        <article className="evaluation-metric highlight"><span>Top-3</span><strong>{(result.top3_recall * 100).toFixed(1)}%</strong><small>前三候选包含目标工具</small></article>
+        <article className="evaluation-metric"><span>写工具误暴露</span><strong>{(result.write_false_exposure_rate * 100).toFixed(1)}%</strong><small>{result.write_false_exposure_cases} 条只读用例出现写工具</small></article>
+        <article className="evaluation-metric timing"><span>延迟 P50 / P95</span><strong>{result.latency_ms.p50.toFixed(3)} <i>/</i> {result.latency_ms.p95.toFixed(3)}<em>ms</em></strong><small>选择器耗时，不含模型/网络</small></article>
+      </div>
+      <div className="evaluation-cases">
+        {result.cases.map((item) => (
+          <article className="evaluation-case" key={item.case_id}>
+            <span className={item.top1_hit ? "evaluation-case-status hit" : "evaluation-case-status miss"}>{item.first_expected_rank === null ? "MISS" : `#${item.first_expected_rank}`}</span>
+            <div className="evaluation-case-main"><strong>{item.case_id}</strong><span>期望：{item.expected.join(", ")}</span><span>选择：{item.selected.slice(0, 3).join(", ") || "无"}</span>{item.false_write_exposure.length ? <span>误暴露写工具：{item.false_write_exposure.join(", ")}</span> : null}</div>
+            <div className="evaluation-case-meta"><span>Top-3 {item.top3_hit ? "命中" : "未命中"}</span><span>{item.elapsed_ms.toFixed(3)} ms</span></div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <section className="page evaluation-page" aria-labelledby="evaluation-title">
@@ -39,6 +78,21 @@ export function EvaluationPage() {
           {loading ? "读取中…" : "刷新报告"}
         </button>
       </div>
+
+      <section className="evaluation-tool-section" aria-labelledby="tool-evaluation-title">
+        <div className="evaluation-section-head">
+          <div><h2 id="tool-evaluation-title">工具选择评测</h2><p className="muted">合成查询与虚构工具目录；Jev 为本地确定性模拟，不代表真实 Jev 效果。</p></div>
+          <button type="button" className="secondary" disabled={toolLoading} onClick={() => void refreshTools()}>{toolLoading ? "读取中…" : "刷新工具报告"}</button>
+        </div>
+        {toolLoading ? <div className="evaluation-state" role="status"><span className="retrieval-spinner" />正在读取工具评测报告…</div> : null}
+        {toolError ? <div className="evaluation-state error" role="alert"><strong>工具评测报告读取失败</strong><span>{toolError}</span></div> : null}
+        {!toolLoading && !toolError && toolData?.status === "empty" ? <div className="evaluation-state empty"><strong>还没有工具选择报告</strong><span>{toolData.message}</span><p>运行 <code>python -m evals.tools.run</code> 后刷新本页。</p></div> : null}
+        {!toolLoading && !toolError && toolReport ? <>
+          <div className="evaluation-banner"><span className="evaluation-banner-mark" aria-hidden="true">T</span><div><strong>离线合成基准 · 外部 Provider 未调用</strong><span>{toolReport.results.rule.total} 条用例 · DATASET v{toolReport.dataset_version} · {toolReport.dataset_sha256.slice(0, 12)}</span></div><time dateTime={toolReport.evaluated_at}>{new Date(toolReport.evaluated_at).toLocaleString()}</time></div>
+          <div className="evaluation-tool-comparison">{renderToolMetrics("Rule baseline", toolReport.results.rule)}{renderToolMetrics("Jev adapter simulation", toolReport.results.jev_simulated)}</div>
+          <p className="muted evaluation-limitation">{toolReport.limitations}</p>
+        </> : null}
+      </section>
 
       {loading ? (
         <div className="evaluation-state" role="status" aria-live="polite">

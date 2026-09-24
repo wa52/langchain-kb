@@ -10,6 +10,7 @@ import type {
   FastRagTrace,
   RetrievalDebugResponse,
   RetrievalEvaluationLatestResponse,
+  ToolSelectionEvaluationLatestResponse,
   CapabilityCatalog,
   TaskStatus,
   TrackedFilesResponse,
@@ -175,6 +176,14 @@ export async function getLatestRetrievalEvaluation(): Promise<RetrievalEvaluatio
   });
   if (!resp.ok) throw new Error(await readError(resp, `评测报告读取失败 (${resp.status})`));
   return (await resp.json()) as RetrievalEvaluationLatestResponse;
+}
+
+export async function getLatestToolSelectionEvaluation(): Promise<ToolSelectionEvaluationLatestResponse> {
+  const resp = await apiFetch("/api/v1/evaluations/tools/latest", {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `工具选择评测读取失败 (${resp.status})`));
+  return (await resp.json()) as ToolSelectionEvaluationLatestResponse;
 }
 
 export async function streamChat(

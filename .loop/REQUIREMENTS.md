@@ -16,13 +16,13 @@ mean the product has been release-accepted.
 | AI | Citations and evidence boundary | PARTIAL | Citation/evidence code exists; grounded-answer benchmark is not yet established. |
 | Agent | Capability catalog + native tools | DONE | Harness/ToolRegistry and agent tests. |
 | Agent | MCP lifecycle/readiness | DONE | Domain-aware readiness implementation and tests. |
-| Agent | Tool selection / optional Jev | PARTIAL | Selector exists; comparative tool-selection evaluation is missing. |
+| Agent | Tool selection / optional Jev | PARTIAL | Selector plus isolated synthetic Rule-vs-Jev-adapter simulation exist; real Jev quality remains unmeasured. |
 | Agent | Policy, approval, retry | PARTIAL | Approval/recovery exists; policy acceptance coverage is incomplete. |
 | Quality | Routing evaluation | DONE | 100 labeled cases, macro-F1 gate. |
-| Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing eval and isolated retrieval fixture runner/report exist; answer/tool evals remain missing and real retrieval target remains unbaselined. |
+| Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing, isolated retrieval, and synthetic tool-selection runner/report exist; answer eval, real Jev comparison, and production retrieval target remain unbaselined. |
 | Quality | Agent trace and timing | DONE | Out-of-band completed-run query, per-run Trace Viewer, exact action durations, and secret/reasoning-safe display. Trace persistence/replay across process restarts remains out of scope. |
 | Interfaces | Web chat, sources/settings/status | DONE | React pages and API clients exist. |
-| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | DONE | Retrieval debugger, Evaluation, read-only Capability Catalog, and run_id Trace Viewer pages are present. |
+| Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | DONE | Retrieval debugger, Evaluation (including synthetic tool-selection comparison), read-only Capability Catalog, and run_id Trace Viewer pages are present. |
 | Interfaces | REST API, CLI, MCP | DONE | FastAPI routers, CLI, and MCP endpoint exist. |
 | Interfaces | Feishu | PARTIAL | Bridge works; real-delivery performance/reliability acceptance is pending. |
 | Reliability | Lifecycle, reload, port recovery | PARTIAL | Managed `knowledge web` lifecycle exists; endurance and shutdown acceptance is missing. |

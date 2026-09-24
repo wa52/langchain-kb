@@ -216,6 +216,61 @@ class TestRetrievalEvaluationReport:
         assert "query" not in body["report"]["metrics"]["cases"][0]
 
 
+class TestToolSelectionEvaluationReport:
+    def test_latest_report_returns_empty_state_when_no_tool_baseline_exists(self, client, tmp_path):
+        with patch("src.api.routers.retrieval.TOOL_EVAL_REPORT_PATH", tmp_path / "missing.json"):
+            response = client.get("/api/v1/evaluations/tools/latest")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "empty"
+        assert "evals.tools.run" in response.json()["message"]
+
+    def test_latest_report_exposes_separate_rule_and_jev_simulation_results(self, client, tmp_path):
+        report_path = tmp_path / "latest.json"
+        report_path.write_text(json.dumps({
+            "report_version": 1,
+            "evaluated_at": "2026-09-24T00:00:00+00:00",
+            "environment": "synthetic-offline",
+            "provider_mode": {"rule": "deterministic-rule-based", "jev": "simulated-local-adapter"},
+            "dataset_version": 1,
+            "dataset_sha256": "a" * 64,
+            "external_provider_called": False,
+            "results": {
+                "rule": {"total": 1, "top1_accuracy": 0.5, "top3_recall": 1.0,
+                         "write_false_exposure_rate": 0.0, "write_false_exposure_cases": 0,
+                         "latency_ms": {"p50": 1.0, "p95": 1.0},
+                         "cases": [{"case_id": "safe-1", "expected": ["read"], "selected": ["read"],
+                                    "first_expected_rank": 1, "top1_hit": True, "top3_hit": True,
+                                    "false_write_exposure": [], "elapsed_ms": 1.0}]},
+                "jev_simulated": {"total": 1, "top1_accuracy": 0.7, "top3_recall": 1.0,
+                                  "write_false_exposure_rate": 0.0, "write_false_exposure_cases": 0,
+                                  "latency_ms": {"p50": 2.0, "p95": 2.0},
+                                  "cases": [{"case_id": "safe-1", "expected": ["read"], "selected": ["read"],
+                                             "first_expected_rank": 1, "top1_hit": True, "top3_hit": True,
+                                             "false_write_exposure": [], "elapsed_ms": 2.0}]},
+            },
+            "limitations": "simulation only",
+            "api_key": "must-not-be-returned",
+        }), encoding="utf-8")
+        with patch("src.api.routers.retrieval.TOOL_EVAL_REPORT_PATH", report_path):
+            response = client.get("/api/v1/evaluations/tools/latest")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "completed"
+        assert body["report"]["results"]["rule"]["top1_accuracy"] == 0.5
+        assert body["report"]["results"]["jev_simulated"]["top1_accuracy"] == 0.7
+        assert "api_key" not in body["report"]
+
+    def test_report_cannot_claim_external_provider_was_called(self, client, tmp_path):
+        report_path = tmp_path / "latest.json"
+        report_path.write_text(json.dumps({"external_provider_called": True}), encoding="utf-8")
+        with patch("src.api.routers.retrieval.TOOL_EVAL_REPORT_PATH", report_path):
+            response = client.get("/api/v1/evaluations/tools/latest")
+
+        assert response.status_code == 500
+
+
 class TestCapabilityCatalog:
     def test_lists_local_tools_and_mcp_readiness_without_secrets(self, client, rm):
         from types import SimpleNamespace

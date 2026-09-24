@@ -8,12 +8,15 @@ from src.api.schemas import (
     RetrievalDebugResponse,
     RetrievalDebugResultItem,
     RetrievalEvaluationLatestResponse,
+    ToolSelectionEvaluationReportResponse,
+    ToolSelectionEvaluationLatestResponse,
     SearchRequest,
 )
 from src.retrieval.telemetry import retrieval_record_store
 
 router = APIRouter()
 RETRIEVAL_EVAL_REPORT_PATH = Path(__file__).resolve().parents[3] / "evals" / "retrieval" / "reports" / "latest.json"
+TOOL_EVAL_REPORT_PATH = Path(__file__).resolve().parents[3] / "evals" / "tools" / "reports" / "latest.json"
 
 
 @router.post(
@@ -68,6 +71,29 @@ def get_retrieval_evaluation() -> RetrievalEvaluationLatestResponse:
         return RetrievalEvaluationLatestResponse(status="completed", report=report)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="检索评测报告不可读") from exc
+
+
+@router.get(
+    "/evaluations/tools/latest",
+    response_model=ToolSelectionEvaluationLatestResponse,
+    operation_id="get_tool_selection_evaluation",
+    summary="查询最近的离线工具选择评测",
+    description="读取合成查询集上的规则与 Jev 适配器模拟评测；不会调用外部 Jev 服务。",
+)
+def get_tool_selection_evaluation() -> ToolSelectionEvaluationLatestResponse:
+    if not TOOL_EVAL_REPORT_PATH.is_file():
+        return ToolSelectionEvaluationLatestResponse(
+            status="empty",
+            message="尚无工具选择评测报告，请运行 python -m evals.tools.run 后刷新。",
+        )
+    try:
+        report = json.loads(TOOL_EVAL_REPORT_PATH.read_text(encoding="utf-8"))
+        if report.get("external_provider_called") is not False:
+            raise ValueError("tool evaluation report must be offline")
+        validated_report = ToolSelectionEvaluationReportResponse.model_validate(report)
+        return ToolSelectionEvaluationLatestResponse(status="completed", report=validated_report)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="工具选择评测报告不可读") from exc
 
 
 @router.get(

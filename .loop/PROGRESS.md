@@ -32,8 +32,10 @@ typecheck/build passed; desktop and 390px iframe layout plus synthetic
 completed/not-found states verified. Secret and hidden-reasoning fields were
 checked against synthetic data only. See `reports/LOOP-005.md`.
 
-Loop 006 is active: tool-selection evaluation runner for Rule and optional Jev.
-See `CURRENT_LOOP.md` for its acceptance gate.
+Loop 006 is DONE: synthetic offline Rule baseline and deterministic Jev adapter
+simulation, report API, and Evaluation Web comparison delivered. Full suite:
+760 passed, 1 skipped. The Jev simulation must not be interpreted as real Jev
+quality; no external call or user data was used. See `reports/LOOP-006.md`.
 
 ## Completed decisions incorporated into the baseline
 

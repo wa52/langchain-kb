@@ -147,6 +147,43 @@ export interface RetrievalEvaluationLatestResponse {
   message: string | null;
 }
 
+export interface ToolSelectionEvaluationResult {
+  total: number;
+  top1_accuracy: number;
+  top3_recall: number;
+  write_false_exposure_rate: number;
+  write_false_exposure_cases: number;
+  latency_ms: { p50: number; p95: number };
+  cases: Array<{
+    case_id: string;
+    expected: string[];
+    selected: string[];
+    first_expected_rank: number | null;
+    top1_hit: boolean;
+    top3_hit: boolean;
+    false_write_exposure: string[];
+    elapsed_ms: number;
+  }>;
+}
+
+export interface ToolSelectionEvaluationReport {
+  report_version: number;
+  evaluated_at: string;
+  environment: "synthetic-offline";
+  provider_mode: { rule: string; jev: string };
+  dataset_version: number;
+  dataset_sha256: string;
+  external_provider_called: false;
+  results: { rule: ToolSelectionEvaluationResult; jev_simulated: ToolSelectionEvaluationResult };
+  limitations: string;
+}
+
+export interface ToolSelectionEvaluationLatestResponse {
+  status: "empty" | "completed";
+  report: ToolSelectionEvaluationReport | null;
+  message: string | null;
+}
+
 export interface SessionSummary {
   id: string;
   title: string;

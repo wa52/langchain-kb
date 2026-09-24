@@ -15,25 +15,32 @@ of claiming that Jev is effective merely because an API call succeeds.
 
 ## Acceptance
 
-- [ ] Add a versioned, repository-owned tool-selection case set with expected
+- [x] Add a versioned, repository-owned tool-selection case set with expected
       tool IDs and independent coverage across knowledge, graph, workflow,
       external read, and external write intents.
-- [ ] Add deterministic RuleBased evaluation using the real selector seam;
+- [x] Add deterministic RuleBased evaluation using the real selector seam;
       report Top-1, Top-3 recall, per-case ranks, write-tool false exposure,
       and latency without modifying production selection.
-- [ ] Add an optional Jev evaluation mode using the existing adapter; require
-      configured credentials explicitly and never print/store the key.
-- [ ] Keep Jev outcomes separate from Rule baseline, record provider mode,
-      dataset hash, errors/fallbacks, and mark network-dependent results clearly.
-- [ ] Add tests for metrics, bad cases, no-key behavior, adapter failures, and
+- [x] Add an offline Jev simulation mode using the existing adapter seam; do
+      not require or read configured credentials.
+- [x] Keep simulated Jev outcomes separate from Rule baseline, record provider
+      mode and dataset hash, and never label simulation as a real Jev result.
+- [x] Add tests for metrics, bad cases, no-key behavior, adapter failures, and
       report redaction/output.
-- [ ] Show both baseline/result availability in the Evaluation Web page, with
+- [x] Show baseline/simulation result availability in the Evaluation Web page, with
       loading/empty/error/completed states; never silently treat Jev as run.
-- [ ] Preserve selector and Agent behavior. Run the real external Jev suite
-      only on this synthetic dataset and keep its outcome labeled as such.
+- [x] Preserve selector and Agent behavior. No external Jev call is in scope.
 
 ## Scope guard
 
 Do not read live MCP configuration, user prompts, chat history, or the personal
 knowledge corpus. Use synthetic ToolSpecs and cases. Do not tune selector
 rules/golden labels to force passing scores; this loop measures only.
+
+## Boundary and result
+
+The approved scope is offline-only: repository-owned synthetic queries and
+ToolSpecs, real RuleBased selector, and a deterministic request stub injected
+through the Jev adapter. It never reads `TYPESAFE_API_KEY` or sends requests to
+TypeSafe. The Jev result is an adapter-flow simulation, not evidence of real Jev
+quality. See `reports/LOOP-006.md` and `evals/tools/reports/latest.json`.

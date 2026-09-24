@@ -109,6 +109,45 @@ class RetrievalEvaluationLatestResponse(BaseModel):
     message: str | None = None
 
 
+class ToolSelectionEvaluationCaseResponse(BaseModel):
+    case_id: str
+    expected: list[str]
+    selected: list[str]
+    first_expected_rank: int | None
+    top1_hit: bool
+    top3_hit: bool
+    false_write_exposure: list[str]
+    elapsed_ms: float
+
+
+class ToolSelectionEvaluationResultResponse(BaseModel):
+    total: int
+    top1_accuracy: float
+    top3_recall: float
+    write_false_exposure_rate: float
+    write_false_exposure_cases: int
+    latency_ms: dict[str, float]
+    cases: list[ToolSelectionEvaluationCaseResponse]
+
+
+class ToolSelectionEvaluationReportResponse(BaseModel):
+    report_version: int
+    evaluated_at: str
+    environment: str
+    provider_mode: dict[str, str]
+    dataset_version: int
+    dataset_sha256: str
+    external_provider_called: bool
+    results: dict[str, ToolSelectionEvaluationResultResponse]
+    limitations: str
+
+
+class ToolSelectionEvaluationLatestResponse(BaseModel):
+    status: str
+    report: ToolSelectionEvaluationReportResponse | None = None
+    message: str | None = None
+
+
 class CapabilityToolResponse(BaseModel):
     name: str
     description: str = ""

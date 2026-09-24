@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic tool selection benchmark; no personal prompts, corpus, or external services.",
+  "tools": [
+    {"name": "retrieve_knowledge", "description": "Search knowledge documents and return relevant passages", "tags": ["knowledge", "search", "read"], "read_only": true, "domain": "knowledge"},
+    {"name": "retrieve_graph", "description": "Search knowledge graph entities and relationships", "tags": ["knowledge", "graph", "search"], "read_only": true, "domain": "knowledge"},
+    {"name": "project_workflow", "description": "Inspect project workflow steps and status", "tags": ["project", "workflow", "read"], "read_only": true, "domain": "workflow"},
+    {"name": "github_search", "description": "Search repositories, issues, commits, and pull requests on GitHub", "tags": ["github", "search", "read"], "read_only": true, "domain": "github"},
+    {"name": "github_read_file", "description": "Read a file from a GitHub repository", "tags": ["github", "read", "file"], "read_only": true, "domain": "github"},
+    {"name": "github_create_issue", "description": "Create a new issue in a GitHub repository", "tags": ["github", "write", "create", "issue"], "read_only": false, "domain": "github"},
+    {"name": "experience_search", "description": "Search saved engineering experience and lessons", "tags": ["experience", "search", "read"], "read_only": true, "domain": "experience"},
+    {"name": "experience_write", "description": "Save an engineering experience entry", "tags": ["experience", "write", "save"], "read_only": false, "domain": "experience"}
+  ],
+  "cases": [
+    {"id": "knowledge-01", "query": "查找知识库里的 HALCON 异常检测资料", "intent": "knowledge", "domain": "knowledge", "side_effect": false, "expected": ["retrieve_knowledge"]},
+    {"id": "knowledge-02", "query": "搜索知识文档中关于标定的内容", "intent": "knowledge", "domain": "knowledge", "side_effect": false, "expected": ["retrieve_knowledge"]},
+    {"id": "graph-01", "query": "查一下图谱里相机和标定之间的关系", "intent": "knowledge", "domain": "knowledge", "side_effect": false, "expected": ["retrieve_graph"]},
+    {"id": "graph-02", "query": "搜索知识关系图中的设备连接", "intent": "knowledge", "domain": "knowledge", "side_effect": false, "expected": ["retrieve_graph"]},
+    {"id": "workflow-01", "query": "查看当前项目的工作流和进度", "intent": "action", "domain": "workflow", "side_effect": false, "expected": ["project_workflow"]},
+    {"id": "workflow-02", "query": "检查项目流程目前进行到哪一步", "intent": "action", "domain": "workflow", "side_effect": false, "expected": ["project_workflow"]},
+    {"id": "github-read-01", "query": "帮我搜索 GitHub 最近的提交记录", "intent": "action", "domain": "github", "side_effect": false, "expected": ["github_search"]},
+    {"id": "github-read-02", "query": "读取 GitHub 仓库中的 README 文件", "intent": "action", "domain": "github", "side_effect": false, "expected": ["github_read_file"]},
+    {"id": "github-write-01", "query": "在 GitHub 仓库创建一个 issue", "intent": "action", "domain": "github", "side_effect": true, "expected": ["github_create_issue"]},
+    {"id": "experience-read-01", "query": "搜索以前保存的工程经验", "intent": "action", "domain": "experience", "side_effect": false, "expected": ["experience_search"]},
+    {"id": "experience-write-01", "query": "把这次调试经验保存到经验库", "intent": "action", "domain": "experience", "side_effect": true, "expected": ["experience_write"]}
+  ]
+}

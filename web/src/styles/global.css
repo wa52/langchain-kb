@@ -1358,6 +1358,12 @@ button.primary:not(:disabled):hover {
 /* ---------- Retrieval evaluation report ---------- */
 
 .evaluation-page { width: 100%; max-width: 1280px; margin: 0 auto; }
+.evaluation-tool-section { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--grid-line); }
+.evaluation-tool-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.evaluation-tool-result { display: flex; min-width: 0; flex-direction: column; gap: 9px; }
+.evaluation-tool-result h3 { margin: 2px 0; font-size: 13px; }
+.evaluation-tool-result .evaluation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.evaluation-limitation { font-size: 10px; }
 .evaluation-heading, .evaluation-section-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .evaluation-heading { min-height: 92px; }
 .evaluation-heading h1 { margin: 4px 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.6px; }
@@ -1512,10 +1518,12 @@ button.primary:not(:disabled):hover {
   .evaluation-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .evaluation-metric.timing { grid-column: span 2; }
   .capability-layout { grid-template-columns: minmax(0, 1.2fr) minmax(230px, .8fr); gap: 11px; }
+  .evaluation-tool-comparison { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
   .evaluation-page { padding: 14px; gap: 12px; }
+  .evaluation-tool-section { gap: 10px; }
   .capabilities-page { padding: 14px; gap: 12px; }
   .trace-page { padding: 14px; gap: 12px; }
   .capabilities-heading { align-items: flex-start; }
