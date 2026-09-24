@@ -12,7 +12,7 @@ and regression test so a later loop cannot reintroduce it.
 | FAIL-0003 | Agent requests missed MCP tools during slow discovery | MCP discovery was on the critical path or catalog was incomplete. | Domain-aware readiness tests | RESOLVED |
 | FAIL-0004 | Baseline MCP registration test expected synchronous agent discovery | The test exercised a pre-lifecycle implementation rather than the catalog registration seam. | Catalog metadata and agent trigger tests | RESOLVED |
 | FAIL-0005 | OpenAPI contract rejected implemented Trace/Jev/retrieval endpoints | Exact expected operation-id set was not updated with deliberate public endpoints. | Updated exact operation-id contract | RESOLVED |
-| FAIL-0006 | Full regression is red after application-layer chat migration | 18 tests still mock the retired API chat execution seam or use `hi`, which is intentionally a no-LLM greeting. | Loop 001: explicit agent-route tests and current application seam mocks | OPEN |
+| FAIL-0006 | Full regression is red after application-layer chat migration | 18 tests still mock the retired API chat execution seam or use `hi`, which is intentionally a no-LLM greeting. | Explicit Agent-route tests and current application seam mocks | RESOLVED |
 
 ## Entry format
 

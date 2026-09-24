@@ -12,12 +12,7 @@ def reset_singleton():
     ResourceManager._instance = None
 
 
-@pytest.fixture(autouse=True)
-def force_legacy_tests_through_agent_path():
-    """This module tests the Agent seam; routing has its own test module."""
-    from src.agent.query_router import QueryRoute
-    with patch("src.api.services.chat.route_query", return_value=QueryRoute.AGENT):
-        yield
+AGENT_QUERY = "/agent 测试 Agent 执行路径"
 
 
 @pytest.fixture
@@ -29,6 +24,10 @@ def rm():
     rm.graph = MagicMock()
     rm.llm = MagicMock()
     rm.agent = MagicMock()
+    # The application runtime asks ResourceManager for the tool-set cache;
+    # seed that current seam so Agent/SSE contract tests never construct a
+    # real Deep Agent or touch model startup.
+    rm._agents_by_tool_set[None] = rm.agent
     return rm
 
 
@@ -40,7 +39,7 @@ class TestChatReusesRetriever:
             patch("src.api.services.chat.save_history", return_value="sess_1"),
         ):
             from src.api.services.chat import chat_with_rag
-            answer, sid, _ = chat_with_rag("hi", None)
+            answer, sid, _ = chat_with_rag(AGENT_QUERY, None)
             assert answer == "hello"
             assert sid == "sess_1"
 
@@ -61,8 +60,8 @@ class TestChatReusesRetriever:
             patch("src.api.services.chat.save_history", side_effect=lambda h, sid: sid or "new"),
         ):
             from src.api.services.chat import chat_with_rag
-            a1, _, _ = chat_with_rag("first", None)
-            a2, _, _ = chat_with_rag("second", None)
+            a1, _, _ = chat_with_rag("/agent first", None)
+            a2, _, _ = chat_with_rag("/agent second", None)
             assert a1 == "answer_0"
             assert a2 == "answer_0"
 
@@ -84,8 +83,8 @@ class TestChatFailureIsolation:
         ):
             from src.api.services.chat import chat_with_rag
             with pytest.raises(RuntimeError, match="first request fails"):
-                chat_with_rag("fail", None)
-            answer, _, _ = chat_with_rag("ok", None)
+                chat_with_rag("/agent fail", None)
+            answer, _, _ = chat_with_rag("/agent ok", None)
             assert answer == "success"
 
 
@@ -97,7 +96,7 @@ class TestChatNoKnowledge:
             patch("src.api.services.chat.stream_rag_response", return_value=["I don't know"]),
             patch("src.api.services.chat.save_history", return_value="sess_3"),
         ):
-            answer, _, _ = chat_with_rag("unknown topic", None)
+            answer, _, _ = chat_with_rag("/agent unknown topic", None)
             assert "don't know" in answer.lower() or "不知道" in answer
 
     def test_retrieval_error_graceful(self):
@@ -108,4 +107,4 @@ class TestChatNoKnowledge:
             patch("src.api.services.chat.save_history", return_value="sess_4"),
         ):
             with pytest.raises(RuntimeError, match="retrieval failed"):
-                chat_with_rag("test", None)
+                chat_with_rag("/agent test", None)

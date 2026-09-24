@@ -1,23 +1,22 @@
-# Loop 001 — Chat Execution Regression Contract Alignment
+# Loop 002 — Retrieval Debugger UI
 
 ## Prior loop result
 
-Loop 000 established the contracts and baseline in
-`reports/BASELINE-000.md`. It completed its inventory purpose and selected
-this red regression gate as the next highest-priority gap.
+Loop 001 aligned legacy tests with the current application seams and restored
+the full regression gate. See `reports/LOOP-001.md`.
 
 ## Acceptance
 
-- [ ] Agent-chat tests use an explicit Agent route, not a greeting/generic
-      Direct route.
-- [ ] CLI tests mock the current application seam rather than the removed API
-      execution seam.
-- [ ] Existing greeting/direct behaviour remains covered and unchanged.
-- [ ] Full isolated Python suite passes with the project-local temp directory.
-- [ ] No production ConversationService, AgentRuntime, or SSE lifecycle code
-      changes are required solely to satisfy obsolete mocks.
+- [ ] A Web navigation entry opens the Retrieval page.
+- [ ] A user can submit a query and see ordered Top-K results.
+- [ ] Each result exposes source, chunk/excerpt, Dense, BM25, fusion/final
+      score, rank, and elapsed time where available.
+- [ ] Loading, empty, error, long Chinese text, and code-content states are
+      covered.
+- [ ] API and Web tests pass; existing Fast RAG behaviour is unchanged.
 
 ## Scope guard
 
-Do not modify production chat execution, SSE lifecycle, RAG scoring, agent
-selection, or Feishu delivery. This loop is regression-contract alignment.
+Do not duplicate hybrid retrieval in the UI. The page must consume the
+project-owned retrieval/API seam; it must not change Fast RAG scoring, agent
+selection, or Feishu delivery.

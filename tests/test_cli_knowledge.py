@@ -220,7 +220,7 @@ class TestSearch:
 class TestChat:
 
     def test_chat_shows_answer_and_sources(self):
-        with patch("src.api.services.chat.chat_with_rag",
+        with patch("src.application.chat.chat_with_rag",
                    return_value=("答案是 X [来源: docs/rag.md]", "session_1", 123.4)):
             result = runner.invoke(app, ["chat", "什么是RAG?"])
         assert result.exit_code == 0
@@ -228,7 +228,7 @@ class TestChat:
         assert "docs/rag.md" in result.output
 
     def test_chat_json(self):
-        with patch("src.api.services.chat.chat_with_rag",
+        with patch("src.application.chat.chat_with_rag",
                    return_value=("答案是 X [来源: docs/rag.md]", "session_1", 123.4)):
             result = runner.invoke(app, ["chat", "什么是RAG?", "--json"])
         assert result.exit_code == 0
@@ -240,13 +240,13 @@ class TestChat:
         assert _ANSI.search(result.output) is None
 
     def test_chat_session_passed(self):
-        with patch("src.api.services.chat.chat_with_rag",
+        with patch("src.application.chat.chat_with_rag",
                    return_value=("ans", "session_1", 1.0)) as mock_chat:
             runner.invoke(app, ["chat", "q", "--session", "session_1"])
         mock_chat.assert_called_once_with("q", "session_1")
 
     def test_chat_failure_exit_1(self):
-        with patch("src.api.services.chat.chat_with_rag", side_effect=RuntimeError("api down")):
+        with patch("src.application.chat.chat_with_rag", side_effect=RuntimeError("api down")):
             result = runner.invoke(app, ["chat", "q"])
         assert result.exit_code == 1
         assert "api down" in result.output
@@ -423,7 +423,7 @@ class TestJsonErrorContract:
                 type_="search_failed", exit_code=1, recoverable=True)
 
     def test_chat_json_failure(self):
-        with patch("src.api.services.chat.chat_with_rag",
+        with patch("src.application.chat.chat_with_rag",
                    side_effect=RuntimeError("api down")):
             self._assert_error(
                 runner.invoke(app, ["chat", "q", "--json"]),

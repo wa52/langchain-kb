@@ -24,12 +24,7 @@ def reset_singleton():
     ResourceManager._instance = None
 
 
-@pytest.fixture(autouse=True)
-def force_legacy_tests_through_agent_path():
-    """This module verifies Agent SSE behavior; direct routing is tested separately."""
-    from src.agent.query_router import QueryRoute
-    with patch("src.api.services.chat.route_query", return_value=QueryRoute.AGENT):
-        yield
+AGENT_QUERY = "/agent 测试 Agent SSE 路径"
 
 
 @pytest.fixture
@@ -41,6 +36,9 @@ def rm():
     rm.graph = MagicMock()
     rm.llm = MagicMock()
     rm.agent = MagicMock()
+    # Seed the current AgentRuntime cache instead of letting these HTTP
+    # contract tests construct a real Deep Agent.
+    rm._agents_by_tool_set[None] = rm.agent
     return rm
 
 
@@ -98,7 +96,7 @@ class TestStreamToolTextLength:
 class TestChatStreamSSEFraming:
     def test_stream_emits_events_in_order(self, client):
         with _patch_stream(["Hello", " ", "world"]):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/event-stream")
         events = _parse_sse(resp.text)
@@ -112,7 +110,7 @@ class TestChatStreamSSEFraming:
 
     def test_message_end_carries_session_and_not_interrupted(self, client):
         with _patch_stream(["done"], save_return="sess_stream"):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         end = [e for e in events if e[0] == "message_end"][0][1]
         assert end["session_id"] == "sess_stream"
@@ -134,7 +132,7 @@ class TestChatStreamSSEFraming:
 
     def test_sources_are_extracted_from_answer(self, client):
         with _patch_stream(["根据资料 [来源: guide.md] 说明。"]):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         sources = [e for e in events if e[0] == "sources"][0][1]["sources"]
         assert len(sources) == 1
@@ -154,7 +152,7 @@ class TestChatStreamSSEFraming:
             patch("src.api.services.chat._source_lookup",
                   return_value={"chunk_id": "chunk-42", "excerpt": "标定方法要点…"}),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         sources = [e for e in events if e[0] == "sources"][0][1]["sources"]
         assert sources[0]["chunk_id"] == "chunk-42"
@@ -223,7 +221,7 @@ class TestChatStreamSSEFraming:
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
             patch("src.api.services.chat.load_history", return_value=None),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         assert resp.status_code == 200
         history = saved[0]
         assert history[-1]["role"] == "assistant"
@@ -251,7 +249,7 @@ class TestChatStreamToolEvent:
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
             patch("src.api.services.chat.load_history", return_value=None),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         types = [e[0] for e in events]
         assert "tool" in types
@@ -264,7 +262,7 @@ class TestChatStreamToolEvent:
 
     def test_no_tool_event_without_tool_calls(self, client):
         with _patch_stream(["plain answer"]):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         types = [e[0] for e in events]
         assert "tool" not in types
@@ -281,7 +279,7 @@ class TestChatStreamErrors:
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
             patch("src.api.services.chat.load_history", return_value=None),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         errors = [e for e in events if e[0] == "error"]
         assert errors
@@ -301,7 +299,7 @@ class TestChatStreamErrors:
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
             patch("src.api.services.chat.load_history", return_value=None),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
 
         assert resp.status_code == 200
         assert saved[-1][-1] == {
@@ -321,7 +319,7 @@ class TestChatStreamContinuation:
         with _patch_stream(["ok"], save_return="sess_old",
                            load_return=[{"role": "user", "content": "prev"}]):
             resp = client.post("/api/v1/chat/stream", json={
-                "query": "follow",
+                "query": "/agent follow",
                 "session_id": "sess_old",
             })
         events = _parse_sse(resp.text)
@@ -343,7 +341,7 @@ class TestChatStreamSessionAllocation:
             patch("src.api.services.chat.save_history", side_effect=fake_save),
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
-            resp = client.post("/api/v1/chat/stream", json={"query": "hi"})
+            resp = client.post("/api/v1/chat/stream", json={"query": AGENT_QUERY})
         events = _parse_sse(resp.text)
         start = [e for e in events if e[0] == "message_start"][0][1]
         end = [e for e in events if e[0] == "message_end"][0][1]
@@ -355,7 +353,7 @@ class TestChatStreamSessionAllocation:
         with _patch_stream(["ok"], save_return="sess_old",
                            load_return=[{"role": "user", "content": "prev"}]):
             resp = client.post("/api/v1/chat/stream", json={
-                "query": "follow",
+                "query": "/agent follow",
                 "session_id": "sess_old",
             })
         events = _parse_sse(resp.text)
@@ -377,7 +375,7 @@ class TestChatStreamSessionAllocation:
             patch("src.api.services.chat.save_history", side_effect=fake_save),
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
-            gen = stream_chat_events("hi", None, stop)
+            gen = stream_chat_events(AGENT_QUERY, None, stop)
             start = next(gen)["data"]
             next(gen)
             stop.set()
@@ -406,7 +404,7 @@ class TestChatStreamServiceInterrupted:
             patch("src.api.services.chat.save_history", side_effect=fake_save),
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
-            events = list(stream_chat_events("hi", None, stop))
+            events = list(stream_chat_events(AGENT_QUERY, None, stop))
         types = [e["type"] for e in events]
         assert types == ["message_start", "sources", "message_end"]
         end = events[-1]["data"]
@@ -429,7 +427,7 @@ class TestChatStreamServiceInterrupted:
             patch("src.api.services.chat.save_history", side_effect=fake_save),
             patch("src.api.services.chat.allocate_session_id", return_value="sess_new"),
         ):
-            gen = stream_chat_events("hi", None, stop)
+            gen = stream_chat_events(AGENT_QUERY, None, stop)
             assert next(gen)["type"] == "message_start"
             assert next(gen)["type"] == "token"
             assert next(gen)["type"] == "token"

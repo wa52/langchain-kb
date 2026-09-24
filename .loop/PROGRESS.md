@@ -17,8 +17,9 @@
 
 ## Active loop
 
-Loop 001 is active: restore the red full-regression gate at the current
-application seams. See `CURRENT_LOOP.md` and `reports/BASELINE-000.md`.
+Loop 001 is DONE: 727 passed, 1 skipped. Loop 002 is active: productise the
+existing retrieval telemetry through a dedicated Retrieval Debugger UI. See
+`CURRENT_LOOP.md` and `reports/LOOP-001.md`.
 
 ## Completed decisions incorporated into the baseline
 
