@@ -1,0 +1,14 @@
+{
+    "task": {
+        "path": "evals\\halcon-lines-facet-evidence"
+    },
+    "trial_name": "halcon-lines-facet-evidence__9tZNLdS",
+    "trials_dir": "evals\\jobs\\loop007-halcon-fast-rag-evidence",
+    "agent": {
+        "name": "evals.harbor_agents.production_fast_rag:ProductionFastRagAgent"
+    },
+    "verifier": {
+        "import_path": "evals.harbor_agents.fast_rag_verifier:FastRagSemanticVerifier"
+    },
+    "job_id": "1c9751d1-5cdc-486d-9f57-bed6930b6990"
+}

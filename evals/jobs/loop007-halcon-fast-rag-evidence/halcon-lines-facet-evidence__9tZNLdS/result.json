@@ -1,0 +1,138 @@
+{
+    "id": "b2a9cf3a-cda1-4ad6-9e50-2e343cebd0a9",
+    "task_name": "local/halcon-lines-facet-evidence",
+    "trial_name": "halcon-lines-facet-evidence__9tZNLdS",
+    "trial_uri": "file:///D:/AiProjects/langchain-kb/evals/jobs/loop007-halcon-fast-rag-evidence/halcon-lines-facet-evidence__9tZNLdS",
+    "task_id": {
+        "path": "evals\\halcon-lines-facet-evidence"
+    },
+    "source": null,
+    "task_checksum": "847e51ec42e3d130147ec64763b38dcae8a44ebccb06d78a05f0d08b5972936e",
+    "config": {
+        "task": {
+            "path": "evals\\halcon-lines-facet-evidence",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "halcon-lines-facet-evidence__9tZNLdS",
+        "trials_dir": "evals\\jobs\\loop007-halcon-fast-rag-evidence",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "evals.harbor_agents.production_fast_rag:ProductionFastRagAgent",
+            "import_path": null,
+            "model_name": null,
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "import_path": "evals.harbor_agents.fast_rag_verifier:FastRagSemanticVerifier",
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "1c9751d1-5cdc-486d-9f57-bed6930b6990",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "production-fast-rag",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "answer_path": "evals\\jobs\\loop007-halcon-fast-rag-evidence\\halcon-lines-facet-evidence__9tZNLdS\\agent\\fast_rag_result.json",
+            "route": "FastRagService",
+            "fixture_sources": [
+                "lines_facet_example.hdev",
+                "lines_facet_reference.md"
+            ],
+            "plan": {
+                "route": "fast_rag",
+                "total_ms": 8760.22,
+                "stages": {
+                    "search_ms": 0.0,
+                    "gate_ms": 0.09,
+                    "context_ms": 0.1,
+                    "llm_ms": 8760.03
+                },
+                "llm_calls": 1,
+                "raw_docs_count": 2,
+                "selected_docs_count": 2,
+                "context_tokens": 194,
+                "relevant": true
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-09-24T14:19:35.413985Z",
+    "finished_at": "2026-09-24T14:20:55.499006Z",
+    "environment_setup": {
+        "started_at": "2026-09-24T14:19:35.708033Z",
+        "finished_at": "2026-09-24T14:20:08.650939Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-09-24T14:20:08.651002Z",
+        "finished_at": "2026-09-24T14:20:08.651084Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-09-24T14:20:08.651173Z",
+        "finished_at": "2026-09-24T14:20:27.179672Z"
+    },
+    "verifier": {
+        "started_at": "2026-09-24T14:20:27.181635Z",
+        "finished_at": "2026-09-24T14:20:43.744478Z"
+    },
+    "step_results": null
+}

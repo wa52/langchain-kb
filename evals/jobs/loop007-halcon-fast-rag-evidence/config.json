@@ -1,0 +1,17 @@
+{
+    "job_name": "loop007-halcon-fast-rag-evidence",
+    "jobs_dir": "evals\\jobs",
+    "verifier": {
+        "import_path": "evals.harbor_agents.fast_rag_verifier:FastRagSemanticVerifier"
+    },
+    "agents": [
+        {
+            "name": "evals.harbor_agents.production_fast_rag:ProductionFastRagAgent"
+        }
+    ],
+    "tasks": [
+        {
+            "path": "evals\\halcon-lines-facet-evidence"
+        }
+    ]
+}

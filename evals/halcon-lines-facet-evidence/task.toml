@@ -1,0 +1,26 @@
+schema_version = "1.4"
+artifacts = []
+
+[task]
+name = "local/halcon-lines-facet-evidence"
+version = "1.0.0"
+description = "Check whether the Fast RAG answer distinguishes a HDevelop example from operator-reference evidence."
+keywords = ["rag", "evidence", "halcon"]
+
+[metadata]
+category = "knowledge-grounded-answering"
+
+[verifier]
+timeout_sec = 180.0
+environment_mode = "shared"
+
+[agent]
+timeout_sec = 180.0
+
+[environment]
+network_mode = "no-network"
+build_timeout_sec = 120.0
+os = "linux"
+mcp_servers = []
+
+[environment.env]

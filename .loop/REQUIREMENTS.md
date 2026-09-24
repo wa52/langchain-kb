@@ -13,13 +13,13 @@ mean the product has been release-accepted.
 | Retrieval | Cache and latency telemetry | DONE | Retrieval cache and telemetry tests. |
 | Retrieval | Retrieval debugger in Web | DONE | `POST /api/v1/retrieval/debug`, dedicated responsive page, backend contract tests, production build, live Web query verified. |
 | AI | Direct, Fast RAG, Agent routing | DONE | Routing service and 100-case routing evaluation. |
-| AI | Citations and evidence boundary | PARTIAL | Citation/evidence code exists; grounded-answer benchmark is not yet established. |
+| AI | Citations and evidence boundary | PARTIAL | Fast RAG evidence constraints exist; Loop 007 validates one HALCON example/reference case with a semantic judge. A broader grounded-answer benchmark remains. |
 | Agent | Capability catalog + native tools | DONE | Harness/ToolRegistry and agent tests. |
 | Agent | MCP lifecycle/readiness | DONE | Domain-aware readiness implementation and tests. |
 | Agent | Tool selection / optional Jev | PARTIAL | Selector plus isolated synthetic Rule-vs-Jev-adapter simulation exist; real Jev quality remains unmeasured. |
 | Agent | Policy, approval, retry | PARTIAL | Approval/recovery exists; policy acceptance coverage is incomplete. |
 | Quality | Routing evaluation | DONE | 100 labeled cases, macro-F1 gate. |
-| Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing, isolated retrieval, and synthetic tool-selection runner/report exist; answer eval, real Jev comparison, and production retrieval target remain unbaselined. |
+| Quality | Retrieval, answer, and tool evaluations | PARTIAL | Routing, isolated retrieval, and synthetic tool-selection runner/report exist. Loop 007 adds one Harbor Fast RAG evidence-boundary case; broad answer evaluation, real Jev comparison, and production retrieval target remain unbaselined. |
 | Quality | Agent trace and timing | DONE | Out-of-band completed-run query, per-run Trace Viewer, exact action durations, and secret/reasoning-safe display. Trace persistence/replay across process restarts remains out of scope. |
 | Interfaces | Web chat, sources/settings/status | DONE | React pages and API clients exist. |
 | Interfaces | Retrieval/Capabilities/Evaluation/Traces UI | DONE | Retrieval debugger, Evaluation (including synthetic tool-selection comparison), read-only Capability Catalog, and run_id Trace Viewer pages are present. |

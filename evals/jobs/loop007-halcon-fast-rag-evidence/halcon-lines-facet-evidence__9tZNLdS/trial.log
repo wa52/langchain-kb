@@ -1,0 +1,4 @@
+Building Docker image harbor-prebuilt:harbor-docker-egress-control-sidecar--7b9d008f883e21d9 from C:\Users\feng\AppData\Roaming\uv\tools\harbor\Lib\site-packages\harbor\environments\docker\harbor-docker-egress-control-sidecar using C:\Users\feng\AppData\Roaming\uv\tools\harbor\Lib\site-packages\harbor\environments\docker\harbor-docker-egress-control-sidecar\Dockerfile at 2026-09-24 14:19:36.927856+00:00
+Skipping image OS validation for hb__5e0df27cd27288ee6bb62ce3ec1bd7fb: docker inspect returned 1
+Collecting main service artifacts
+Semantic verdict: PASS — 回答正确说明LightDark='light'选择亮线（手册合法取值），Lines为亚像素精度XLD轮廓而非region，算子提取线与曲线结构而非仅直线，并明确区分示例可见调用与手册支持的语义；未编造参数（5,3,5语义标注为无法确认），符合全部判定规则。

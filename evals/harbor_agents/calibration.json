@@ -1,0 +1,17 @@
+{
+  "calibration": [
+    {
+      "case": "valid-paraphrase",
+      "expected_pass": true,
+      "pass": true,
+      "reason": "回答明确区分了例程可见的 'light' 调用与手册事实：亮线提取、Lines 为亚像素 XLD 轮廓、提取线状及曲线状结构（非仅直线），均与证据一致，无虚构参数细节。"
+    },
+    {
+      "case": "plausible-wrong-answer",
+      "expected_pass": false,
+      "pass": false,
+      "reason": "回答声称 'light' 提取暗线（证据为亮线）、Lines 是普通区域（证据为亚像素XLD轮廓）、算子只找严格直线（证据为线与曲线结构），且未区分示例与参考手册的事实，全部关键声明均与证据相悖。"
+    }
+  ],
+  "passed": true
+}

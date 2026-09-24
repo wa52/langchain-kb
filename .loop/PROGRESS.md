@@ -37,6 +37,20 @@ simulation, report API, and Evaluation Web comparison delivered. Full suite:
 760 passed, 1 skipped. The Jev simulation must not be interpreted as real Jev
 quality; no external call or user data was used. See `reports/LOOP-006.md`.
 
+Loop 007 is DONE: Harbor 0.23.0 Docker task exercises the production
+`FastRagService` with a synthetic HALCON `lines_facet` example and frozen,
+paraphrased HALCON 24.11.3.0 operator-reference facts. Semantic verifier
+calibration passed both a correct paraphrase and a plausible wrong answer; the
+real one-attempt Harbor run completed 1/1 with reward 1.0 and no trial errors.
+Full project suite passed in `kb_env`: 760 passed, 1 skipped, 3 warnings. The
+measured RAG stages were
+search 0 ms, gate 0.09 ms, context 0.1 ms, one LLM call 8760.03 ms. The adapter
+and verifier call the API in host subprocesses, so the Docker no-network policy
+applies to the task container only; only synthetic prompt/evidence text was
+sent. No production corpus, history, or MCP was accessed. See
+`reports/LOOP-007.md`, `evals/jobs/loop007-halcon-fast-rag-evidence/`, and
+`evals/harbor_agents/calibration.json`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy
