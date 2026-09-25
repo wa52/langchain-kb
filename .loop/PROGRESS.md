@@ -8,7 +8,7 @@
 | 1 | Knowledge management | NOT STARTED |
 | 2 | Retrieval | IN PROGRESS — debugger and isolated quality evaluation delivered; production target unbaselined |
 | 3 | RAG / answer quality | NOT STARTED |
-| 4 | Agent / capability | IN PROGRESS — read-only runtime catalog delivered; tool-selection eval and policy acceptance remain |
+| 4 | Agent / capability | IN PROGRESS — scoped filesystem tools delivered; real tool-selection evaluation and policy acceptance remain |
 | 5 | Evaluation | IN PROGRESS — routing and isolated retrieval evaluations exist; answer/tool evaluations remain |
 | 6 | Trace / observability | IN PROGRESS — run_id viewer delivered; persistent trace history/replay remains out of scope |
 | 7 | UI productization | IN PROGRESS — Retrieval, Evaluation, Capability, and Trace pages delivered; source health and richer answer UX remain |

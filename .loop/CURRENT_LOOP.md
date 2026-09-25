@@ -33,16 +33,3 @@ or capability metadata.
 ## Status
 
 DONE. Last full regression: 773 passed, 1 skipped. See `reports/LOOP-008.md`.
-
-## Boundary and result
-
-The approved scope uses synthetic task data only, the production `FastRagService`
-and configured project LLM API, plus a separately invoked semantic verifier.
-The Docker task environment is configured without network access and contains
-only frozen synthetic example/reference files. The Harbor host-side adapter
-downloads just those fixtures and makes the approved model calls from the host;
-therefore the Docker network policy does not constrain the host-side calls.
-No personal corpus, chat history, or MCP configuration is accessed. See
-`reports/LOOP-007.md`, the Harbor job under `evals/jobs/`, and the verifier
-calibration at `evals/harbor_agents/calibration.json`. Result: 1/1 reward 1.0;
-full regression in `kb_env`: 760 passed, 1 skipped.
