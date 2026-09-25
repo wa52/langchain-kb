@@ -51,6 +51,12 @@ sent. No production corpus, history, or MCP was accessed. See
 `reports/LOOP-007.md`, `evals/jobs/loop007-halcon-fast-rag-evidence/`, and
 `evals/harbor_agents/calibration.json`.
 
+Loop 008 is DONE: filesystem actions route to Agent; bounded inspect and
+approval-gated indexing tools are implemented with configured-root checks,
+cross-source hash deduplication, Capability API exposure, and synthetic tests.
+Full suite: 773 passed, 1 skipped. No real user directory was scanned. See
+`reports/LOOP-008.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy

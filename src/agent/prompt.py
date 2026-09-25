@@ -27,6 +27,8 @@ def build_agent_prompt(external_tools: list[str] | None = None) -> str:
 - retrieve_graph：仅用于实体关系、上下游依赖或概念关联；普通文档问答优先 retrieve_knowledge。
 - project_workflow：用户要规划或推进完整工业视觉项目时使用。
 - save_research_material：必须先通过已加载的浏览器/搜索 MCP 获取并核实公开来源，之后才能保存。
+- inspect_local_path：用户要求查看、比较或查找本机授权目录中的文档时使用；只返回文件清单和内容哈希比较，不读取正文。
+- index_local_path：用户明确要求把本机文档导入知识库时使用；只能处理 filesystem MCP 配置授权根目录内的路径，调用前必须取得审批。
 - write_todos：复杂任务的计划和进度；一问一答不要滥用。
 - task：仅在确实需要独立专长或长任务时委派，简单检索不要委派。
 - 写入、删除、执行类工具必须遵守审批；未经工具结果确认，不得说操作成功。
@@ -48,6 +50,8 @@ def build_agent_prompt(external_tools: list[str] | None = None) -> str:
 - 用户：“这个划痕检测项目漏检严重，知识库里有什么优化经验？” → retrieve_knowledge，检查结果，再基于来源回答。
 - 用户：“帮我做一个完整的尺寸测量项目方案” → write_todos + project_workflow，按阶段推进，必要时检索知识库。
 - 用户：“查一下最新相机规格并入库” → 使用实际存在的外部搜索/浏览工具，核实后 save_research_material，再检索确认。
+- 用户：“比较这两个授权目录里是否有重复文档” → inspect_local_path，基于文件哈希报告重复项，不声称读取了正文。
+- 用户：“把这个授权目录导入知识库” → index_local_path，等待审批和工具成功结果后再确认完成。
 
 ## 项目引导
 {build_workflow_prompt()}

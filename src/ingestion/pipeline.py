@@ -10,7 +10,7 @@ from threading import RLock
 from config import CHUNK_OVERLAP, CHUNK_SIZE, KNOWLEDGE_HOME
 from src.ingestion.loader import MarkdownLoader, load_files, load_path
 from src.ingestion.splitter import create_splitter
-from src.ingestion.tracker import get_changed_files, update_tracker, remove_from_tracker
+from src.ingestion.tracker import get_changed_files, update_tracker, remove_from_tracker, get_indexed_hashes
 from src.retrieval.retriever import rebuild_bm25, invalidate_bm25
 from src.vector_store.chroma_client import get_vector_store, reset_vector_store, delete_by_source, add_documents_with_progress
 from src.vector_store.embedding import get_embedding_model
@@ -455,7 +455,6 @@ def run_add_path(
     exclude: list[str] | tuple[str, ...] | None = None,
 ):
     from src.ingestion.loader import _iter_files
-    from src.ingestion.tracker import is_already_indexed
     src = Path(path)
     if not src.exists():
         echo_fn(f"路径不存在: {path}")
@@ -469,14 +468,16 @@ def run_add_path(
     excludes = {p.strip("/").replace("\\", "/") for p in (exclude or []) if p.strip()}
 
     copied_paths = []
+    indexed_hashes = get_indexed_hashes()
 
     if src.is_file():
         target = target_base / src.name
-        if is_already_indexed([str(src)]):
-            echo_fn(f"  -> {src.name} 已添加过，跳过")
+        source_digest = _file_sha256(src)
+        if source_digest in indexed_hashes:
+            echo_fn(f"  -> {src.name} 内容已存在于知识库，跳过")
             return 0
         existing = {_file_sha256(p) for p in _existing_by_size(target_base).get(src.stat().st_size, [])}
-        if _file_sha256(src) in existing:
+        if source_digest in existing:
             echo_fn(f"  -> {src.name} 与知识库已有文件内容相同，跳过")
             return 0
         if target.exists():
@@ -493,9 +494,6 @@ def run_add_path(
 
     elif src.is_dir():
         src_files = list(_iter_files(src))
-        if src_files and is_already_indexed([str(p) for p in src_files]):
-            echo_fn(f"  -> 目录 {src.name} 已添加过，跳过")
-            return 0
         target = target_base / src.name
         by_size = _existing_by_size(target_base)
         if target.exists():
@@ -514,8 +512,9 @@ def run_add_path(
             if size not in digest_cache:
                 digest_cache[size] = {_file_sha256(x) for x in by_size.get(size, [])}
             digest = _file_sha256(p)
-            if digest in digest_cache[size] or digest in seen:
+            if digest in indexed_hashes or digest in digest_cache[size] or digest in seen:
                 skipped += 1
+                seen.add(digest)
                 continue
             dest = target / rel
             dest.parent.mkdir(parents=True, exist_ok=True)

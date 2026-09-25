@@ -1,33 +1,38 @@
-# Loop 007 — HALCON Evidence-Boundary Harbor Evaluation
-
-## Prior loop result
-
-Loop 006 delivered an offline Rule-vs-Jev-adapter Tool Selection evaluation and
-Evaluation Web page. The current scope is one semantic Fast RAG task over a
-frozen HALCON example/reference fixture; it must not load personal corpus,
-history, or MCP configuration. See `reports/LOOP-007.md`.
+# Loop 008 — Scoped Local Filesystem Capability
 
 ## Goal
 
-Evaluate one production Fast RAG answer against a synthetic HALCON example and
-frozen operator-reference evidence, including the evidence boundary between
-example code and documented operator behavior.
+Allow the Agent to inspect and compare explicitly authorized local folders, and
+index user-selected documents through the existing duplicate-aware ingestion
+pipeline. Prevent the assistant from claiming filesystem access when the
+filesystem capability is unavailable.
 
 ## Acceptance
 
-- [x] Build a Harbor task containing only synthetic HDevelop and frozen
-      paraphrased HALCON 24.11.3.0 operator-reference evidence.
-- [x] Invoke the production `FastRagService` with a deterministic retrieval
-      fixture instead of initializing the user's corpus or vector store.
-- [x] Independently grade the answer semantically and calibrate the verifier
-      on one correct paraphrase and one plausible wrong response.
-- [x] Retain the Harbor job, answer, verifier verdict, timing, and source digest.
-- [x] Run the full test suite in the project `kb_env` environment.
+- [x] Filesystem requests route to Agent/filesystem; conceptual/how-to questions
+      stay on the direct path.
+- [x] Read/compare tool only returns supported file names and hash duplicate
+      matches; file contents are not returned.
+- [x] Both tools reject paths outside enabled filesystem MCP configured roots;
+      symlink escapes are excluded.
+- [x] Index tool uses existing ingestion, dedupes against every tracked source,
+      invalidates retrieval caches on successful changes, and requires approval.
+- [x] Capability catalog API lists both tools with read/write and risk metadata;
+      generic Capabilities UI consumes that API.
+- [x] Focused, API, and full regression suites pass; no user directory is scanned
+      during tests.
 
 ## Scope guard
 
-Do not read live MCP configuration, user prompts, chat history, or the personal
-knowledge corpus. Send only synthetic task fixtures to the configured API.
+Do not enumerate, read, hash, or index any real user directory as part of
+verification. Synthetic temporary fixtures only. Do not broaden the existing
+filesystem roots; the one additional root is the exact HALCON examples folder
+named by the user's screenshot. No credentials or document contents go in API
+or capability metadata.
+
+## Status
+
+DONE. Last full regression: 773 passed, 1 skipped. See `reports/LOOP-008.md`.
 
 ## Boundary and result
 

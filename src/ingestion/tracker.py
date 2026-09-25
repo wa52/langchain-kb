@@ -152,3 +152,16 @@ def list_all_files() -> list[dict]:
         for file_key, file_hash in registry.items():
             result.append({"source_type": source_type, "file_key": file_key, "hash": file_hash})
     return result
+
+
+def get_indexed_hashes() -> set[str]:
+    """Return all content hashes already recorded by any knowledge source."""
+    with _TRACKER_LOCK:
+        tracker = _load_tracker()
+        return {
+            digest
+            for registry in tracker.values()
+            if isinstance(registry, dict)
+            for digest in registry.values()
+            if isinstance(digest, str) and digest
+        }

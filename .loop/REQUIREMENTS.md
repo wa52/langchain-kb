@@ -14,7 +14,8 @@ mean the product has been release-accepted.
 | Retrieval | Retrieval debugger in Web | DONE | `POST /api/v1/retrieval/debug`, dedicated responsive page, backend contract tests, production build, live Web query verified. |
 | AI | Direct, Fast RAG, Agent routing | DONE | Routing service and 100-case routing evaluation. |
 | AI | Citations and evidence boundary | PARTIAL | Fast RAG evidence constraints exist; Loop 007 validates one HALCON example/reference case with a semantic judge. A broader grounded-answer benchmark remains. |
-| Agent | Capability catalog + native tools | DONE | Harness/ToolRegistry and agent tests. |
+| Agent | Capability catalog + native tools | DONE | Harness/ToolRegistry, scoped local filesystem inspection/index tools, capability API tests. |
+| Agent | Authorized local-folder inspection and indexing | DONE | Filesystem root allowlist, hash-only duplicate inspection, approval-gated existing ingestion path, cross-source dedupe regression. |
 | Agent | MCP lifecycle/readiness | DONE | Domain-aware readiness implementation and tests. |
 | Agent | Tool selection / optional Jev | PARTIAL | Selector plus isolated synthetic Rule-vs-Jev-adapter simulation exist; real Jev quality remains unmeasured. |
 | Agent | Policy, approval, retry | PARTIAL | Approval/recovery exists; policy acceptance coverage is incomplete. |

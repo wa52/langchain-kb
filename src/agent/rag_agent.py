@@ -74,7 +74,7 @@ def create_rag_agent(tool_registry=None, tool_names: tuple[str, ...] | None = No
     _t4 = _time.time()
     prompt = build_agent_prompt(external_names)
     checkpointer, checkpoint_connection = _create_checkpointer()
-    interrupt_on = {name: True for name in ("write_file", "edit_file", "execute")}
+    interrupt_on = {name: True for name in ("write_file", "edit_file", "execute", "index_local_path")}
     for tool in external_tools:
         name = getattr(tool, "name", "").lower()
         if any(word in name for word in ("write", "delete", "remove", "move", "rename", "execute", "run")):

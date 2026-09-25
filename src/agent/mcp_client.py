@@ -92,6 +92,31 @@ def _enabled_servers(config_path) -> dict:
     }
 
 
+def filesystem_allowed_roots(config_path=None) -> tuple[Path, ...]:
+    """Return canonical roots explicitly granted to the filesystem MCP server."""
+    config_path = config_path or default_mcp_config_path()
+    server = _enabled_servers(config_path).get("filesystem")
+    if not isinstance(server, dict):
+        return ()
+    command = server.get("command") or []
+    marker = next(
+        (i for i, value in enumerate(command)
+         if isinstance(value, str) and value.rstrip("/").endswith("@modelcontextprotocol/server-filesystem")),
+        None,
+    )
+    if marker is None:
+        return ()
+    roots = []
+    for value in command[marker + 1:]:
+        if not isinstance(value, str) or value.startswith("-"):
+            continue
+        try:
+            roots.append(Path(value).expanduser().resolve(strict=True))
+        except (OSError, RuntimeError):
+            continue
+    return tuple(roots)
+
+
 _ENV_REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 
 

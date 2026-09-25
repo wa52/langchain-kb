@@ -100,6 +100,28 @@ class TestDuplicatePrevention:
             finally:
                 tr.TRACKER_FILE = orig
 
+    def test_add_file_skips_content_already_indexed_from_internal_source(self):
+        import src.ingestion.tracker as tr
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            internal = root / "internal"
+            internal.mkdir()
+            existing = internal / "original.hdev"
+            existing.write_text("same HALCON example", encoding="utf-8")
+            src = root / "incoming.hdev"
+            src.write_text("same HALCON example", encoding="utf-8")
+            ext = root / "external"
+            orig = tr.TRACKER_FILE
+            tr.TRACKER_FILE = str(root / "file_tracker.json")
+            tr.update_tracker("internal", internal, [str(existing)])
+
+            try:
+                chunks = run_add_path(str(src), str(ext), echo_fn=lambda *a, **k: None)
+                assert chunks == 0, "内部知识库已有相同文件内容时不得再次索引"
+                assert not list(ext.rglob("incoming.hdev")), "重复文件不应复制到 external"
+            finally:
+                tr.TRACKER_FILE = orig
+
     def test_add_dir_skips_exact_content_duplicate(self):
         import src.ingestion.tracker as tr
         with tempfile.TemporaryDirectory() as td:

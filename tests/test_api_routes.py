@@ -272,6 +272,34 @@ class TestToolSelectionEvaluationReport:
 
 
 class TestCapabilityCatalog:
+    def test_filesystem_actions_are_visible_in_capability_api(self, client, rm):
+        from types import SimpleNamespace
+        from src.harness.events import EventBus
+        from src.harness.plugins import PluginContext
+        from src.harness.tools import ToolRegistry
+        from src.bootstrap.agent_tools import AgentToolsPlugin
+
+        registry = ToolRegistry()
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(AgentToolsPlugin().start(PluginContext(EventBus(), registry, {})))
+        finally:
+            loop.close()
+        rm.tool_registry = registry
+        client.app.state.harness = SimpleNamespace(tools=registry)
+        with patch("src.api.routers.capabilities.get_settings_view", return_value={
+            "mcp_enabled": True, "mcp_servers": [],
+        }):
+            response = client.get("/api/v1/capabilities")
+
+        assert response.status_code == 200
+        tools = {item["name"]: item for item in response.json()["tools"]}
+        assert tools["inspect_local_path"]["read_only"] is True
+        assert tools["index_local_path"]["read_only"] is False
+        assert tools["index_local_path"]["risk_level"] == "medium"
+        assert "D:\\" not in response.text
+
     def test_lists_local_tools_and_mcp_readiness_without_secrets(self, client, rm):
         from types import SimpleNamespace
         from src.harness.tools import ToolRegistry

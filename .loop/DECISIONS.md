@@ -64,3 +64,15 @@ and masks credential-like keys.
 
 **Reason:** Users can inspect a specific run without exposing unrelated chat
 history or turning observability into a new chat execution dependency.
+
+## ADR-0009 — Local filesystem capability is allowlist-scoped and content-minimal
+
+**Decision:** Native filesystem tools may only access existing paths under the
+enabled filesystem MCP command's configured roots. Inspection returns supported
+file names/counts and SHA-256 duplicate matches, never document bodies. Imports
+go through the existing ingestion service, compare hashes against all tracked
+sources, and require Agent approval.
+
+**Reason:** Configuring an MCP server does not mean every local path should be
+implicitly available to the Agent. The capability must be useful without
+granting unrestricted disk access or duplicating already indexed knowledge.

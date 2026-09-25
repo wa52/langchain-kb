@@ -67,6 +67,14 @@ class TestHelp:
 
 class TestServe:
 
+    @pytest.fixture(autouse=True)
+    def _isolate_server_lifecycle(self, monkeypatch):
+        # These unit tests assert CLI behavior, not the state of services that
+        # happen to be running on the developer's machine.
+        monkeypatch.setattr("src.cli.knowledge._managed_pid_is_running", lambda: False)
+        monkeypatch.setattr("src.cli.knowledge._running_project_url", lambda _host: None)
+        monkeypatch.setattr("src.cli.knowledge._port_is_listening", lambda *_: False)
+
     def test_serve_shows_addresses(self):
         with (
             patch("src.api.app.create_app"),
@@ -410,6 +418,10 @@ class TestJsonErrorContract:
         with (
             patch("src.api.app.create_app"),
             patch("uvicorn.run", side_effect=OSError("address in use")),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._port_is_listening", return_value=True),
+            patch("src.cli.knowledge._find_available_web_port", return_value=None),
         ):
             self._assert_error(
                 runner.invoke(app, ["serve", "--json"]),
