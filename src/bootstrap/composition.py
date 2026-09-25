@@ -34,3 +34,10 @@ def create_agent_runtime(*, agent_factory, stream_fn, tool_registry=None, tool_s
         tool_selector=tool_selector,
         catalog_readiness=catalog_readiness,
     )
+
+
+def create_source_health_auditor():
+    """Compose the source-health use case with the current tracker adapter."""
+    from src.adapters.ingestion.source_health import create_current_source_health_auditor
+
+    return create_current_source_health_auditor()

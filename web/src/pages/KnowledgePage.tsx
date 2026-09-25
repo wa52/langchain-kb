@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DragEvent, FormEvent } from "react";
 
 import { useKnowledge } from "../hooks/useKnowledge";
+import { useSourceHealth } from "../hooks/useSourceHealth";
 import { useSync } from "../hooks/useSync";
 
 const STATE_LABEL: Record<string, string> = {
@@ -9,6 +10,14 @@ const STATE_LABEL: Record<string, string> = {
   running: "处理中",
   done: "完成",
   failed: "失败",
+};
+
+const HEALTH_LABEL: Record<string, string> = {
+  missing: "文件缺失",
+  changed: "内容已变更",
+  duplicate: "重复内容",
+  unreadable: "无法读取",
+  unresolved: "来源未配置",
 };
 
 function fmtTime(iso: string | null): string {
@@ -40,6 +49,7 @@ export function KnowledgePage() {
   const [syncDirInput, setSyncDirInput] = useState("");
   const [fileFilter, setFileFilter] = useState("");
   const sync = useSync();
+  const sourceHealth = useSourceHealth();
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -127,6 +137,114 @@ export function KnowledgePage() {
           </p>
         ) : null}
       </div>
+
+      <section className="card source-health-card" aria-labelledby="source-health-title">
+        <div className="source-health-heading">
+          <div>
+            <h3 id="source-health-title">知识源健康度</h3>
+            <p className="muted source-health-note">
+              按需核对已索引文件的缺失、变更和重复。检查会逐文件计算 SHA-256，不会把正文发送给模型；打开页面不会自动扫描。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void sourceHealth.run()}
+            disabled={sourceHealth.running}
+          >
+            {sourceHealth.running ? "检查中…" : "检查健康度"}
+          </button>
+        </div>
+
+        {sourceHealth.error ? (
+          <p className="msg-error" role="alert">{sourceHealth.error}</p>
+        ) : null}
+
+        {!sourceHealth.task && !sourceHealth.running && !sourceHealth.error ? (
+          <p className="muted source-health-empty">尚未检查。使用上方按钮后才会读取已跟踪文件。</p>
+        ) : null}
+
+        {sourceHealth.running ? (
+          <div className="source-health-progress" role="status" aria-live="polite">
+            {sourceHealth.task?.progress.total ? (
+              <progress
+                max={sourceHealth.task.progress.total}
+                value={sourceHealth.task.progress.checked}
+                aria-label="知识源扫描进度"
+              />
+            ) : <span className="source-health-pulse" aria-hidden="true" />}
+            <span className="muted">
+              {sourceHealth.task?.progress.total
+                ? `已检查 ${sourceHealth.task.progress.checked} / ${sourceHealth.task.progress.total} 个文件`
+                : "正在读取已索引文件清单…"}
+            </span>
+          </div>
+        ) : null}
+
+        {sourceHealth.task?.status === "failed" ? (
+          <p className="msg-error" role="alert">{sourceHealth.task.error ?? "健康度检查失败。"}</p>
+        ) : null}
+
+        {sourceHealth.task?.status === "done" && sourceHealth.task.result ? (() => {
+          const { summary, issues, issues_truncated } = sourceHealth.task.result;
+          const metrics = [
+            { label: "已检查", value: summary.checked, tone: "neutral" },
+            { label: "正常", value: summary.healthy, tone: "healthy" },
+            { label: "已变更", value: summary.changed, tone: summary.changed ? "warning" : "neutral" },
+            { label: "缺失", value: summary.missing, tone: summary.missing ? "danger" : "neutral" },
+            { label: "重复文件", value: summary.duplicate_files, tone: summary.duplicate_files ? "warning" : "neutral" },
+            { label: "无法确认", value: summary.unreadable + summary.unresolved, tone: summary.unreadable + summary.unresolved ? "danger" : "neutral" },
+          ];
+          return (
+            <div className="source-health-result" aria-live="polite">
+              <div className="source-health-metrics">
+                {metrics.map((metric) => (
+                  <div className={`source-health-metric ${metric.tone}`} key={metric.label}>
+                    <strong>{metric.value}</strong>
+                    <span>{metric.label}</span>
+                  </div>
+                ))}
+              </div>
+              {summary.total === 0 ? (
+                <p className="muted source-health-empty">还没有已跟踪的知识源文件。</p>
+              ) : null}
+              {issues.length ? (
+                <div className="source-health-issues">
+                  <div className="source-health-issues-heading">
+                    <strong>需要关注的文件</strong>
+                    <span className="muted">{summary.issues_total} 项</span>
+                  </div>
+                  <ul>
+                    {issues.slice(0, 40).map((issue) => (
+                      <li key={`${issue.source_type}:${issue.file_key}`}>
+                        <div className="source-health-file">
+                          <code>{issue.file_key}</code>
+                          <span className="muted">{issue.source_type}</span>
+                        </div>
+                        <div className="source-health-tags">
+                          <span className={`source-health-tag ${issue.status}`}>
+                            {HEALTH_LABEL[issue.status] ?? issue.status}
+                          </span>
+                          {issue.duplicate_count > 0 ? (
+                            <span className="muted">另有 {issue.duplicate_count} 个相同文件</span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {issues_truncated || issues.length > 40 ? (
+                    <p className="muted source-health-truncated">
+                      列表只显示前 {Math.min(40, issues.length)} 项；共 {summary.issues_total} 项问题。
+                    </p>
+                  ) : null}
+                </div>
+              ) : summary.total > 0 ? (
+                <p className="source-health-all-clear">所有已跟踪文件均与索引指纹一致。</p>
+              ) : null}
+            </div>
+          );
+        })() : null}
+      </section>
 
       <div className="card">
         <div className="section-heading">

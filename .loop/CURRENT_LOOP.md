@@ -62,3 +62,45 @@ allowlist membership. The live API reloaded the Python changes automatically.
 ## Status
 
 DONE. See `reports/LOOP-009.md`.
+
+# Loop 010 — On-Demand Knowledge Source Health
+
+## Goal
+
+Expose an explicit, safe health audit for already-indexed knowledge sources so
+users can find missing, changed, duplicate, inaccessible, or unresolved files.
+Opening the Knowledge page must not start a filesystem scan.
+
+## Acceptance
+
+- [x] Classify every tracker snapshot entry across configured internal,
+      external, and experience roots.
+- [x] Hash only the exact tracked file under its configured root; reject
+      traversal and symlink escapes.
+- [x] Do not return document content, file hashes, or absolute root paths.
+- [x] Start the audit only through an explicit API/UI action; run it off the
+      FastAPI event loop, expose progress, and prevent duplicate concurrent
+      audits.
+- [x] Add Knowledge-page progress, result, empty, and error states.
+- [x] Focused and full tests pass; Web typecheck/build pass; exercise the new
+      routes on the running service.
+
+## Scope guard
+
+Do not start a health audit against the real user corpus. Verification uses
+synthetic files only; real tracked files are not read or hashed.
+
+## Verification
+
+Focused tests: 12 passed, 1 skipped (Windows host does not grant symlink
+creation permission). Full suite: 783 passed, 2 skipped, 3 warnings. Web
+typecheck/build passed. `git diff --check` passed. Running service health
+endpoint returned `ok`; its OpenAPI exposed both health-audit routes and its
+root page referenced the current production bundle. Synthetic service/API
+tests exercised task creation and polling. The UI action was not clicked to
+avoid reading/hashing the user's real tracked documents, so live rendered
+result-state interaction remains unverified.
+
+## Status
+
+DONE. See `reports/LOOP-010.md`.

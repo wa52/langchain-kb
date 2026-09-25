@@ -395,9 +395,192 @@ button.primary:not(:disabled):hover {
   font-size: 13px;
 }
 
+/* ---------- Knowledge source health ---------- */
+
+.source-health-card {
+  border-left: 3px solid var(--laser-cyan);
+}
+
+.source-health-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.source-health-heading h3 {
+  font-size: 15px;
+}
+
+.source-health-note {
+  max-width: 76ch;
+  margin-top: 5px;
+  font-size: 13px;
+}
+
+.source-health-heading .secondary {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--grid-line);
+  color: var(--ink);
+}
+
+.source-health-heading .secondary:not(:disabled):hover {
+  border-color: var(--laser-cyan);
+  color: var(--laser-cyan);
+}
+
+.source-health-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.source-health-progress progress {
+  width: min(280px, 48%);
+  height: 8px;
+  accent-color: var(--laser-cyan);
+}
+
+.source-health-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--laser-cyan);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--laser-cyan) 16%, transparent);
+}
+
+.source-health-result {
+  margin-top: 16px;
+}
+
+.source-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.source-health-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.source-health-metric strong {
+  font: 600 19px/1.2 var(--font-mono);
+}
+
+.source-health-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-health-metric.healthy strong,
+.source-health-all-clear {
+  color: var(--pass-green);
+}
+
+.source-health-metric.warning strong {
+  color: var(--warn-amber);
+}
+
+.source-health-metric.danger strong {
+  color: var(--fail-red);
+}
+
+.source-health-empty,
+.source-health-all-clear {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.source-health-issues {
+  margin-top: 16px;
+  border-top: 1px solid var(--grid-line);
+}
+
+.source-health-issues-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0 7px;
+  font-size: 13px;
+}
+
+.source-health-issues ul {
+  max-height: 320px;
+  overflow: auto;
+  list-style: none;
+}
+
+.source-health-issues li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--grid-line);
+}
+
+.source-health-file {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.source-health-file code {
+  overflow-wrap: anywhere;
+  font: 12px/1.4 var(--font-mono);
+}
+
+.source-health-file .muted,
+.source-health-tags {
+  font-size: 11px;
+}
+
+.source-health-tags {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-health-tag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.source-health-tag.missing,
+.source-health-tag.unreadable,
+.source-health-tag.unresolved {
+  color: var(--fail-red);
+}
+
+.source-health-tag.changed,
+.source-health-tag.duplicate {
+  color: var(--warn-amber);
+}
+
+.source-health-truncated {
+  margin-top: 9px;
+  font-size: 12px;
+}
+
 @media (max-width: 640px) {
   .section-heading,
-  .tracked-file-list li {
+  .tracked-file-list li,
+  .source-health-issues li {
     align-items: stretch;
     flex-direction: column;
   }
@@ -408,6 +591,18 @@ button.primary:not(:disabled):hover {
 
   .tracked-file-actions {
     justify-content: flex-end;
+  }
+
+  .source-health-heading {
+    flex-direction: column;
+  }
+
+  .source-health-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .source-health-tags {
+    align-self: flex-start;
   }
 }
 

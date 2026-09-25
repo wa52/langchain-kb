@@ -274,6 +274,48 @@ class IndexTaskResponse(BaseModel):
     status: str
 
 
+class SourceHealthProgress(BaseModel):
+    checked: int
+    total: int
+
+
+class SourceHealthIssue(BaseModel):
+    source_type: str
+    file_key: str
+    status: str
+    duplicate_count: int = 0
+
+
+class SourceHealthSummary(BaseModel):
+    total: int
+    checked: int
+    healthy: int
+    missing: int
+    changed: int
+    duplicate_files: int
+    unreadable: int
+    unresolved: int
+    issues_total: int
+
+
+class SourceHealthResult(BaseModel):
+    summary: SourceHealthSummary
+    issues: list[SourceHealthIssue]
+    issues_truncated: bool
+
+
+class SourceHealthAuditResponse(BaseModel):
+    task_id: str
+    status: str
+    progress: SourceHealthProgress
+
+
+class SourceHealthAuditStatus(SourceHealthAuditResponse):
+    result: SourceHealthResult | None = None
+    error: str | None = None
+    completed_at: str | None = None
+
+
 class TaskStatusResponse(BaseModel):
     task_id: str
     status: str

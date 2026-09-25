@@ -6,6 +6,7 @@ import type {
   SessionDetail,
   SessionSummary,
   SourceItem,
+  SourceHealthAuditStatus,
   AgentTrace,
   FastRagTrace,
   RetrievalDebugResponse,
@@ -278,6 +279,21 @@ export async function listTrackedFiles(): Promise<TrackedFilesResponse> {
   });
   if (!resp.ok) throw new Error(`文件列表请求失败 (${resp.status})`);
   return (await resp.json()) as TrackedFilesResponse;
+}
+
+export async function startSourceHealthAudit(): Promise<SourceHealthAuditStatus> {
+  const resp = await apiFetch("/api/v1/files/health-audit", { method: "POST" });
+  if (!resp.ok) throw new Error(await readError(resp, `健康检查启动失败 (${resp.status})`));
+  return (await resp.json()) as SourceHealthAuditStatus;
+}
+
+export async function getSourceHealthAudit(taskId: string): Promise<SourceHealthAuditStatus> {
+  const resp = await apiFetch(`/api/v1/files/health-audit/${encodeURIComponent(taskId)}`, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `健康检查状态读取失败 (${resp.status})`));
+  return (await resp.json()) as SourceHealthAuditStatus;
 }
 
 export async function removeTrackedFile(name: string): Promise<IndexTask> {

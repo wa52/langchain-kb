@@ -248,6 +248,45 @@ export interface TrackedFilesResponse {
   total: number;
 }
 
+export interface SourceHealthProgress {
+  checked: number;
+  total: number;
+}
+
+export interface SourceHealthIssue {
+  source_type: string;
+  file_key: string;
+  status: "missing" | "changed" | "duplicate" | "unreadable" | "unresolved";
+  duplicate_count: number;
+}
+
+export interface SourceHealthSummary {
+  total: number;
+  checked: number;
+  healthy: number;
+  missing: number;
+  changed: number;
+  duplicate_files: number;
+  unreadable: number;
+  unresolved: number;
+  issues_total: number;
+}
+
+export interface SourceHealthResult {
+  summary: SourceHealthSummary;
+  issues: SourceHealthIssue[];
+  issues_truncated: boolean;
+}
+
+export interface SourceHealthAuditStatus {
+  task_id: string;
+  status: "pending" | "running" | "done" | "failed";
+  progress: SourceHealthProgress;
+  result?: SourceHealthResult | null;
+  error?: string | null;
+  completed_at?: string | null;
+}
+
 export interface UploadTasks {
   tasks: IndexTask[];
   saved: string[];

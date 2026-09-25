@@ -23,6 +23,7 @@ status remains `UNBASELINED` rather than being silently claimed.
 | Retrieval | Recall@5 | >= 0.90 | UNBASELINED — the 4-document/8-chunk fixture saturates at K=5 and is not representative |
 | Retrieval | MRR | >= 0.80 | UNBASELINED — fixture MRR 0.8929 is smoke evidence only |
 | Retrieval | P95 search | < 500 ms | UNBASELINED — fixture P95 21.79 ms excludes production corpus/startup conditions |
+| Knowledge | Health audit coverage | 100% of tracker snapshot entries classified; hash/content data never returned; no automatic page-load scan | BASELINED — synthetic internal/external/experience roots and safety boundaries |
 | Routing | Macro F1 | >= 0.90 | BASELINED (current test gate is >= 0.98) |
 | Routing | Side-effect agent recall | 1.00 | UNBASELINED |
 | Answer | Citation correctness | >= 0.95 | UNBASELINED |

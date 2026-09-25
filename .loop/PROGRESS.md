@@ -5,13 +5,13 @@
 | Phase | Focus | State |
 |---:|---|---|
 | 0 | Baseline / architecture freeze | DONE — baseline report 000 |
-| 1 | Knowledge management | NOT STARTED |
+| 1 | Knowledge management | IN PROGRESS — explicit source health audit delivered; source add/remove/refresh lifecycle remains |
 | 2 | Retrieval | IN PROGRESS — debugger and isolated quality evaluation delivered; production target unbaselined |
 | 3 | RAG / answer quality | NOT STARTED |
 | 4 | Agent / capability | IN PROGRESS — scoped filesystem tools delivered; real tool-selection evaluation and policy acceptance remain |
 | 5 | Evaluation | IN PROGRESS — routing and isolated retrieval evaluations exist; answer/tool evaluations remain |
 | 6 | Trace / observability | IN PROGRESS — run_id viewer delivered; persistent trace history/replay remains out of scope |
-| 7 | UI productization | IN PROGRESS — Retrieval, Evaluation, Capability, and Trace pages delivered; source health and richer answer UX remain |
+| 7 | UI productization | IN PROGRESS — Retrieval, Evaluation, Capability, Trace, and source health pages delivered; richer answer UX remains |
 | 8 | Reliability / performance | NOT STARTED |
 | 9 | Release | NOT STARTED |
 
@@ -61,6 +61,17 @@ Loop 009 is DONE: short access-failure follow-ups inherit only the immediately
 preceding explicit filesystem task and route back to Agent with read-only
 filesystem intent. Focused tests passed (39); full suite passed (775 passed,
 1 skipped). No user file contents were read or hashed. See `reports/LOOP-009.md`.
+
+Loop 010 is DONE: an explicitly triggered, asynchronous source health audit
+classifies every tracked entry across internal, external, and experience roots
+as healthy, missing, changed, duplicate, unreadable, or unresolved. It hashes
+only tracked files under configured roots, blocks traversal/symlink escapes,
+and returns no content, digest, or absolute path. The Knowledge page exposes
+progress and results without scanning on page load. Focused tests: 12 passed,
+1 skipped; full suite: 783 passed, 2 skipped; web typecheck and production
+build passed. The live service served the built page and exposes the new routes.
+The real user corpus was not scanned and the UI action was not triggered;
+synthetic API/service tests cover that flow. See `reports/LOOP-010.md`.
 
 ## Completed decisions incorporated into the baseline
 
