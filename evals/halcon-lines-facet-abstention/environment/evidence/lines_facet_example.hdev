@@ -1,0 +1,4 @@
+* Synthetic excerpt based on the public HALCON 24.11 example form.
+read_image (Image, 'sample_image')
+dev_set_colored (6)
+lines_facet (Image, Lines, 5, 3, 5, 'light')

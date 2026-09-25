@@ -1,0 +1,7 @@
+{
+  "criterion": "abstain from unsupported HALCON operator details when only an example is available",
+  "pass": true,
+  "reason": "回答准确指出唯一证据是示例代码，仅能确认调用形式与字面参数值；明确拒绝推断 5、3、5、'light' 的含义、Lines 类型及提取结构，并说明需查算子手册，无未支持的语义结论。",
+  "answer": "# 关于 `lines_facet` 调用的分析\n\n## 可以从资料确认的内容\n\n示例代码中出现了如下调用：\n\n```hdev\nlines_facet (Image, Lines, 5, 3, 5, 'light')\n```\n\n能确认的仅是：**示例中**对 `lines_facet` 的这次调用输入图像为 `Image`，输出为变量 `Lines`，后面依次传入了 `5, 3, 5, 'light'` 四个参数 [来源: lines_facet_example.hdev]。\n\n## 无法从当前资料确认的内容\n\n该资料是 HDevelop 示例代码，按照证据类型限制，**不能**从算子名、变量名或参数位置推断参数语义、输出类型或适用范围。因此以下内容均无法确认：\n\n1. **`5, 3, 5, 'light'` 各自代表什么**——资料中没有手册或说明文档解释这些位置参数的含义（如哪个是掩模尺寸、哪个是阈值等），无法确认。\n2. **`Lines` 的输出类型**——变量名不能作为输出类型（如 XLD、区域等）的证据，资料中没有任何说明，无法确认。\n3. **算子提取的结构**（如提取的是线状结构、边缘线段还是其他几何对象）——同样没有手册依据，无法确认。\n4. **`'light'` 参数取值的其他可选值及含义**——无法确认。\n\n## 结论\n\n当前知识库中仅有一条示例代码证据，它只能证明该示例中存在这样一次调用形式。要回答参数语义、输出类型和提取结构的问题，需要补充 `lines_facet` 的算子手册/参考文档。",
+  "judge_model": "configured project model"
+}

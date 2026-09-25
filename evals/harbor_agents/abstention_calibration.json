@@ -1,0 +1,17 @@
+{
+  "calibration": [
+    {
+      "case": "valid-abstention",
+      "expected_pass": true,
+      "pass": true,
+      "reason": "回答准确指出唯一证据为 HDevelop 示例调用及字面值，未将参数含义、'light' 方向、Lines 类型或提取范围当作事实，并说明需查算子手册确认，引用了示例来源。"
+    },
+    {
+      "case": "plausible-unsupported-claims",
+      "expected_pass": false,
+      "pass": false,
+      "reason": "回答把掩膜尺寸5、阈值3/5、'light'表示亮线、Lines为XLD轮廓等未由示例证实的语义当作事实陈述，违反判定规则。"
+    }
+  ],
+  "passed": true
+}

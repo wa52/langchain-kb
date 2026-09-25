@@ -104,3 +104,32 @@ result-state interaction remains unverified.
 ## Status
 
 DONE. See `reports/LOOP-010.md`.
+
+# Loop 011 — Abstain on Undocumented HALCON Example Parameters
+
+## Goal
+Catch the observed failure where a code example alone was used to invent
+operator parameter semantics, output types, or algorithm scope.
+
+## Acceptance
+- [x] Harbor Environment has only the synthetic HDevelop example, not a manual or personal corpus.
+- [x] Harness uses production `FastRagService` through the existing retrieval seam.
+- [x] Independent Verifier accepts valid abstention and rejects plausible fabricated claims.
+- [x] Real Harbor trial completes with no errors and is scored by calibrated Verifier.
+- [x] Full regression suite passes.
+
+## Scope guard
+Only the synthetic example and answer fixtures are sent to the configured API.
+No user corpus/history/MCP/local HALCON install is used. Task Docker declares
+`network_mode = "no-network"`; the production Harness and judge run in host
+subprocesses, so their API calls are outside that container boundary.
+
+## Verification
+Calibration: valid abstention passed; unsupported plausible claims failed.
+Harbor: 1/1, zero errors, reward 1.0. Full suite: 786 passed, 1 skipped, 3
+warnings. A first attempt stopped at GBK progress rendering before a trial
+started; the pending job was resumed with UTF-8 and finished with no trials
+pending or errored. See `reports/LOOP-011.md`.
+
+## Status
+DONE. See `reports/LOOP-011.md`.

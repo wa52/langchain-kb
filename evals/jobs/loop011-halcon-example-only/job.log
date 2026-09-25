@@ -1,0 +1,4 @@
+Agent 'production-fast-rag-example-only' does not declare an options_model; leftover kwargs are ignored
+Skipping image OS validation for hb__c3d4b6faa3f0f7d5ae25139a3a3058aa: docker inspect returned 1
+Collecting main service artifacts
+Semantic verdict: PASS — 回答准确指出唯一证据是示例代码，仅能确认调用形式与字面参数值；明确拒绝推断 5、3、5、'light' 的含义、Lines 类型及提取结构，并说明需查算子手册，无未支持的语义结论。

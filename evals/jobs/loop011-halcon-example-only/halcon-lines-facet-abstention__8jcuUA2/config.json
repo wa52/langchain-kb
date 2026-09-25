@@ -1,0 +1,14 @@
+{
+    "task": {
+        "path": "evals\\halcon-lines-facet-abstention"
+    },
+    "trial_name": "halcon-lines-facet-abstention__8jcuUA2",
+    "trials_dir": "evals\\jobs\\loop011-halcon-example-only",
+    "agent": {
+        "name": "evals.harbor_agents.fast_rag_example_only:ProductionFastRagExampleOnlyAgent"
+    },
+    "verifier": {
+        "import_path": "evals.harbor_agents.fast_rag_abstention_verifier:FastRagExampleOnlyVerifier"
+    },
+    "job_id": "7e97e79a-6a47-435d-b16c-c8f688476410"
+}

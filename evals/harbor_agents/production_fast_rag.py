@@ -22,6 +22,8 @@ FIXTURES = (
 
 
 class ProductionFastRagAgent(BaseAgent):
+    fixtures = FIXTURES
+
     @staticmethod
     def name() -> str:
         return "production-fast-rag"
@@ -36,7 +38,7 @@ class ProductionFastRagAgent(BaseAgent):
         documents = []
         with tempfile.TemporaryDirectory(prefix="harbor-halcon-") as temp_dir:
             temp = Path(temp_dir)
-            for remote, source in FIXTURES:
+            for remote, source in self.fixtures:
                 local = temp / source
                 await environment.download_file(remote, local)
                 documents.append({"source": source, "text": local.read_text(encoding="utf-8")})

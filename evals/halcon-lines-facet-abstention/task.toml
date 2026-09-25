@@ -1,0 +1,26 @@
+schema_version = "1.4"
+artifacts = []
+
+[task]
+name = "local/halcon-lines-facet-abstention"
+version = "1.0.0"
+description = "Check whether Fast RAG abstains from operator and parameter claims unsupported by a code-only source."
+keywords = ["rag", "evidence", "abstention", "halcon"]
+
+[metadata]
+category = "knowledge-grounded-answering"
+
+[verifier]
+timeout_sec = 180.0
+environment_mode = "shared"
+
+[agent]
+timeout_sec = 180.0
+
+[environment]
+network_mode = "no-network"
+build_timeout_sec = 120.0
+os = "linux"
+mcp_servers = []
+
+[environment.env]

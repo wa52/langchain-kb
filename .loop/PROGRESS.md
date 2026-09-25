@@ -7,9 +7,9 @@
 | 0 | Baseline / architecture freeze | DONE — baseline report 000 |
 | 1 | Knowledge management | IN PROGRESS — explicit source health audit delivered; source add/remove/refresh lifecycle remains |
 | 2 | Retrieval | IN PROGRESS — debugger and isolated quality evaluation delivered; production target unbaselined |
-| 3 | RAG / answer quality | NOT STARTED |
+| 3 | RAG / answer quality | IN PROGRESS — HALCON evidence and example-only abstention Harbor cases pass; representative answer benchmark remains |
 | 4 | Agent / capability | IN PROGRESS — scoped filesystem tools delivered; real tool-selection evaluation and policy acceptance remain |
-| 5 | Evaluation | IN PROGRESS — routing and isolated retrieval evaluations exist; answer/tool evaluations remain |
+| 5 | Evaluation | IN PROGRESS — routing, retrieval, and two focused answer-grounding evaluations exist; representative answer/tool quality baselines remain |
 | 6 | Trace / observability | IN PROGRESS — run_id viewer delivered; persistent trace history/replay remains out of scope |
 | 7 | UI productization | IN PROGRESS — Retrieval, Evaluation, Capability, Trace, and source health pages delivered; richer answer UX remains |
 | 8 | Reliability / performance | NOT STARTED |
@@ -72,6 +72,17 @@ progress and results without scanning on page load. Focused tests: 12 passed,
 build passed. The live service served the built page and exposes the new routes.
 The real user corpus was not scanned and the UI action was not triggered;
 synthetic API/service tests cover that flow. See `reports/LOOP-010.md`.
+
+Loop 011 is DONE: a second real Harbor task runs the production `FastRagService`
+with only a synthetic HDevelop example and tests abstention from undocumented
+operator/parameter claims. The independent semantic judge was calibrated on a
+valid abstention and a plausible fabricated answer (both expected decisions
+passed); the Harbor run completed 1/1 with reward 1.0 and zero errors. The
+answer used one LLM call (12.03 s). The full suite passed (786 passed, 1
+skipped); no personal corpus/history/MCP was accessed. This is a targeted
+regression case, not a representative answer-quality baseline; citation and
+unsupported-claim thresholds remain UNBASELINED. See `reports/LOOP-011.md` and
+`evals/jobs/loop011-halcon-example-only/`.
 
 ## Completed decisions incorporated into the baseline
 

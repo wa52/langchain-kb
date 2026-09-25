@@ -1,0 +1,137 @@
+{
+    "id": "707cb6e5-cf18-4b06-9d12-804b00b52251",
+    "task_name": "local/halcon-lines-facet-abstention",
+    "trial_name": "halcon-lines-facet-abstention__8jcuUA2",
+    "trial_uri": "file:///D:/AiProjects/langchain-kb/evals/jobs/loop011-halcon-example-only/halcon-lines-facet-abstention__8jcuUA2",
+    "task_id": {
+        "path": "evals\\halcon-lines-facet-abstention"
+    },
+    "source": null,
+    "task_checksum": "f6785729d15e98138508f5e905799a654d824685e54b4978efaff6bf0d55d144",
+    "config": {
+        "task": {
+            "path": "evals\\halcon-lines-facet-abstention",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "halcon-lines-facet-abstention__8jcuUA2",
+        "trials_dir": "evals\\jobs\\loop011-halcon-example-only",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "evals.harbor_agents.fast_rag_example_only:ProductionFastRagExampleOnlyAgent",
+            "import_path": null,
+            "model_name": null,
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "import_path": "evals.harbor_agents.fast_rag_abstention_verifier:FastRagExampleOnlyVerifier",
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "7e97e79a-6a47-435d-b16c-c8f688476410",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "production-fast-rag-example-only",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "answer_path": "evals\\jobs\\loop011-halcon-example-only\\halcon-lines-facet-abstention__8jcuUA2\\agent\\fast_rag_result.json",
+            "route": "FastRagService",
+            "fixture_sources": [
+                "lines_facet_example.hdev"
+            ],
+            "plan": {
+                "route": "fast_rag",
+                "total_ms": 12027.01,
+                "stages": {
+                    "search_ms": 0.0,
+                    "gate_ms": 0.09,
+                    "context_ms": 0.06,
+                    "llm_ms": 12026.86
+                },
+                "llm_calls": 1,
+                "raw_docs_count": 1,
+                "selected_docs_count": 1,
+                "context_tokens": 41,
+                "relevant": true
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-09-25T15:42:23.644750Z",
+    "finished_at": "2026-09-25T15:43:28.015186Z",
+    "environment_setup": {
+        "started_at": "2026-09-25T15:42:23.914586Z",
+        "finished_at": "2026-09-25T15:42:44.124117Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-09-25T15:42:44.124212Z",
+        "finished_at": "2026-09-25T15:42:44.124313Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-09-25T15:42:44.124411Z",
+        "finished_at": "2026-09-25T15:43:05.660362Z"
+    },
+    "verifier": {
+        "started_at": "2026-09-25T15:43:05.662322Z",
+        "finished_at": "2026-09-25T15:43:16.721254Z"
+    },
+    "step_results": null
+}
