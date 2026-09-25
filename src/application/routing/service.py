@@ -22,7 +22,7 @@ class SmartRouteService:
 
     def decide(self, query: str, history: list[dict]):
         started = time.perf_counter()
-        intent = self._intent.assess(query)
+        intent = self._intent.assess(query, history)
         context = self._context.analyze(query, history)
         # Keep a rejected short follow-up observable in the trace, while it
         # remains a direct route because ContextAnalyzer did not inherit it.

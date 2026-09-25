@@ -131,3 +131,41 @@ def test_smart_router_marks_local_indexing_as_a_side_effect():
 def test_smart_router_keeps_filesystem_how_to_question_out_of_agent():
     decision = _router([]).decide("怎么判断两个文件夹里有没有重复文件？", [])
     assert decision.route == Route.DIRECT
+
+
+def test_smart_router_routes_filesystem_access_followup_from_recent_file_task_to_agent():
+    history = [
+        {"role": "user", "content": "请查看 D:\\项目资料库\\01_HALCON官方例程，比较重复文件"},
+        {"role": "assistant", "content": "我无法访问本地文件系统。", "route": "direct"},
+    ]
+
+    decision = _router([]).decide("怎么又不能访问了", history)
+
+    assert decision.route == Route.AGENT
+    assert decision.domain == "filesystem"
+    assert decision.side_effect is False
+
+    from src.harness.selector import RuleBasedToolSelector, ToolSelectionContext
+    from src.harness.tools import ToolSpec
+
+    inspect = ToolSpec(
+        name="inspect_local_path", handler=lambda **_: None,
+        description="检查本地授权目录文件", tags=("filesystem", "local", "read"),
+    )
+    context = ToolSelectionContext(
+        intent=decision.intent.value, domain=decision.domain, side_effect=decision.side_effect,
+    )
+    assert RuleBasedToolSelector().select_names("怎么又不能访问了", [inspect], context=context) == (
+        "inspect_local_path",
+    )
+
+
+def test_smart_router_does_not_route_access_followup_without_recent_filesystem_task():
+    history = [
+        {"role": "user", "content": "HALCON 的线提取算子有哪些？"},
+        {"role": "assistant", "content": "知识库中有相关资料。", "route": "fast_rag"},
+    ]
+
+    decision = _router([]).decide("怎么又不能访问了", history)
+
+    assert decision.route == Route.DIRECT

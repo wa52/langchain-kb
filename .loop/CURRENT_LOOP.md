@@ -33,3 +33,32 @@ or capability metadata.
 ## Status
 
 DONE. Last full regression: 773 passed, 1 skipped. See `reports/LOOP-008.md`.
+
+# Loop 009 — Preserve Filesystem Tool Context in Follow-ups
+
+## Goal
+
+Prevent a short follow-up after an explicit local-file task from being routed
+to the tool-less Direct model, which caused a false “cannot access local files”
+answer.
+
+## Acceptance
+
+- [x] A recent explicit filesystem task followed by an access-failure question
+      routes to Agent with `domain=filesystem` and no write side effect.
+- [x] The resulting selection context exposes `inspect_local_path`.
+- [x] Without a recent filesystem task, the same short question stays Direct.
+- [x] Agent instructions require using the real tool result instead of a generic
+      access disclaimer; importing remains approval-gated.
+- [x] Full regression suite passes; no user file contents were read or hashed.
+
+## Verification
+
+The regression test was observed failing before the fix. Focused filesystem,
+routing, and runtime tests passed (39 passed); full suite passed (775 passed,
+1 skipped). The configured target path was checked only for existence and
+allowlist membership. The live API reloaded the Python changes automatically.
+
+## Status
+
+DONE. See `reports/LOOP-009.md`.

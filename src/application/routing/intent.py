@@ -30,6 +30,12 @@ _FILESYSTEM_CONCEPT = re.compile(
     re.I,
 )
 _FILESYSTEM_MUTATION = re.compile(r"(?:导入|索引|入库|加入|添加|复制|移动|删除|修改|更新|写入|保存)", re.I)
+_FILESYSTEM_ACCESS_FOLLOWUP = re.compile(
+    r"(?:(?:怎么|为什么|为何|为啥).{0,12}|(?:又|还是|仍然).{0,12})"
+    r"(?:不能|无法|没法).{0,8}(?:访问|读取|打开)"
+    r"|(?:不能|无法|没法).{0,8}(?:访问|读取|打开)",
+    re.I,
+)
 _DIRECT_TASKS = ("翻译", "润色", "改写", "写一封", "解释", "计算")
 _KNOWLEDGE_HINTS = (
     "知识库", "资料", "文档", "之前", "以前", "先前", "历史", "项目里", "项目的", "当时", "上次", "我们", "我那个", "我这个",
@@ -44,9 +50,17 @@ class IntentClassifier:
     def __init__(self, prototype_classifier: Any | None = None) -> None:
         self._prototype_classifier = prototype_classifier
 
-    def assess(self, query: str) -> IntentAssessment:
+    def assess(self, query: str, history: list[dict] | None = None) -> IntentAssessment:
         text = " ".join((query or "").strip().lower().split())
         scores = self._prototype_classifier.classify(query) if self._prototype_classifier is not None else {}
+        if self._is_filesystem_access_followup(text, history or ()):
+            return IntentAssessment(
+                Intent.ACTION,
+                "filesystem",
+                False,
+                0.98,
+                ("filesystem_access_followup",),
+            )
         filesystem_action = bool(
             _FILESYSTEM_TARGET.search(text)
             and _FILESYSTEM_ACTION.search(text)
@@ -70,6 +84,28 @@ class IntentClassifier:
         if scores.get("agent", 0.0) >= 0.82 and scores.get("agent", 0.0) > scores.get("direct", 0.0):
             return IntentAssessment(Intent.ACTION, domain, False, float(scores["agent"]), ("prototype_action",))
         return IntentAssessment(Intent.DIRECT, domain, False, max(0.5, float(scores.get("direct", 0.0))), ("general_direct",))
+
+    @staticmethod
+    def _is_filesystem_access_followup(text: str, history: list[dict]) -> bool:
+        """Route a short access complaint back to Agent only after a file task.
+
+        The Direct model has no tools and otherwise tends to repeat a generic
+        "cannot access local files" disclaimer. Requiring the immediately
+        preceding user/assistant pair to contain an explicit filesystem task
+        prevents unrelated short follow-ups from being sent to the Agent.
+        """
+        if not _FILESYSTEM_ACCESS_FOLLOWUP.search(text) or len(history) < 2:
+            return False
+        previous_user, previous_assistant = history[-2:]
+        if previous_user.get("role") != "user" or previous_assistant.get("role") != "assistant":
+            return False
+        previous_text = str(previous_user.get("content", "")).lower()
+        had_filesystem_task = bool(
+            _FILESYSTEM_TARGET.search(previous_text)
+            and _FILESYSTEM_ACTION.search(previous_text)
+            and not _FILESYSTEM_CONCEPT.search(previous_text)
+        )
+        return had_filesystem_task
 
     @staticmethod
     def _domain(text: str) -> str:

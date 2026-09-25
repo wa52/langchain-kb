@@ -57,6 +57,11 @@ cross-source hash deduplication, Capability API exposure, and synthetic tests.
 Full suite: 773 passed, 1 skipped. No real user directory was scanned. See
 `reports/LOOP-008.md`.
 
+Loop 009 is DONE: short access-failure follow-ups inherit only the immediately
+preceding explicit filesystem task and route back to Agent with read-only
+filesystem intent. Focused tests passed (39); full suite passed (775 passed,
+1 skipped). No user file contents were read or hashed. See `reports/LOOP-009.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy
