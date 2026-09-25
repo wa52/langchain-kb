@@ -6,6 +6,7 @@ from typing import Callable
 
 from src.harness.selector import ToolCandidate, ToolSelectionContext, ToolSelector
 from src.harness.tools import ToolSpec
+from src.harness.jev_client import endpoint_for_key, request_jev
 
 
 class JevToolSelector:
@@ -29,17 +30,11 @@ class JevToolSelector:
             )
             for item in recalled
         }
-        payload = {"state": {"user_request": query}, "model": "jev-latest", "questions": {
+        payload = {"state": {"user_request": query}, "model": endpoint_for_key(self._api_key).model, "questions": {
             "tool": {"type": "choice", "instructions": "Which available tool best advances `user_request`?", "criteria": criteria}
         }}
         try:
-            if self._request is None:
-                import httpx
-                response = httpx.post("https://api.typesafe.ai/v1/systemone", json=payload, headers={"Authorization": f"Bearer {self._api_key}"}, timeout=5.0, trust_env=False)
-                response.raise_for_status()
-                body = response.json()
-            else:
-                body = self._request(payload, self._api_key)
+            body = (self._request or request_jev)(payload, self._api_key)
             probabilities = body["answers"]["tool"]["probabilities"]
             ranked = sorted(recalled, key=lambda item: (-float(probabilities.get(item.spec.name, 0)), item.spec.name))
             return tuple(ToolCandidate(item.spec, float(probabilities.get(item.spec.name, 0))) for item in ranked[:self._max_candidates])

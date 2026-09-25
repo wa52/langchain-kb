@@ -133,3 +133,26 @@ pending or errored. See `reports/LOOP-011.md`.
 
 ## Status
 DONE. See `reports/LOOP-011.md`.
+
+# Loop 012 — Jev Provider Routing and Connection Visibility
+
+## Goal
+
+Make the configured Jev key reach its matching provider and show whether the
+provider actually accepts a synthetic decision request.
+
+## Acceptance
+
+- [x] Vercel Gateway keys use the documented TypeSafe-compatible Gateway API;
+      TypeSafe keys use the direct TypeSafe API.
+- [x] An explicit connection check sends only a synthetic query, returns a
+      credential-free status, and has Settings UI success/error states.
+- [x] Rejected keys fall back to rules without repeated network delays;
+      replacing the key clears that suppression.
+- [x] Focused regression, Web typecheck/build, and live UI check pass.
+- [ ] Real Jev tool-quality comparison: Gateway responds with HTTP 403.
+
+## Status
+
+Provider integration DONE; live Jev evaluation BLOCKED by external Gateway
+authorization. See `reports/LOOP-012.md`.

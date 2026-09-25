@@ -187,6 +187,18 @@ export async function getLatestToolSelectionEvaluation(): Promise<ToolSelectionE
   return (await resp.json()) as ToolSelectionEvaluationLatestResponse;
 }
 
+export interface JevConnectionStatus {
+  provider: "none" | "typesafe" | "vercel_gateway";
+  status: "not_configured" | "ready" | "rejected" | "unavailable";
+  http_status: number | null;
+}
+
+export async function checkJevConnection(): Promise<JevConnectionStatus> {
+  const resp = await apiFetch("/api/v1/settings/jev/check", { method: "POST" });
+  if (!resp.ok) throw new Error(await readError(resp, `Jev 连接测试失败 (${resp.status})`));
+  return (await resp.json()) as JevConnectionStatus;
+}
+
 export async function streamChat(
   payload: StreamPayload,
   handlers: StreamHandlers,

@@ -181,9 +181,45 @@ def set_jev_api_key(api_key: str) -> dict:
     dotenv_path.touch(exist_ok=True)
     set_key(str(dotenv_path), "TYPESAFE_API_KEY", key)
     os.environ["TYPESAFE_API_KEY"] = key
+    from src.harness.jev_client import clear_jev_auth_rejection
+    clear_jev_auth_rejection()
     from src.resources import ResourceManager
     ResourceManager.get_instance().clear_agent_cache()
     return {"ok": True, "jev_api_configured": True, "requires_restart": False}
+
+
+def check_jev_connection() -> dict:
+    """Probe the configured provider with a synthetic decision only on request."""
+    import httpx
+
+    from src.harness.jev_client import endpoint_for_key, request_jev
+
+    key = os.getenv("TYPESAFE_API_KEY", "").strip()
+    if not key:
+        return {"provider": "none", "status": "not_configured", "http_status": None}
+    endpoint = endpoint_for_key(key)
+    payload = {
+        "model": endpoint.model,
+        "state": {"user_request": "Search synthetic knowledge documents"},
+        "questions": {"tool": {
+            "type": "choice",
+            "instructions": "Which available tool best advances user_request?",
+            "criteria": {
+                "retrieve_knowledge": "Search knowledge documents",
+                "project_workflow": "Inspect project workflow status",
+            },
+        }},
+    }
+    try:
+        body = request_jev(payload, key, force=True)
+        probabilities = body["answers"]["tool"]["probabilities"]
+        if not isinstance(probabilities, dict) or "retrieve_knowledge" not in probabilities:
+            raise ValueError("invalid choice response")
+    except httpx.HTTPStatusError as exc:
+        return {"provider": endpoint.provider, "status": "rejected", "http_status": exc.response.status_code}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return {"provider": endpoint.provider, "status": "unavailable", "http_status": None}
+    return {"provider": endpoint.provider, "status": "ready", "http_status": 200}
 
 
 def set_mcp_server_enabled(name: str, enabled: bool) -> dict:

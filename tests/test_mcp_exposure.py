@@ -186,7 +186,7 @@ class TestOpenAPISchema:
                      "get_index_status", "system_status", "knowledge_stats",
                      "run_diagnostics", "get_diagnostics_status", "repair_diagnostics",
                      "list_sessions", "get_session", "delete_session",
-                     "get_settings", "set_graph_extraction_mode", "set_llm_config",
+                     "get_settings", "set_graph_extraction_mode", "set_llm_config", "check_jev_connection",
                      "list_llm_models", "set_mcp_enabled", "set_mcp_server_enabled",
                      "get_sync_status", "add_sync_dir", "remove_sync_dir", "run_sync",
                      "list_files", "remove_file", "start_source_health_audit",

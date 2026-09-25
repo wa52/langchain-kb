@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from src.api.schemas import SettingsResponse
 from src.application.settings import (
+    check_jev_connection,
     get_settings_view,
     list_provider_models,
     set_graph_extraction_mode,
@@ -132,6 +133,11 @@ def jev_config(req: JevConfigRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(content=result, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/settings/jev/check", operation_id="check_jev_connection", summary="测试 Jev 连接")
+def jev_connection_check():
+    return JSONResponse(content=check_jev_connection(), headers={"Cache-Control": "no-store"})
 
 
 @router.post(

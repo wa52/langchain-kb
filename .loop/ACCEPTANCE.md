@@ -28,8 +28,8 @@ status remains `UNBASELINED` rather than being silently claimed.
 | Routing | Side-effect agent recall | 1.00 | UNBASELINED |
 | Answer | Citation correctness | >= 0.95 | UNBASELINED — two focused HALCON Harbor cases pass; insufficient corpus breadth for this gate |
 | Answer | Unsupported-claim rate | <= 0.05 | UNBASELINED — example-only abstention is covered, but a representative multi-domain dataset is still missing |
-| Tools | Top-3 recall | >= 0.95 | UNBASELINED |
-| Tools | Write false exposure | <= 0.01 | UNBASELINED |
+| Tools | Top-3 recall | >= 0.95 | UNBASELINED — synthetic Rule/Jev-adapter smoke data only; configured Vercel Gateway currently rejects real Jev calls with HTTP 403 |
+| Tools | Write false exposure | <= 0.01 | UNBASELINED — synthetic smoke data only; real Jev comparison awaits Gateway authorization |
 | Performance | Fast RAG TTFT | < 2 s | UNBASELINED |
 | Performance | Fast RAG P95 | < 6 s | UNBASELINED |
 | Performance | Router P95 overhead | < 500 ms | UNBASELINED |

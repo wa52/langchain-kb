@@ -216,8 +216,12 @@ class TestAskKnowledgeBase:
 
 
 class TestProcessMessage:
+    @pytest.fixture(autouse=True)
+    def _isolated_store_path(self, tmp_path):
+        self._session_path = tmp_path / "sessions.json"
+
     def _run(self, text, store=None, session_id=None, ask=None):
-        store = store or SessionStore(str(__import__("pathlib").Path(".") / "no_such.json"))
+        store = store or SessionStore(self._session_path)
         replies = []
         if session_id:
             store.set("ou_1", session_id)

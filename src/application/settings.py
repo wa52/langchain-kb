@@ -1,4 +1,5 @@
 from src.adapters.legacy.settings import (
+    check_jev_connection,
     get_settings_view,
     list_provider_models,
     set_graph_extraction_mode,
@@ -9,6 +10,7 @@ from src.adapters.legacy.settings import (
 )
 
 __all__ = [
+    "check_jev_connection",
     "get_settings_view",
     "list_provider_models",
     "set_graph_extraction_mode",

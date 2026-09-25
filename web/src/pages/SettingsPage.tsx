@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
-import { listLlmModels } from "../api/client";
+import { checkJevConnection, listLlmModels } from "../api/client";
+import type { JevConnectionStatus } from "../api/client";
 import type { AppSettings } from "../types/api";
 
 function OnOff({ value }: { value: boolean }) {
@@ -67,6 +68,9 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [jevKey, setJevKey] = useState("");
+  const [jevCheck, setJevCheck] = useState<JevConnectionStatus | null>(null);
+  const [checkingJev, setCheckingJev] = useState(false);
+  const [jevCheckError, setJevCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settings) return;
@@ -131,6 +135,18 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
       setModelError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoadingModels(false);
+    }
+  }
+
+  async function testJevConnection() {
+    setCheckingJev(true);
+    setJevCheckError(null);
+    try {
+      setJevCheck(await checkJevConnection());
+    } catch (e) {
+      setJevCheckError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckingJev(false);
     }
   }
 
@@ -231,9 +247,17 @@ export function SettingsPage({ onOpenTokenDialog }: { onOpenTokenDialog?: () => 
 
       <section className="card settings-section">
         <h3>Jev 工具选择</h3>
-        <p className="muted settings-help">配置后，Jev 会对规则召回的候选工具进行概率排序；密钥不会回显，保存后立即热加载。</p>
-        <div className="settings-form-grid"><label className="wide">Jev API Key<input type="password" value={jevKey} onChange={(e) => setJevKey(e.target.value)} placeholder={s.jev_api_configured ? "已配置，输入新 Key 可替换" : "粘贴 TYPESAFE_API_KEY"} disabled={saving} autoComplete="new-password" /></label></div>
-        <div className="settings-actions"><button type="button" className="primary" disabled={saving || !jevKey} onClick={() => void setJevApiKey(jevKey).then((ok) => { if (ok) setJevKey(""); })}>{saving ? "保存中…" : "保存并热加载"}</button>{s.jev_api_configured ? <span className="save-ok">已启用</span> : <span className="muted">未配置，使用规则选择器</span>}</div>
+        <p className="muted settings-help">支持 TypeSafe 和 Vercel AI Gateway Key。保存后热加载；连接失败时 Agent 会使用规则选择器。</p>
+        <div className="settings-form-grid"><label className="wide">Jev API Key<input type="password" value={jevKey} onChange={(e) => setJevKey(e.target.value)} placeholder={s.jev_api_configured ? "已配置，输入新 Key 可替换" : "粘贴 TypeSafe 或 Vercel Key"} disabled={saving} autoComplete="new-password" /></label></div>
+        <div className="settings-actions">
+          <button type="button" className="primary" disabled={saving || !jevKey} onClick={() => void setJevApiKey(jevKey).then((ok) => { if (ok) { setJevKey(""); setJevCheck(null); } })}>{saving ? "保存中…" : "保存并热加载"}</button>
+          <button type="button" disabled={!s.jev_api_configured || checkingJev} onClick={() => void testJevConnection()}>{checkingJev ? "测试中…" : "测试连接"}</button>
+          {s.jev_api_configured ? <span className="muted">密钥已配置，连接状态需测试</span> : <span className="muted">未配置，使用规则选择器</span>}
+        </div>
+        {jevCheck?.status === "ready" ? <p className="save-ok" role="status">Jev 连接可用（{jevCheck.provider === "vercel_gateway" ? "Vercel AI Gateway" : "TypeSafe"}）</p> : null}
+        {jevCheck?.status === "rejected" ? <p className="msg-error" role="alert">Jev 提供商拒绝请求（HTTP {jevCheck.http_status}，{jevCheck.provider === "vercel_gateway" ? "Vercel AI Gateway" : "TypeSafe"}）；当前使用规则选择器。</p> : null}
+        {jevCheck?.status === "unavailable" ? <p className="msg-error" role="alert">Jev 连接或响应异常；当前使用规则选择器。</p> : null}
+        {jevCheckError ? <p className="msg-error" role="alert">{jevCheckError}</p> : null}
       </section>
 
       <Section title="模型来源">

@@ -37,6 +37,46 @@ def client(rm):
 
 
 class TestSettingsApi:
+    def test_jev_connection_probe_uses_synthetic_input_and_hides_key(self, client, monkeypatch):
+        monkeypatch.setenv("TYPESAFE_API_KEY", "vck_synthetic-secret-value")
+        captured = {}
+
+        def fake_request(payload, key, *, force=False):
+            captured.update({"payload": payload, "key": key})
+            assert force is True
+            return {"answers": {"tool": {"probabilities": {"retrieve_knowledge": 0.9,
+                                                                 "project_workflow": 0.1}}}}
+
+        monkeypatch.setattr("src.harness.jev_client.request_jev", fake_request)
+        response = client.post("/api/v1/settings/jev/check")
+
+        assert response.status_code == 200
+        assert response.json() == {"provider": "vercel_gateway", "status": "ready", "http_status": 200}
+        assert captured["payload"]["model"] == "typesafe-ai/jev"
+        assert "synthetic" in captured["payload"]["state"]["user_request"]
+        assert "vck_synthetic-secret-value" not in response.text
+
+    def test_jev_connection_probe_reports_rejected_provider_without_leaking_body(self, client, monkeypatch):
+        import httpx
+
+        monkeypatch.setenv("TYPESAFE_API_KEY", "vck_synthetic-secret-value")
+
+        def reject(_payload, _key, *, force=False):
+            assert force is True
+            request = httpx.Request("POST", "https://ai-gateway.vercel.sh/typesafe/v1/systemone")
+            response = httpx.Response(403, request=request, text="provider private error and secret")
+            raise httpx.HTTPStatusError("rejected", request=request, response=response)
+
+        monkeypatch.setattr("src.harness.jev_client.request_jev", reject)
+        response = client.post("/api/v1/settings/jev/check")
+        assert response.json() == {"provider": "vercel_gateway", "status": "rejected", "http_status": 403}
+        assert "private error" not in response.text
+
+    def test_jev_connection_probe_does_not_call_provider_without_key(self, client, monkeypatch):
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        monkeypatch.setattr("src.harness.jev_client.request_jev", lambda *_: pytest.fail("unexpected call"))
+        assert client.post("/api/v1/settings/jev/check").json()["status"] == "not_configured"
+
     def test_returns_readonly_config_view(self, client):
         resp = client.get("/api/v1/settings")
         assert resp.status_code == 200

@@ -84,6 +84,19 @@ regression case, not a representative answer-quality baseline; citation and
 unsupported-claim thresholds remain UNBASELINED. See `reports/LOOP-011.md` and
 `evals/jobs/loop011-halcon-example-only/`.
 
+Loop 012 is DONE: Jev uses the endpoint matching its key provider. A `vck_`
+Gateway key previously received HTTP 401 from TypeSafe's direct host; the
+official Vercel-compatible endpoint now receives HTTP 403. Settings offers an
+explicit synthetic connection check and labels a saved key as configured,
+not verified. Agent selection falls back to rules and skips repeated network
+calls after an authorization rejection until the key changes; the check can
+reprobe. Focused API, selector, and OpenAPI tests passed (43), and the full
+regression passed (793 passed, 1 skipped). Web typecheck/build passed; the
+running page displayed the Gateway 403 state. A Feishu test that used to write
+the repo-root `no_such.json` now uses a per-test temporary store.
+The real Jev comparison is blocked by the Gateway account's 403 response and
+its quality metrics remain unbaselined. See `reports/LOOP-012.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy
