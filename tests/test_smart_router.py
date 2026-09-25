@@ -108,3 +108,26 @@ def test_smart_router_recognizes_colloquial_tool_commands(query):
 ])
 def test_smart_router_recognizes_polite_and_synonym_action_commands(query):
     assert _router([]).decide(query, []).route == Route.AGENT
+
+
+@pytest.mark.parametrize("query", [
+    "请比较 D 盘两个项目目录，找出重复文件后加入知识库",
+    "帮我扫描这个文件夹里的 HDevelop 文件并列出结果",
+    "请对比两个路径中的文件，去重后导入知识库",
+])
+def test_smart_router_routes_local_file_operations_to_filesystem_agent(query):
+    decision = _router([]).decide(query, [])
+    assert decision.route == Route.AGENT
+    assert decision.domain == "filesystem"
+
+
+def test_smart_router_marks_local_indexing_as_a_side_effect():
+    decision = _router([]).decide("请把这个目录索引加入知识库", [])
+    assert decision.route == Route.AGENT
+    assert decision.domain == "filesystem"
+    assert decision.side_effect is True
+
+
+def test_smart_router_keeps_filesystem_how_to_question_out_of_agent():
+    decision = _router([]).decide("怎么判断两个文件夹里有没有重复文件？", [])
+    assert decision.route == Route.DIRECT

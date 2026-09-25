@@ -17,6 +17,19 @@ _EXTERNAL_ACTION = re.compile(
     r"|(?:查|搜索|检查).{0,20}(?:github|仓库|网页|官网)|(?:帮我|请).{0,12}(?:联网|调用工具|mcp)|(?:用|调用|使用).{0,8}(?:mcp|工具)|(?:读取|查看).{0,12}(?:仓库|文件)",
     re.I,
 )
+_FILESYSTEM_TARGET = re.compile(r"(?:文件|目录|文件夹|路径|本地|磁盘|[a-z]:[\\/])", re.I)
+_FILESYSTEM_ACTION = re.compile(
+    r"(?:读取|查看|列出|搜索|查找|比较|比对|对比|检查|扫描|去重|导入|索引|入库|加入|添加|复制|移动|删除|修改|更新)"
+    r"|把.{0,60}(?:比较|比对|对比|去重|导入|索引|入库|加入|添加)",
+    re.I,
+)
+_FILESYSTEM_CONCEPT = re.compile(
+    r"(?:怎么|如何|为什么|为何|是什么|区别|原理|含义).{0,24}(?:文件|目录|文件夹|路径|本地|磁盘)"
+    r"|(?:读取|查看|列出|搜索|查找|比较|比对|对比|扫描|去重|导入|索引|入库|加入|添加)"
+    r".{0,16}(?:怎么|如何|为什么|为何|是什么|区别|原理|含义)",
+    re.I,
+)
+_FILESYSTEM_MUTATION = re.compile(r"(?:导入|索引|入库|加入|添加|复制|移动|删除|修改|更新|写入|保存)", re.I)
 _DIRECT_TASKS = ("翻译", "润色", "改写", "写一封", "解释", "计算")
 _KNOWLEDGE_HINTS = (
     "知识库", "资料", "文档", "之前", "以前", "先前", "历史", "项目里", "项目的", "当时", "上次", "我们", "我那个", "我这个",
@@ -34,6 +47,19 @@ class IntentClassifier:
     def assess(self, query: str) -> IntentAssessment:
         text = " ".join((query or "").strip().lower().split())
         scores = self._prototype_classifier.classify(query) if self._prototype_classifier is not None else {}
+        filesystem_action = bool(
+            _FILESYSTEM_TARGET.search(text)
+            and _FILESYSTEM_ACTION.search(text)
+            and not _FILESYSTEM_CONCEPT.search(text)
+        )
+        if filesystem_action:
+            return IntentAssessment(
+                Intent.ACTION,
+                "filesystem",
+                bool(_FILESYSTEM_MUTATION.search(text)),
+                1.0,
+                ("local_filesystem_action",),
+            )
         domain = self._domain(text)
         if not _ACTION_CONCEPT.search(text) and (_MUTATING_ACTION.search(text) or _EXTERNAL_ACTION.search(text)):
             return IntentAssessment(Intent.ACTION, domain, bool(_MUTATING_ACTION.search(text)), 1.0, ("explicit_action_request",))
