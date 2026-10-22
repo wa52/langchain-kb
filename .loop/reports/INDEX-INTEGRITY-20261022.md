@@ -61,3 +61,49 @@ cannot be accepted.
 
 Primary semantics: [SQLite virtual-table integrity](https://www.sqlite.org/vtab.html)
 and [SQLite FTS5 integrity/rebuild](https://www.sqlite.org/fts5.html).
+
+## Owner-authorized disposable-copy repair trial
+
+After the read-only diagnosis, the owner approved a trial on a **second**
+independent copy, `.tmp/production-index-backup-20261022-01-rebuild-trial/`.
+All 11 files matched the preserved snapshot by SHA-256 before the trial.
+Only the trial copy's `chroma_db/chroma.sqlite3` was targeted by the FTS5
+`rebuild` special command. The command was executed in a SQLite transaction
+and took 12.55 seconds. The original snapshot was not opened for writes.
+
+| Check | Before trial | After trial |
+| --- | ---: | ---: |
+| `PRAGMA quick_check` | FTS5 malformed inverted index | `ok` |
+| `PRAGMA integrity_check` | FTS5 malformed inverted index | `ok` |
+| Embedding rows | 151,062 | 151,062 |
+| FTS rows | 151,062 | 151,062 |
+| Collections / segments | 1 / 2 | 1 / 2 |
+| FTS `MATCH 'hal'` | 19,478 | 19,534 |
+
+For three representative terms (`hal`, `model`, `image`), post-rebuild FTS
+row-ID sets contained every prior hit and respectively added 56, 5, and 62
+hits. This demonstrates changed search behavior, not independently proven
+answer correctness; FTS matching is not equivalent to a literal SQL `LIKE`
+comparison for every Unicode/case-folding case.
+
+ChromaDB 1.5.9 opened the trial directory with telemetry disabled. It listed
+one collection with 151,062 items, read one stored embedding, returned three
+nearest neighbors for that embedding (self-distance 0), and returned three
+IDs from a bounded `where_document` filter. No document text, IDs, or
+embeddings were printed. A later `PRAGMA integrity_check` still returned
+`ok`. All ten non-SQLite trial files remained hash-identical to the first
+snapshot. A post-trial SHA-256 comparison found all 11 production files still
+identical to the first snapshot.
+
+**Residual finding:** `PRAGMA foreign_key_check` reports the same two
+`segments` → `collection` violations in both the original snapshot and the
+trial. FTS5 rebuild did not create or resolve them. Chroma's bounded reads
+worked despite those violations, but this is not enough to certify all
+metadata and write paths. The cause and operational impact need separate
+investigation before any production change.
+
+This trial supports a narrowly scoped FTS5 repair strategy; it does not
+authorize applying that strategy to production, replacing the index, or
+claiming the whole index healthy. A production plan must account for active
+writers, a fresh consistent backup, the unchanged foreign-key anomaly,
+representative user-facing retrieval checks, downtime, and rollback.

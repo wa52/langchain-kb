@@ -55,3 +55,12 @@ hashes matched for every file. This is a byte-for-byte rollback snapshot of
 the observed state, **not** a verified healthy index. The snapshot itself
 reproduces the FTS5 error. No production repair, rebuild, or rollback has
 been authorized. See `reports/INDEX-INTEGRITY-20261022.md`.
+
+A second, independent snapshot copy was used for an owner-authorized FTS5
+repair trial. Rebuilding only that copy changed `PRAGMA integrity_check`
+from the FTS5 error to `ok`, while Chroma count, vector query, and document
+filter checks succeeded. The original snapshot and production files remained
+hash-identical. Two pre-existing `segments` foreign-key violations remain
+unchanged in the trial. This validates a possible FTS5 recovery method on
+the trial copy, **not** a production repair or full index-health acceptance.
+Production maintenance still requires a separate decision and rollback plan.
