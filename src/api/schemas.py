@@ -269,6 +269,11 @@ class IndexRequest(BaseModel):
     )
 
 
+class TrackedFileRequest(BaseModel):
+    source_type: str = Field(min_length=1, max_length=128)
+    file_key: str = Field(min_length=1, max_length=1024)
+
+
 class IndexTaskResponse(BaseModel):
     task_id: str
     status: str

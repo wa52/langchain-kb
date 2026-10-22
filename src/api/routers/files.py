@@ -3,19 +3,50 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 
+from src.api.dependencies import RmDep
 from src.api.schemas import (
     IndexTaskResponse,
+    TrackedFileRequest,
     SourceHealthAuditResponse,
     SourceHealthAuditStatus,
 )
 from src.application.files import list_files_view
-from src.application.indexing import get_task_manager, run_remove_task
+from src.application.indexing import get_task_manager, run_remove_task, run_tracked_reindex_task
 from src.api.services.source_health import (
     get_source_health_task_manager,
     run_source_health_task,
 )
 
 router = APIRouter()
+
+
+@router.post(
+    "/files/reindex",
+    response_model=IndexTaskResponse,
+    status_code=202,
+    operation_id="reindex_tracked_file",
+    summary="重新索引已跟踪文件",
+    description="按来源类型和相对路径原位替换已跟踪文件的索引，不复制或扫描其他文件。",
+)
+async def reindex_tracked_file(req: TrackedFileRequest, rm: RmDep):
+    from src.api.services.files import resolve_tracked_file
+
+    try:
+        resolve_tracked_file(req.source_type, req.file_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (LookupError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="已跟踪的来源文件不存在") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    key = f"reindex:{req.source_type}:{req.file_key}"
+    mgr = get_task_manager()
+    try:
+        task_id = mgr.create_task(key)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="该文件正在重新索引") from exc
+    asyncio.create_task(run_tracked_reindex_task(task_id, req.source_type, req.file_key))
+    return IndexTaskResponse(task_id=task_id, status="pending")
 
 
 @router.get(

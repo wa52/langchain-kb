@@ -383,10 +383,73 @@ button.primary:not(:disabled):hover {
 .tracked-file-actions {
   display: flex;
   flex-shrink: 0;
-  gap: 12px;
+  gap: 6px;
+}
+
+.file-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.file-action-btn:hover:not(:disabled),
+.file-action-btn:focus-visible {
+  color: var(--signal-blue);
+  border-color: currentColor;
+}
+
+.file-action-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.file-action-btn::after {
+  content: attr(data-hint);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 7px);
+  z-index: 5;
+  width: max-content;
+  max-width: min(220px, 70vw);
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 24%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s, visibility .12s;
+}
+
+.file-action-btn:hover:not(:disabled)::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 1.5s;
+}
+
+.file-action-btn:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 .danger-link {
+  color: var(--danger);
+}
+
+.file-action-btn.danger-link:hover:not(:disabled),
+.file-action-btn.danger-link:focus-visible {
   color: var(--danger);
 }
 

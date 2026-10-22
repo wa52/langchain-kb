@@ -316,6 +316,16 @@ export async function removeTrackedFile(name: string): Promise<IndexTask> {
   return (await resp.json()) as IndexTask;
 }
 
+export async function reindexTrackedFile(sourceType: string, fileKey: string): Promise<IndexTask> {
+  const resp = await apiFetch("/api/v1/files/reindex", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_type: sourceType, file_key: fileKey }),
+  });
+  if (!resp.ok) throw new Error(await readError(resp, `重新索引失败 (${resp.status})`));
+  return (await resp.json()) as IndexTask;
+}
+
 export async function indexPath(path: string): Promise<IndexTask> {
   const resp = await apiFetch("/api/v1/documents/index", {
     method: "POST",

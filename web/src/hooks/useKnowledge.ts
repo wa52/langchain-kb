@@ -6,6 +6,7 @@ import {
   indexPath,
   listTrackedFiles,
   removeTrackedFile,
+  reindexTrackedFile,
   uploadFiles,
 } from "../api/client";
 import type { KnowledgeStats, TaskStatus, TrackedFile } from "../types/api";
@@ -22,7 +23,7 @@ export interface UseKnowledgeResult {
   startPath: (path: string) => Promise<boolean>;
   startUpload: (files: File[]) => Promise<boolean>;
   removeFile: (name: string) => Promise<boolean>;
-  reindexFile: (path: string) => Promise<boolean>;
+  reindexFile: (file: TrackedFile) => Promise<boolean>;
 }
 
 export function useKnowledge(): UseKnowledgeResult {
@@ -145,9 +146,19 @@ export function useKnowledge(): UseKnowledgeResult {
     }
   }, [poll]);
 
-  const reindexFile = useCallback(async (path: string): Promise<boolean> => {
-    return startPath(path);
-  }, [startPath]);
+  const reindexFile = useCallback(async (file: TrackedFile): Promise<boolean> => {
+    setActionError(null);
+    setIndexing(true);
+    try {
+      const task = await reindexTrackedFile(file.source_type, file.file_key);
+      void poll([task.task_id]);
+      return true;
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+      setIndexing(false);
+      return false;
+    }
+  }, [poll]);
 
   useEffect(() => {
     cancelledRef.current = false;

@@ -278,23 +278,31 @@ export function KnowledgePage() {
                 <div className="tracked-file-actions">
                   <button
                     type="button"
-                    className="link-btn"
+                    className="file-action-btn"
                     disabled={indexing}
-                    onClick={() => void reindexFile(file.file_key)}
+                    aria-label={`重新索引 ${file.file_key}`}
+                    data-hint="重新索引这个文件"
+                    onClick={() => void reindexFile(file)}
                   >
-                    重新索引
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 11a8 8 0 1 1-2.3-5.7" /><path d="M20 4v6h-6" />
+                    </svg>
                   </button>
                   <button
                     type="button"
-                    className="link-btn danger-link"
+                    className="file-action-btn danger-link"
                     disabled={indexing}
+                    aria-label={`移除 ${file.file_key}`}
+                    data-hint="从知识库移除文件"
                     onClick={() => {
                       if (window.confirm(`确定从知识库移除“${file.file_key}”？`)) {
                         void removeFile(file.file_key);
                       }
                     }}
                   >
-                    移除
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 7h16M10 4h4m-8 3 1 13h10l1-13M10 11v6m4-6v6" />
+                    </svg>
                   </button>
                 </div>
               </li>

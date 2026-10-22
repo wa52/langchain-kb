@@ -29,3 +29,20 @@ subsequent tool-selection evaluation.
 
 This blocker applies to the real Jev benchmark. Independent knowledge,
 retrieval, answer, lifecycle, and UI acceptance gaps remain open.
+
+## Production index integrity — needs owner direction
+
+During Loop 013, the pre-existing source-health TestClient lifecycle test
+unexpectedly triggered scheduled experience sync. The process was stopped
+after it loaded documents and the embedding model. Read-only timestamps show
+`chroma.sqlite3` and the BM25 invalidation marker were updated, while the
+tracker, graph, and sync-status files retained older timestamps. A subsequent
+read-only SQLite `PRAGMA quick_check` reported `malformed inverted index for
+FTS5 table main.embedding_fulltext_search`. There is no pre-run integrity
+baseline, so the cause and scope cannot be attributed with certainty.
+
+The test is now isolated and the entire suite passes against a synthetic
+`KNOWLEDGE_HOME`. No production rebuild, FTS repair, or rollback has been
+attempted. Before release acceptance or further production-data testing, the
+owner should choose a recoverable backup-and-repair procedure; changes to the
+real index require explicit direction.

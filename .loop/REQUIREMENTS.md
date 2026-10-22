@@ -6,7 +6,7 @@ mean the product has been release-accepted.
 
 | Area | Requirement | Status | Existing evidence / next evidence |
 |---|---|---:|---|
-| Knowledge | Source indexing and file lifecycle | PARTIAL | Index, file, sync routers and Knowledge page exist; source version/health UI is missing. |
+| Knowledge | Source indexing and file lifecycle | PARTIAL | Index, file, sync, and source-health UI exist. Loop 013 fixes exact tracked-file reindex. Legacy remove-by-basename is not yet safe for nested/duplicate names; source version UI remains. |
 | Knowledge | Parsing, chunks, metadata | DONE | Ingestion/vector-store tests and API paths exist. |
 | Knowledge | Source health, duplicates, staleness | DONE | Loop 010 added an explicit source audit API and Knowledge-page results, with synthetic coverage and no scan on page load. |
 | Retrieval | Dense + BM25 hybrid retrieval | DONE | `src/retrieval`, hybrid behavior tests. |

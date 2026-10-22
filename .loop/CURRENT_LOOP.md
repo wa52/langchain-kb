@@ -156,3 +156,35 @@ provider actually accepts a synthetic decision request.
 
 Provider integration DONE; live Jev evaluation BLOCKED by external Gateway
 authorization. See `reports/LOOP-012.md`.
+
+# Loop 013 — Tracked Source Reindex Identity
+
+## Goal
+
+Make the Knowledge page's reindex action replace exactly the tracked file's
+existing vector source, including nested paths, instead of sending a relative
+tracker key through the add/import endpoint.
+
+## Acceptance
+
+- [x] Reindex API accepts source type + relative tracker key, resolves only a
+      configured internal/external root, and rejects traversal, absolute
+      paths, missing entries, and cross-source key collisions.
+- [x] Replacement uses the full relative source key, including the legacy
+      Windows separator spelling, and updates the correct tracker root.
+- [x] Parse failure does not delete the previous index.
+- [x] Knowledge page calls the dedicated API, with semantic icon buttons,
+      accessible names, and a 1.5-second Chinese hover explanation.
+- [x] Focused tests, isolated full regression, Web typecheck/build, and
+      synthetic desktop/390px visual review pass.
+
+## Scope guard
+
+No real tracked file was deliberately reindexed or removed during acceptance.
+The browser used synthetic file names and a temporary mock API. The existing
+remove-by-basename path is not claimed fixed by this loop.
+
+## Status
+
+DONE for reindex. See `reports/LOOP-013.md`. Production index integrity is a
+separate open incident; see `FAIL-0010` and `BLOCKED_REPORT.md`.

@@ -448,6 +448,35 @@ def run_single_file_update(filepath: str, echo_fn: callable = print):
 
 
 @_serialized_index_write
+def run_tracked_file_update(filepath: str, base_dir: str, source_type: str, echo_fn: callable = print):
+    """Replace a tracked file using its full relative vector-store source key."""
+    root = Path(base_dir).resolve(strict=True)
+    path = Path(filepath).resolve(strict=True)
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ValueError("来源文件不在配置目录内")
+    source_key = path.relative_to(root).as_posix()
+    legacy_key = str(path.relative_to(root))
+    docs = load_files([path], root, echo_fn=echo_fn)
+    if not docs:
+        raise ValueError("来源文件未加载到文档，原索引保持不变")
+    for doc in docs:
+        doc.metadata["source"] = source_key
+
+    splitter = create_splitter(CHUNK_SIZE, CHUNK_OVERLAP)
+    chunks = splitter.split_documents(docs)
+    embeddings = get_embedding_model()
+    get_vector_store(embeddings)
+    with _replacement_transaction({source_key, legacy_key}, chunks, echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
+        update_tracker(source_type, root, [str(path)])
+    echo_fn(f"  -> Done! 更新了 {len(chunks)} 个片段")
+    return len(chunks)
+
+
+@_serialized_index_write
 def run_add_path(
     path: str,
     external_dir: str = "./data/external",

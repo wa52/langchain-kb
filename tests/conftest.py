@@ -12,3 +12,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _no_lan_token(monkeypatch):
     monkeypatch.setattr("config.LAN_TOKEN", "")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_scheduled_sync(monkeypatch):
+    """TestClient lifespan must never sync configured personal source folders."""
+    monkeypatch.setattr("config.EXPERIENCE_DIRS", [])

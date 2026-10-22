@@ -27,7 +27,9 @@ def fresh_config(monkeypatch):
 
 class TestKnowledgeHome:
 
-    def test_defaults_to_project_root(self, fresh_config):
+    def test_defaults_to_project_root(self, fresh_config, monkeypatch):
+        monkeypatch.delenv("KNOWLEDGE_HOME", raising=False)
+        importlib.reload(config)
         expected = Path(config.__file__).resolve().parent
         assert config.KNOWLEDGE_HOME == expected
 
@@ -126,6 +128,7 @@ class TestRelativePathResolution:
 class TestCwdIndependence:
 
     def test_default_paths_not_relative_to_cwd(self, fresh_config, tmp_path, monkeypatch):
+        monkeypatch.delenv("KNOWLEDGE_HOME", raising=False)
         monkeypatch.chdir(tmp_path)
         importlib.reload(config)
         for key in ["CHROMA_PERSIST_DIR", "EXTERNAL_DIR", "GRAPH_PERSIST_DIR"]:

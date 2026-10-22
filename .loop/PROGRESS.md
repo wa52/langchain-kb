@@ -97,6 +97,18 @@ the repo-root `no_such.json` now uses a per-test temporary store.
 The real Jev comparison is blocked by the Gateway account's 403 response and
 its quality metrics remain unbaselined. See `reports/LOOP-012.md`.
 
+Loop 013 is DONE for tracked-file reindex: the Knowledge page now calls an
+identity-scoped API, nested paths retain their vector provenance, Windows
+legacy separator keys are replaced, and ambiguous/unsafe requests are
+rejected. Focused tests: 17 passed. Full suite with a synthetic
+`KNOWLEDGE_HOME`: 801 passed, 1 skipped; Web typecheck/build passed.
+Synthetic desktop and 390px browser review found no clipped file actions.
+Precise removal remains a separate lifecycle gap. See `reports/LOOP-013.md`.
+An existing TestClient startup test was found to trigger scheduled sync against
+configured sources and is now isolated. A read-only check of the production
+Chroma database reported an FTS5 integrity anomaly, so production repair and
+release acceptance remain open; see `FAIL-0010` and `BLOCKED_REPORT.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy

@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,6 +46,53 @@ def test_single_file_parse_failure_preserves_existing_index(tmp_path):
         count = run_single_file_update(str(source), echo_fn=lambda *args, **kwargs: None)
 
     assert count == 0
+    delete.assert_not_called()
+
+
+def test_tracked_reindex_preserves_nested_source_key(tmp_path):
+    from src.ingestion.pipeline import run_tracked_file_update
+
+    root = tmp_path / "external"
+    source = root / "manuals" / "example.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("new content", encoding="utf-8")
+    store = MagicMock()
+    store._collection.get.return_value = {"documents": [], "metadatas": []}
+    with (
+        patch("src.ingestion.pipeline._cross_process_index_lock", return_value=nullcontext()),
+        patch("src.ingestion.pipeline.get_embedding_model"),
+        patch("src.ingestion.pipeline.get_vector_store", return_value=store),
+        patch("src.ingestion.pipeline.add_documents_with_progress") as add,
+        patch("src.ingestion.pipeline.delete_by_source") as delete,
+        patch("src.ingestion.pipeline.rebuild_bm25"),
+        patch("src.ingestion.pipeline.update_tracker") as update_tracker,
+        patch("config.ENABLE_GRAPH", False),
+    ):
+        count = run_tracked_file_update(str(source), str(root), "external",
+                                        echo_fn=lambda *args, **kwargs: None)
+
+    assert count > 0
+    assert {call.args[0] for call in delete.call_args_list} == {
+        "manuals/example.md", str(source.relative_to(root)),
+    }
+    assert all(chunk.metadata["source"] == "manuals/example.md"
+               for chunk in add.call_args.args[0])
+    update_tracker.assert_called_once_with("external", root.resolve(), [str(source.resolve())])
+
+
+def test_tracked_reindex_parse_failure_preserves_existing_index(tmp_path):
+    from src.ingestion.pipeline import run_tracked_file_update
+
+    source = tmp_path / "broken.md"
+    source.write_text("content", encoding="utf-8")
+    with (
+        patch("src.ingestion.pipeline._cross_process_index_lock", return_value=nullcontext()),
+        patch("src.ingestion.pipeline.load_files", return_value=[]),
+        patch("src.ingestion.pipeline.delete_by_source") as delete,
+    ):
+        with pytest.raises(ValueError, match="原索引保持不变"):
+            run_tracked_file_update(str(source), str(tmp_path), "external",
+                                    echo_fn=lambda *args, **kwargs: None)
     delete.assert_not_called()
 
 

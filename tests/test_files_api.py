@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 import time
 
@@ -73,6 +73,52 @@ class TestRemoveFile:
         assert resp.status_code == 409
 
 
+class TestReindexTrackedFile:
+    def test_nested_tracked_file_uses_its_source_identity(self, client, tmp_path, monkeypatch):
+        from src.api.services.indexing import get_task_manager
+
+        root = tmp_path / "external"
+        source = root / "manuals" / "same.md"
+        source.parent.mkdir(parents=True)
+        source.write_text("updated", encoding="utf-8")
+        monkeypatch.setattr("config.EXTERNAL_DIR", str(root))
+        get_task_manager().clear()
+        with (
+            patch("src.ingestion.tracker.list_all_files", return_value=[
+                {"source_type": "external", "file_key": "manuals/same.md", "hash": "old"},
+            ]),
+            patch("src.api.routers.files.run_tracked_reindex_task") as run_task,
+        ):
+            resp = client.post("/api/v1/files/reindex", json={
+                "source_type": "external", "file_key": "manuals/same.md",
+            })
+
+        assert resp.status_code == 202
+        assert resp.json()["task_id"]
+        assert run_task.call_args.args[1:] == ("external", "manuals/same.md")
+
+    def test_reindex_rejects_ambiguous_source_key(self, client, tmp_path, monkeypatch):
+        root = tmp_path / "external"
+        root.mkdir()
+        (root / "same.md").write_text("a", encoding="utf-8")
+        monkeypatch.setattr("config.EXTERNAL_DIR", str(root))
+        with patch("src.ingestion.tracker.list_all_files", return_value=[
+            {"source_type": "external", "file_key": "same.md", "hash": "a"},
+            {"source_type": "internal", "file_key": "same.md", "hash": "b"},
+        ]):
+            resp = client.post("/api/v1/files/reindex", json={
+                "source_type": "external", "file_key": "same.md",
+            })
+        assert resp.status_code == 409
+
+    @pytest.mark.parametrize("key", ["../escape.md", "C:/escape.md", "C:escape.md", "/escape.md"])
+    def test_reindex_rejects_unsafe_key(self, client, key):
+        resp = client.post("/api/v1/files/reindex", json={
+            "source_type": "external", "file_key": key,
+        })
+        assert resp.status_code == 400
+
+
 class TestSourceHealthAudit:
     def test_only_one_source_health_audit_can_run_at_a_time(self, client):
         from src.api.services.source_health import get_source_health_task_manager
@@ -116,7 +162,11 @@ class TestSourceHealthAudit:
                 completed_at="2026-09-25T00:00:00+00:00",
             )
 
-        with patch("src.api.routers.files.run_source_health_task", new=finish_task):
+        with (
+            patch("src.api.routers.files.run_source_health_task", new=finish_task),
+            patch("src.api.services.sync.maybe_run_scheduled", new_callable=AsyncMock),
+            patch("src.api.services.sync._run_sync", side_effect=AssertionError("real sync must not run")) as real_sync,
+        ):
             with TestClient(client.app) as active_client:
                 started = active_client.post("/api/v1/files/health-audit")
                 assert started.status_code == 202
@@ -129,6 +179,8 @@ class TestSourceHealthAudit:
                     if status.json()["status"] == "done":
                         break
                     time.sleep(0.01)
+
+        real_sync.assert_not_called()
 
         assert status.status_code == 200
         assert status.json()["result"]["summary"]["healthy"] == 1
