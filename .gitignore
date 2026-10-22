@@ -23,5 +23,8 @@ skills-lock.json
 # 本地 MCP 配置（含个人路径，不随项目发布；模板见 knowledge/mcp.example.json）
 mcp.json
 
+# Private diagnostic snapshots are never repository artifacts.
+/.tmp/production-index-backup-*/
+
 # 本地代理启动脚本
 opencode-proxy.cmd

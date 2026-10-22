@@ -46,3 +46,12 @@ The test is now isolated and the entire suite passes against a synthetic
 attempted. Before release acceptance or further production-data testing, the
 owner should choose a recoverable backup-and-repair procedure; changes to the
 real index require explicit direction.
+
+On 2026-10-22, the owner authorized a backup and read-only diagnosis only.
+An 11-file, 1,136,741,205-byte snapshot of `chroma_db/` plus the tracker,
+graph, and sync-status files was copied to the local, Git-ignored
+`.tmp/production-index-backup-20261022-01/`. Source and snapshot SHA-256
+hashes matched for every file. This is a byte-for-byte rollback snapshot of
+the observed state, **not** a verified healthy index. The snapshot itself
+reproduces the FTS5 error. No production repair, rebuild, or rollback has
+been authorized. See `reports/INDEX-INTEGRITY-20261022.md`.
