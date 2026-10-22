@@ -180,6 +180,7 @@ button.primary:not(:disabled):hover {
   transition-delay: 0s;
 }
 .dev-toggle::after, .chat-action::after, .composer button::after { left: auto; right: 0; }
+.composer button::after { top: auto; bottom: calc(100% + 8px); }
 
 .workspace {
   flex: 1;
