@@ -102,6 +102,17 @@ worked despite those violations, but this is not enough to certify all
 metadata and write paths. The cause and operational impact need separate
 investigation before any production change.
 
+A follow-up read-only schema check on the trial clarified the mismatch:
+`segments.collection` declares `REFERENCES collection(id)`, but the database
+has `collections`, not `collection`. Both segment rows join successfully to
+`collections.id`, and neither collection reference is null. The two reported
+violations therefore reflect a stale/invalid declared parent-table name in
+this schema, not evidence that these two segment records have lost their
+actual collection. This does **not** establish that future writes or migrations
+are safe; no schema change was attempted. SQLite documents that a foreign-key
+declaration may name a parent table that does not exist and fail at DML time:
+[foreign-key semantics](https://www.sqlite.org/foreignkeys.html).
+
 This trial supports a narrowly scoped FTS5 repair strategy; it does not
 authorize applying that strategy to production, replacing the index, or
 claiming the whole index healthy. A production plan must account for active

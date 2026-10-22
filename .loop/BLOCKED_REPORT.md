@@ -61,6 +61,8 @@ repair trial. Rebuilding only that copy changed `PRAGMA integrity_check`
 from the FTS5 error to `ok`, while Chroma count, vector query, and document
 filter checks succeeded. The original snapshot and production files remained
 hash-identical. Two pre-existing `segments` foreign-key violations remain
-unchanged in the trial. This validates a possible FTS5 recovery method on
+unchanged in the trial; the declared parent is `collection`, while the two
+segment rows actually join to the existing `collections` table. This
+validates a possible FTS5 recovery method on
 the trial copy, **not** a production repair or full index-health acceptance.
 Production maintenance still requires a separate decision and rollback plan.
