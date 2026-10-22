@@ -18,17 +18,6 @@ const nextId = (): string => `m_${Date.now().toString(36)}_${seq++}`;
 
 const CITATION_RE = /\[来源:\s*([^\]]+)\]/g;
 
-function makeGreeting(): ChatMessage {
-  return {
-    id: nextId(),
-    role: "assistant",
-    content: "你好，我是你的 AI 助手。有什么可以帮你？我可以从知识库中检索资料来回答你的问题。",
-    streaming: false,
-    interrupted: false,
-    sources: [],
-  };
-}
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -59,7 +48,7 @@ export interface UseChatResult {
 }
 
 export function useChat(): UseChatResult {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [makeGreeting()]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -201,7 +190,7 @@ export function useChat(): UseChatResult {
     abortRef.current = null;
     streamSessionRef.current = null;
     runSeqRef.current++;
-    setMessages([makeGreeting()]);
+    setMessages([]);
     setSessionId(null);
     setError(null);
     setStreaming(false);

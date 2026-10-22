@@ -100,17 +100,18 @@ export function SessionDrawer({ currentSessionId, onClose, onResume }: SessionDr
                 </button>
                 <button
                   type="button"
-                  className="session-del"
+                  className="session-del ui-hint"
                   onClick={() => void handleDelete(s.id)}
                   aria-label={`删除会话 ${s.title}`}
+                  data-hint={confirmId === s.id ? "确认删除这段会话" : "删除这段历史会话"}
                 >
-                  {confirmId === s.id ? "确认删除?" : "删除"}
+                  {confirmId === s.id ? "确认删除" : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>}
                 </button>
               </div>
             </li>
           ))}
         </ul>
-        {!loading && sessions.length === 0 ? (
+        {!loading && !error && !actionError && sessions.length === 0 ? (
           <p className="muted">暂无历史会话。</p>
         ) : null}
       </div>
