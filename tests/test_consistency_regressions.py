@@ -116,3 +116,66 @@ def test_replace_rolls_back_previous_documents_when_write_fails():
     assert delete.call_count == 2
     assert add.call_args_list[1].args[0] == [previous]
     rebuild.assert_called_once()
+
+
+def test_tracked_remove_targets_one_nested_source_and_retains_disk_files(tmp_path, monkeypatch):
+    from src.ingestion.pipeline import run_tracked_file_remove
+    from src.ingestion import tracker
+
+    monkeypatch.setattr(tracker, "TRACKER_FILE", str(tmp_path / "tracker.json"))
+    root = tmp_path / "external"
+    first = root / "manuals" / "same.md"
+    second = root / "other" / "same.md"
+    for path in (first, second):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(path), encoding="utf-8")
+    tracker.update_tracker("external", root, [str(first), str(second)])
+    store = MagicMock()
+    store._collection.get.return_value = {"documents": [], "metadatas": []}
+    with (
+        patch("src.ingestion.pipeline._cross_process_index_lock", return_value=nullcontext()),
+        patch("src.ingestion.pipeline.get_vector_store", return_value=store),
+        patch("src.ingestion.pipeline.delete_by_source") as delete,
+        patch("src.ingestion.pipeline.add_documents_with_progress"),
+        patch("src.ingestion.pipeline.rebuild_bm25"),
+        patch("config.ENABLE_GRAPH", False),
+    ):
+        result = run_tracked_file_remove("external", "manuals/same.md",
+                                         echo_fn=lambda *a, **k: None)
+
+    assert result == {"removed": "manuals/same.md", "source_type": "external", "file_retained": True}
+    assert {call.args[0] for call in delete.call_args_list} == {
+        "manuals/same.md", "manuals\\same.md",
+    }
+    assert [item["file_key"] for item in tracker.list_all_files()] == ["other\\same.md"]
+    assert first.exists() and second.exists()
+
+
+def test_tracked_remove_restores_index_on_rebuild_failure(tmp_path, monkeypatch):
+    from src.ingestion.pipeline import run_tracked_file_remove
+    from src.ingestion import tracker
+
+    monkeypatch.setattr(tracker, "TRACKER_FILE", str(tmp_path / "tracker.json"))
+    root = tmp_path / "external"
+    root.mkdir()
+    source = root / "same.md"
+    source.write_text("old", encoding="utf-8")
+    tracker.update_tracker("external", root, [str(source)])
+    store = MagicMock()
+    store._collection.get.return_value = {
+        "documents": ["old"], "metadatas": [{"source": "same.md"}],
+    }
+    with (
+        patch("src.ingestion.pipeline._cross_process_index_lock", return_value=nullcontext()),
+        patch("src.ingestion.pipeline.get_vector_store", return_value=store),
+        patch("src.ingestion.pipeline.delete_by_source"),
+        patch("src.ingestion.pipeline.add_documents_with_progress") as add,
+        patch("src.ingestion.pipeline.rebuild_bm25", side_effect=[RuntimeError("rebuild failed"), None]),
+        patch("config.ENABLE_GRAPH", False),
+    ):
+        with pytest.raises(RuntimeError, match="rebuild failed"):
+            run_tracked_file_remove("external", "same.md", echo_fn=lambda *a, **k: None)
+
+    assert [item["file_key"] for item in tracker.list_all_files()] == ["same.md"]
+    assert source.exists()
+    assert any(call.args[0] and call.args[0][0].page_content == "old" for call in add.call_args_list)

@@ -22,7 +22,7 @@ export interface UseKnowledgeResult {
   actionError: string | null;
   startPath: (path: string) => Promise<boolean>;
   startUpload: (files: File[]) => Promise<boolean>;
-  removeFile: (name: string) => Promise<boolean>;
+  removeFile: (file: TrackedFile) => Promise<boolean>;
   reindexFile: (file: TrackedFile) => Promise<boolean>;
 }
 
@@ -132,11 +132,11 @@ export function useKnowledge(): UseKnowledgeResult {
     [poll],
   );
 
-  const removeFile = useCallback(async (name: string): Promise<boolean> => {
+  const removeFile = useCallback(async (file: TrackedFile): Promise<boolean> => {
     setActionError(null);
     setIndexing(true);
     try {
-      const task = await removeTrackedFile(name);
+      const task = await removeTrackedFile(file.source_type, file.file_key);
       void poll([task.task_id]);
       return true;
     } catch (e) {

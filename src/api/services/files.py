@@ -5,7 +5,9 @@ reuses the ingestion pipeline's ``run_remove`` so chunks, the on-disk copy and
 the BM25 index stay consistent.
 """
 
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
+
+from src.ingestion.tracker import resolve_tracked_source
 
 
 def list_files_view() -> dict:
@@ -17,27 +19,10 @@ def list_files_view() -> dict:
 def resolve_tracked_file(source_type: str, file_key: str) -> tuple[Path, Path]:
     """Resolve one tracked source under its configured root, without guessing names."""
     from config import DATA_DIR, EXTERNAL_DIR
-    from src.ingestion.tracker import list_all_files
 
+    _, key = resolve_tracked_source(source_type, file_key)
     roots = {"internal": Path(DATA_DIR), "external": Path(EXTERNAL_DIR)}
-    if source_type not in roots:
-        raise ValueError("仅支持重新索引内部或外部知识源")
-    key = file_key.replace("\\", "/")
     parts = key.split("/")
-    if (not key or key.startswith("/") or PureWindowsPath(key).drive
-            or any(part in ("", ".", "..") for part in parts)):
-        raise ValueError("无效的来源相对路径")
-
-    sources = list_all_files()
-    matches = [record for record in sources
-               if record.get("source_type") == source_type
-               and str(record.get("file_key", "")).replace("\\", "/") == key]
-    if len(matches) != 1:
-        raise LookupError("该文件未在来源记录中唯一匹配")
-    if any(record.get("source_type") != source_type
-           and str(record.get("file_key", "")).replace("\\", "/") == key
-           for record in sources):
-        raise RuntimeError("多个知识源使用同一索引路径，无法安全地单独重新索引")
 
     root = roots[source_type].resolve(strict=True)
     path = (root / Path(*parts)).resolve(strict=True)

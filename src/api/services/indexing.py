@@ -171,3 +171,27 @@ async def run_tracked_reindex_task(task_id: str, source_type: str, file_key: str
     except Exception as exc:
         mgr.update_task(task_id, status="failed", error=str(exc))
         reg.set_error("index", exc, f"重新索引任务 {task_id}")
+
+
+async def run_tracked_remove_task(task_id: str, source_type: str, file_key: str):
+    mgr = get_task_manager()
+    from src.status import get_registry
+    reg = get_registry()
+    mgr.update_task(task_id, status="running", progress="Removing index...")
+    reg.set_loading("index", f"精确移除任务 {task_id}")
+    try:
+        def remove():
+            from src.ingestion.pipeline import run_tracked_file_remove
+            from src.resources import ResourceManager
+
+            result = run_tracked_file_remove(source_type, file_key,
+                                             echo_fn=lambda *a, **k: None)
+            ResourceManager.get_instance().invalidate_retriever_cache()
+            return result
+
+        result = await asyncio.get_running_loop().run_in_executor(None, remove)
+        mgr.update_task(task_id, status="done", progress="Complete", result=result)
+        reg.set_ready("index", f"精确移除任务 {task_id}")
+    except Exception as exc:
+        mgr.update_task(task_id, status="failed", error=str(exc))
+        reg.set_error("index", exc, f"精确移除任务 {task_id}")

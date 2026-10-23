@@ -109,6 +109,15 @@ configured sources and is now isolated. A read-only check of the production
 Chroma database reported an FTS5 integrity anomaly, so production repair and
 release acceptance remain open; see `FAIL-0010` and `BLOCKED_REPORT.md`.
 
+Loop 014 is DONE for exact tracked-source removal: the Knowledge page now
+removes the selected source by type and full relative key, retains its disk
+file, and updates vector/BM25/graph/tracker with rollback on failure.
+Synthetic focused tests passed (26); isolated full regression passed (810
+passed, 1 skipped); Web typecheck/build and isolated desktop/390px page review
+passed. The old basename API remains
+for compatibility and is not safe for duplicate names. No production source
+was removed; see `reports/LOOP-014.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy

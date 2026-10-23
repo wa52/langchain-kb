@@ -11,13 +11,17 @@ from src.api.schemas import (
     SourceHealthAuditStatus,
 )
 from src.application.files import list_files_view
-from src.application.indexing import get_task_manager, run_remove_task, run_tracked_reindex_task
+from src.application.indexing import get_task_manager, run_remove_task, run_tracked_reindex_task, run_tracked_remove_task
 from src.api.services.source_health import (
     get_source_health_task_manager,
     run_source_health_task,
 )
 
 router = APIRouter()
+
+
+def _tracked_task_key(source_type: str, file_key: str) -> str:
+    return "tracked:" + source_type + ":" + file_key.replace("\\", "/")
 
 
 @router.post(
@@ -39,13 +43,42 @@ async def reindex_tracked_file(req: TrackedFileRequest, rm: RmDep):
         raise HTTPException(status_code=404, detail="已跟踪的来源文件不存在") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    key = f"reindex:{req.source_type}:{req.file_key}"
+    key = _tracked_task_key(req.source_type, req.file_key)
     mgr = get_task_manager()
     try:
         task_id = mgr.create_task(key)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="该文件正在重新索引") from exc
     asyncio.create_task(run_tracked_reindex_task(task_id, req.source_type, req.file_key))
+    return IndexTaskResponse(task_id=task_id, status="pending")
+
+
+@router.post(
+    "/files/remove",
+    response_model=IndexTaskResponse,
+    status_code=202,
+    operation_id="remove_tracked_file",
+    summary="精确移除已跟踪文件的索引",
+    description="按来源类型和相对路径移除索引及跟踪记录；原始磁盘文件保留。",
+)
+async def remove_tracked_file(req: TrackedFileRequest):
+    from src.api.services.files import resolve_tracked_source
+
+    try:
+        resolve_tracked_source(req.source_type, req.file_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="已跟踪的来源记录不存在") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    key = _tracked_task_key(req.source_type, req.file_key)
+    mgr = get_task_manager()
+    try:
+        task_id = mgr.create_task(key)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="该文件正在执行索引操作") from exc
+    asyncio.create_task(run_tracked_remove_task(task_id, req.source_type, req.file_key))
     return IndexTaskResponse(task_id=task_id, status="pending")
 
 

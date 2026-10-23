@@ -119,6 +119,58 @@ class TestReindexTrackedFile:
         assert resp.status_code == 400
 
 
+class TestRemoveTrackedFile:
+    def test_missing_disk_file_can_be_removed_by_exact_identity(self, client):
+        from src.api.services.indexing import get_task_manager
+
+        get_task_manager().clear()
+        with (
+            patch("src.ingestion.tracker.list_all_files", return_value=[
+                {"source_type": "external", "file_key": "manuals/same.md", "hash": "old"},
+                {"source_type": "external", "file_key": "other/same.md", "hash": "other"},
+            ]),
+            patch("src.api.routers.files.run_tracked_remove_task") as run_task,
+        ):
+            resp = client.post("/api/v1/files/remove", json={
+                "source_type": "external", "file_key": "manuals/same.md",
+            })
+
+        assert resp.status_code == 202
+        assert run_task.call_args.args[1:] == ("external", "manuals/same.md")
+
+    def test_remove_conflicts_with_reindex_of_same_source(self, client):
+        from src.api.services.indexing import get_task_manager
+
+        mgr = get_task_manager()
+        mgr.clear()
+        mgr.create_task("tracked:external:manuals/same.md")
+        with patch("src.ingestion.tracker.list_all_files", return_value=[
+            {"source_type": "external", "file_key": "manuals\\same.md", "hash": "old"},
+        ]):
+            resp = client.post("/api/v1/files/remove", json={
+                "source_type": "external", "file_key": "manuals\\same.md",
+            })
+        assert resp.status_code == 409
+        mgr.clear()
+
+    def test_remove_rejects_cross_source_collision(self, client):
+        with patch("src.ingestion.tracker.list_all_files", return_value=[
+            {"source_type": "external", "file_key": "manuals/same.md", "hash": "a"},
+            {"source_type": "internal", "file_key": "manuals\\same.md", "hash": "b"},
+        ]):
+            resp = client.post("/api/v1/files/remove", json={
+                "source_type": "external", "file_key": "manuals/same.md",
+            })
+        assert resp.status_code == 409
+
+    @pytest.mark.parametrize("key", ["../escape.md", "C:/escape.md", "/escape.md", "dir//file.md"])
+    def test_remove_rejects_unsafe_key(self, client, key):
+        resp = client.post("/api/v1/files/remove", json={
+            "source_type": "external", "file_key": key,
+        })
+        assert resp.status_code == 400
+
+
 class TestSourceHealthAudit:
     def test_only_one_source_health_audit_can_run_at_a_time(self, client):
         from src.api.services.source_health import get_source_health_task_manager

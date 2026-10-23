@@ -618,3 +618,20 @@ def run_remove(source_name: str, external_dir: str = "./data/external", keep_fil
     if ENABLE_GRAPH:
         _rebuild_graph_from_store(echo_fn=echo_fn)
     echo_fn(f"  -> 已从知识库移除: {source_name}")
+
+
+@_serialized_index_write
+def run_tracked_file_remove(source_type: str, file_key: str, echo_fn: callable = print) -> dict:
+    """Remove one tracked index source, retaining its original disk file."""
+    from src.ingestion.tracker import remove_tracked_entry, resolve_tracked_source
+
+    exact_key, source_key = resolve_tracked_source(source_type, file_key)
+    source_keys = {source_key, source_key.replace("/", "\\")}
+    with _replacement_transaction(source_keys, [], echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
+        remove_tracked_entry(source_type, exact_key)
+    echo_fn(f"  -> 已从知识库移除索引: {source_key}")
+    return {"removed": source_key, "source_type": source_type, "file_retained": True}

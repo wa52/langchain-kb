@@ -293,10 +293,10 @@ export function KnowledgePage() {
                     className="file-action-btn danger-link"
                     disabled={indexing}
                     aria-label={`移除 ${file.file_key}`}
-                    data-hint="从知识库移除文件"
+                    data-hint="只移除这份资料的索引，保留原始文件"
                     onClick={() => {
-                      if (window.confirm(`确定从知识库移除“${file.file_key}”？`)) {
-                        void removeFile(file.file_key);
+                      if (window.confirm(`确定从知识库移除“${file.file_key}”的索引？原始文件会保留。`)) {
+                        void removeFile(file);
                       }
                     }}
                   >

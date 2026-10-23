@@ -19,3 +19,8 @@ async def run_remove_task(task_id: str, name: str, keep_file: bool = False):
 async def run_tracked_reindex_task(task_id: str, source_type: str, file_key: str):
     from src.api.services.indexing import run_tracked_reindex_task as _run
     return await _run(task_id, source_type, file_key)
+
+
+async def run_tracked_remove_task(task_id: str, source_type: str, file_key: str):
+    from src.api.services.indexing import run_tracked_remove_task as _run
+    return await _run(task_id, source_type, file_key)

@@ -188,3 +188,33 @@ remove-by-basename path is not claimed fixed by this loop.
 
 DONE for reindex. See `reports/LOOP-013.md`. Production index integrity is a
 separate open incident; see `FAIL-0010` and `BLOCKED_REPORT.md`.
+
+# Loop 014 — Exact Tracked Source Removal
+
+## Goal
+
+Make the Knowledge page remove only the selected tracked source's index and
+tracker entry, even when multiple folders contain the same basename. Preserve
+the original disk file.
+
+## Acceptance
+
+- [x] API accepts source type and full relative key; rejects unsafe, missing,
+      ambiguous, and cross-source-colliding identities.
+- [x] Removal and reindex for the same source cannot run concurrently.
+- [x] Removal updates vector index, BM25, optional graph, and tracker as one
+      rollback-aware operation, without deleting the disk file.
+- [x] Knowledge page uses the exact-source API and clearly says the original
+      file is retained before confirmation.
+- [x] Synthetic duplicate-basename, missing-source-file, conflict, and BM25
+      rollback tests pass; full regression and Web build pass.
+
+## Scope guard
+
+No real tracked source is removed during acceptance. The legacy basename
+`DELETE /files/{name}` API remains for compatibility and is not claimed safe
+for duplicate names; callers should use the exact-source endpoint.
+
+## Status
+
+DONE for the Knowledge-page removal path. See `reports/LOOP-014.md`.

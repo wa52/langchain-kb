@@ -3,7 +3,7 @@ import copy
 import hashlib
 import os
 import tempfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from threading import RLock
 
 from config import KNOWLEDGE_HOME
@@ -123,6 +123,40 @@ def remove_from_tracker(source_name: str, source_type: str | None = None):
             for k in to_delete:
                 del registry[k]
         _save_tracker(tracker)
+
+
+def remove_tracked_entry(source_type: str, file_key: str) -> None:
+    """Remove exactly one tracker entry; never match another file's basename."""
+    with _TRACKER_LOCK:
+        tracker = _load_tracker()
+        registry = tracker.get(source_type, {})
+        if file_key not in registry:
+            raise LookupError("该来源记录已不存在")
+        del registry[file_key]
+        _save_tracker(tracker)
+
+
+def resolve_tracked_source(source_type: str, file_key: str) -> tuple[str, str]:
+    """Return exact tracker key and normalized index source, even if file is gone."""
+    if source_type not in ("internal", "external"):
+        raise ValueError("仅支持内部或外部知识源")
+    key = file_key.replace("\\", "/")
+    parts = key.split("/")
+    if (not key or key.startswith("/") or PureWindowsPath(key).drive
+            or any(part in ("", ".", "..") for part in parts)):
+        raise ValueError("无效的来源相对路径")
+
+    sources = list_all_files()
+    matches = [record for record in sources
+               if record.get("source_type") == source_type
+               and str(record.get("file_key", "")).replace("\\", "/") == key]
+    if len(matches) != 1:
+        raise LookupError("该文件未在来源记录中唯一匹配")
+    if any(record.get("source_type") != source_type
+           and str(record.get("file_key", "")).replace("\\", "/") == key
+           for record in sources):
+        raise RuntimeError("多个知识源使用同一索引路径，无法安全地单独操作")
+    return str(matches[0]["file_key"]), key
 
 
 def is_already_indexed(filepaths: list[str], source_type: str = "external") -> bool:

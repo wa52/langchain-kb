@@ -308,9 +308,11 @@ export async function getSourceHealthAudit(taskId: string): Promise<SourceHealth
   return (await resp.json()) as SourceHealthAuditStatus;
 }
 
-export async function removeTrackedFile(name: string): Promise<IndexTask> {
-  const resp = await apiFetch(`/api/v1/files/${encodeURIComponent(name)}`, {
-    method: "DELETE",
+export async function removeTrackedFile(sourceType: string, fileKey: string): Promise<IndexTask> {
+  const resp = await apiFetch("/api/v1/files/remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_type: sourceType, file_key: fileKey }),
   });
   if (!resp.ok) throw new Error(await readError(resp, `移除文件失败 (${resp.status})`));
   return (await resp.json()) as IndexTask;
