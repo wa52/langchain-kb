@@ -326,8 +326,9 @@ export function KnowledgePage() {
       <div className="card">
         <h3>定时同步目录</h3>
         <p className="muted" style={{ fontSize: 13 }}>
-          把服务器本机目录加入列表后，服务会每 {sync.status?.interval_hours ?? "—"}{" "}
-          小时自动增量同步其中新增/变更的文档（原位读取，不复制）。适合把项目经验库等外部资料持续接入。
+          {sync.status?.paused
+            ? "当前服务已暂停经验库同步；目录配置仍保留，自动与手动同步均不可执行。"
+            : <>把服务器本机目录加入列表后，服务会每 {sync.status?.interval_hours ?? "—"} 小时自动增量同步其中新增/变更的文档（原位读取，不复制）。适合把项目经验库等外部资料持续接入。</>}
         </p>
         {sync.status?.dirs.length ? (
           <ul className="sync-dir-list">

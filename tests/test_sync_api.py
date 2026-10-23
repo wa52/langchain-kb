@@ -55,7 +55,25 @@ class TestSyncStatus:
         with patch("config.EXPERIENCE_DIRS", [str(tmp_path)]):
             body = client.get("/api/v1/sync/status").json()
         assert body["enabled"] is True
+        assert body["paused"] is False
         assert body["dirs"] == [str(tmp_path)]
+
+    def test_paused_sync_preserves_dirs_but_disables_execution(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", "1")
+        with patch("config.EXPERIENCE_DIRS", [str(tmp_path)]):
+            body = client.get("/api/v1/sync/status").json()
+            run = client.post("/api/v1/sync/run")
+        assert body["dirs"] == [str(tmp_path)]
+        assert body["enabled"] is False
+        assert body["paused"] is True
+        assert run.status_code == 409
+
+    def test_paused_sync_is_not_due(self, tmp_path, monkeypatch):
+        import src.api.services.sync as sync
+
+        monkeypatch.setenv("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", "1")
+        with patch("config.EXPERIENCE_DIRS", [str(tmp_path)]):
+            assert sync._due() is False
 
 
 class TestSyncDirs:

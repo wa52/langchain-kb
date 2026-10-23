@@ -498,6 +498,7 @@ export async function setMcpServerEnabled(name: string, enabled: boolean): Promi
 export interface SyncStatus {
   dirs: string[];
   enabled: boolean;
+  paused: boolean;
   interval_hours: number;
   running: boolean;
   last_sync_at: string | null;

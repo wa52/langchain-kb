@@ -50,6 +50,8 @@ def remove_sync_dir(path: str = Query(..., description="要移除的目录路径
     description="后台执行一次经验库增量同步（正在运行时不重复启动）。",
 )
 async def run_sync():
+    if sync.get_sync_view()["paused"]:
+        raise HTTPException(status_code=409, detail="经验库同步已在当前启动配置中暂停")
     started = await sync.run_sync_now()
     return JSONResponse(
         content={"running": True, "started": started},

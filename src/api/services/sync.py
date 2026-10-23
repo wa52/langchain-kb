@@ -19,6 +19,12 @@ _lock = threading.Lock()
 _running = False
 
 
+def _sync_disabled() -> bool:
+    return os.getenv("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def _load_status() -> dict:
     try:
         if _STATUS_PATH.exists():
@@ -54,7 +60,8 @@ def get_sync_view() -> dict:
     status = _load_status()
     return {
         "dirs": list(config.EXPERIENCE_DIRS),
-        "enabled": bool(config.EXPERIENCE_DIRS),
+        "enabled": bool(config.EXPERIENCE_DIRS) and not _sync_disabled(),
+        "paused": _sync_disabled(),
         "interval_hours": config.SYNC_INTERVAL_HOURS,
         "running": _running,
         "last_sync_at": status.get("last_sync_at"),
@@ -112,6 +119,8 @@ def _run_sync() -> dict:
 async def run_sync_now() -> bool:
     """Start a sync on the event-loop executor; returns True if it was started."""
     import asyncio
+    if _sync_disabled():
+        return False
     if not _claim():
         return False
     loop = asyncio.get_running_loop()
@@ -120,7 +129,7 @@ async def run_sync_now() -> bool:
 
 
 def _due() -> bool:
-    if not config.EXPERIENCE_DIRS:
+    if _sync_disabled() or not config.EXPERIENCE_DIRS:
         return False
     status = _load_status()
     last = status.get("last_sync_at")

@@ -66,3 +66,18 @@ segment rows actually join to the existing `collections` table. This
 validates a possible FTS5 recovery method on
 the trial copy, **not** a production repair or full index-health acceptance.
 Production maintenance still requires a separate decision and rollback plan.
+
+On 2026-10-24, a Web-launcher verification unexpectedly started scheduled
+experience sync against production data. The launcher attempted to suppress it
+with an empty `EXPERIENCE_DIRS`, but Windows CMD removed that environment
+variable and `.env` restored six directories. Startup logs showed several
+source removals and 25 vector additions before the server was stopped. The
+production `chroma.sqlite3` timestamp advanced to 07:12:46 local time;
+`sync_status.json` retained its previous timestamp, so the attempted run did
+not record a completed status. A read-only `PRAGMA quick_check` still reports
+`malformed inverted index for FTS5 table main.embedding_fulltext_search`.
+The exact before/after document delta is not established. No repair, rollback,
+or additional production-data test has been attempted. The launcher and sync
+service now use an explicit `KNOWLEDGE_DISABLE_EXPERIENCE_SYNC=1` guard to
+block both scheduled and manual sync while the owner decides the index recovery
+plan.
