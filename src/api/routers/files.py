@@ -151,8 +151,9 @@ def get_source_health_audit(task_id: str, response: Response):
     operation_id="remove_file",
     summary="从知识库移除文件",
     description=(
-        "从向量库删除该文件的全部 chunk，可选删除 data/external 下的副本，"
-        "并重建 BM25 索引。异步执行，立即返回 task_id。"
+        "兼容接口，仅处理唯一的外部根目录文件名；同名、嵌套、目录或符号链接会拒绝。"
+        "优先使用 POST /files/remove 并提供来源类型及完整相对路径。"
+        "成功时可选删除原始文件，并重建 BM25 索引。异步执行，立即返回 task_id。"
     ),
 )
 async def remove_file(

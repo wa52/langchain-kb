@@ -10,7 +10,7 @@ from threading import RLock
 from config import CHUNK_OVERLAP, CHUNK_SIZE, KNOWLEDGE_HOME
 from src.ingestion.loader import MarkdownLoader, load_files, load_path
 from src.ingestion.splitter import create_splitter
-from src.ingestion.tracker import get_changed_files, update_tracker, remove_from_tracker, get_indexed_hashes
+from src.ingestion.tracker import get_changed_files, update_tracker, get_indexed_hashes
 from src.retrieval.retriever import rebuild_bm25, invalidate_bm25
 from src.vector_store.chroma_client import get_vector_store, reset_vector_store, delete_by_source, add_documents_with_progress
 from src.vector_store.embedding import get_embedding_model
@@ -598,25 +598,33 @@ def run_add_path(
 
 @_serialized_index_write
 def run_remove(source_name: str, external_dir: str = "./data/external", keep_file: bool = False, echo_fn: callable = print):
-    delete_by_source(source_name)
-    invalidate_bm25()
+    """Compatibility removal for one flat external file; ambiguous names fail closed."""
+    from pathlib import PureWindowsPath
+    from src.ingestion.tracker import list_all_files, remove_tracked_entry
 
-    if not keep_file:
-        target_base = Path(external_dir)
-        for f in target_base.rglob("*"):
-            if f.name == source_name:
-                if f.is_file():
-                    f.unlink()
-                    echo_fn(f"  删除文件: {f}")
-                elif f.is_dir():
-                    shutil.rmtree(str(f))
-                    echo_fn(f"  删除目录: {f}")
+    if (not source_name or source_name in (".", "..") or "/" in source_name
+            or "\\" in source_name or PureWindowsPath(source_name).drive):
+        raise ValueError("旧移除接口仅接受单个文件名；请改用来源类型和完整相对路径")
+    matches = [row for row in list_all_files()
+               if PureWindowsPath(str(row.get("file_key", ""))).name == source_name]
+    if (len(matches) != 1 or matches[0].get("source_type") != "external"
+            or matches[0].get("file_key") != source_name):
+        raise ValueError("文件名无法唯一定位外部知识源；请改用精确来源接口")
 
-    remove_from_tracker(source_name, source_type="external")
-    rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
-    from config import ENABLE_GRAPH
-    if ENABLE_GRAPH:
-        _rebuild_graph_from_store(echo_fn=echo_fn)
+    target_base = Path(external_dir).resolve()
+    target = target_base / source_name
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise ValueError("旧移除接口只允许删除普通文件，不允许目录或符号链接")
+
+    with _replacement_transaction({source_name}, [], echo_fn=echo_fn):
+        rebuild_bm25(get_vector_store(), echo_fn=echo_fn)
+        from config import ENABLE_GRAPH
+        if ENABLE_GRAPH:
+            _rebuild_graph_from_store(echo_fn=echo_fn)
+        remove_tracked_entry("external", source_name)
+    if not keep_file and target.exists():
+        target.unlink()
+        echo_fn(f"  删除文件: {target}")
     echo_fn(f"  -> 已从知识库移除: {source_name}")
 
 

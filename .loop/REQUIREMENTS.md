@@ -6,7 +6,7 @@ mean the product has been release-accepted.
 
 | Area | Requirement | Status | Existing evidence / next evidence |
 |---|---|---:|---|
-| Knowledge | Source indexing and file lifecycle | PARTIAL | Index, file, sync, and source-health UI exist. Loops 013–014 make Web reindex/removal exact-source operations; removal retains the disk file. Legacy remove-by-basename remains unsafe for nested/duplicate names; source version UI remains. |
+| Knowledge | Source indexing and file lifecycle | PARTIAL | Index, file, sync, and source-health UI exist. Loops 013–014 make Web reindex/removal exact-source operations; removal retains the disk file. Loop 015 makes basename-only compatibility removal fail closed unless one flat external source is unique. Source version UI remains. |
 | Knowledge | Parsing, chunks, metadata | DONE | Ingestion/vector-store tests and API paths exist. |
 | Knowledge | Source health, duplicates, staleness | DONE | Loop 010 added an explicit source audit API and Knowledge-page results, with synthetic coverage and no scan on page load. |
 | Retrieval | Dense + BM25 hybrid retrieval | DONE | `src/retrieval`, hybrid behavior tests. |

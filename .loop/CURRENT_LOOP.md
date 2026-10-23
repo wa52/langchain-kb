@@ -218,3 +218,29 @@ for duplicate names; callers should use the exact-source endpoint.
 ## Status
 
 DONE for the Knowledge-page removal path. See `reports/LOOP-014.md`.
+
+# Loop 015 — Fail-Closed Legacy Removal
+
+## Goal
+
+Prevent basename-only CLI/API/MCP callers from deleting multiple files or a
+directory when a source name is ambiguous.
+
+## Acceptance
+
+- [x] The compatibility removal accepts only one tracked, flat, external file.
+- [x] Nested or duplicate basenames, path separators, directories, and links
+      are rejected before any index or disk mutation.
+- [x] Vector/BM25/graph/tracker changes roll back on rebuild failure; disk
+      deletion happens only after the index operation succeeds.
+- [x] Synthetic safety regressions and full suite pass.
+
+## Scope guard
+
+Do not call the compatibility removal against the real corpus. Only isolated
+synthetic source files may be deleted by tests. New clients should use the
+exact-source endpoint and keep original files by default.
+
+## Status
+
+DONE. See `reports/LOOP-015.md`.

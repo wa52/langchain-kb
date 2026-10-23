@@ -118,6 +118,13 @@ passed. The old basename API remains
 for compatibility and is not safe for duplicate names. No production source
 was removed; see `reports/LOOP-014.md`.
 
+Loop 015 is DONE: the basename-only compatibility path now fails closed for
+ambiguous/nested source names, directories, symlinks, and unsafe path input.
+It supports only a unique tracked flat external file, rolls back index changes
+on rebuild failure, and removes its disk file only after successful index
+removal. Synthetic tests and full regression passed (814 passed, 1 skipped).
+See `reports/LOOP-015.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy
