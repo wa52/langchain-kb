@@ -125,6 +125,13 @@ on rebuild failure, and removes its disk file only after successful index
 removal. Synthetic tests and full regression passed (814 passed, 1 skipped).
 See `reports/LOOP-015.md`.
 
+Loop 016 is DONE for a focused Web visual pass: the shared shell, Chat empty
+state, and Knowledge page use a quieter technical-workspace hierarchy. The
+Knowledge add action is singular; source metrics are grouped and reflow at
+960px. Isolated real-browser desktop/mid/mobile checks found and fixed
+horizontal tooltip overflow and cramped graph metrics. Web typecheck/build and
+full regression passed (814 passed, 1 skipped). See `reports/LOOP-016.md`.
+
 ## Completed decisions incorporated into the baseline
 
 - Router decides destination; ToolSelector/Jev chooses tools; execution policy

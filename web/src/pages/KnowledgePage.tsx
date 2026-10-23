@@ -96,31 +96,41 @@ export function KnowledgePage() {
   }
 
   return (
-    <div className="page">
-      <div className="card">
+    <div className="page knowledge-page">
+      <header className="knowledge-page-head">
+        <div>
+          <span className="page-kicker">KNOWLEDGE / SOURCES</span>
+          <h1>资料与索引</h1>
+          <p>查看已收录的资料，按需检查来源状态。</p>
+        </div>
+        <button type="button" className="primary ui-hint" data-hint="添加服务器路径或上传文件" onClick={() => setDrawerOpen(true)}>
+          <span aria-hidden="true">＋</span> 添加资料
+        </button>
+      </header>
+      <section className="card knowledge-overview" aria-label="知识库概览">
         <h2>知识库概览</h2>
         {statsLoading && !stats ? <p className="muted overview-state">正在读取知识库统计…</p> : null}
         {!statsLoading && statsError && !stats ? (
           <p className="msg-error" role="alert">{statsError}</p>
         ) : null}
         <dl className={statsLoading && !stats ? "kv is-loading" : "kv"}>
-          <dt>documents</dt>
-          <dd>{stats ? stats.documents : statsLoading ? "…" : "—"}</dd>
-          <dt>chunks</dt>
-          <dd>{stats ? stats.chunks : statsLoading ? "…" : "—"}</dd>
-          <dt>bm25</dt>
-          <dd>
-            {bm25 ?? (statsLoading ? "…" : "—")}{" "}
-            <span className="muted">
-              {bm25Synced === null ? "" : bm25Synced ? "（已同步）" : "（未同步）"}
-            </span>
-          </dd>
-          <dt>graph</dt>
-          <dd>
-            {stats
+          <div><dt>资料</dt><dd>{stats ? stats.documents : statsLoading ? "…" : "—"}</dd></div>
+          <div><dt>知识片段</dt><dd>{stats ? stats.chunks : statsLoading ? "…" : "—"}</dd></div>
+          <div>
+            <dt>检索索引</dt>
+            <dd>
+              {bm25 ?? (statsLoading ? "…" : "—")}{" "}
+              <span className="muted">
+                {bm25Synced === null ? "" : bm25Synced ? "（已同步）" : "（未同步）"}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>知识图谱</dt>
+            <dd>{stats
               ? `${stats.graph.entities} 实体 / ${stats.graph.relations} 关系`
-              : statsLoading ? "读取中" : "—"}
-          </dd>
+              : statsLoading ? "读取中" : "—"}</dd>
+          </div>
         </dl>
         {stats?.index_task ? (
           <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
@@ -136,7 +146,7 @@ export function KnowledgePage() {
             {statsError}
           </p>
         ) : null}
-      </div>
+      </section>
 
       <section className="card source-health-card" aria-labelledby="source-health-title">
         <div className="source-health-heading">
@@ -311,15 +321,6 @@ export function KnowledgePage() {
         ) : fileFilter && !filesError ? (
           <p className="muted file-empty">没有匹配的文件。</p>
         ) : null}
-      </div>
-
-      <div className="card">
-        <button type="button" className="primary" onClick={() => setDrawerOpen(true)}>
-          添加资料
-        </button>
-        <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>
-          支持索引服务器本机上的文件/目录路径，或从浏览器拖拽上传文件。
-        </p>
       </div>
 
       <div className="card">

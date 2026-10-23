@@ -22,7 +22,7 @@ export function EmptyState({ knowledgeEmpty, onAddMaterials }: EmptyStateProps) 
   return (
     <div className="empty-state">
       <div className="empty-mark" aria-hidden="true">K<span>·</span></div>
-      <span className="empty-kicker">YOUR KNOWLEDGE, READY TO WORK</span>
+      <span className="empty-kicker">知识已就绪</span>
       <h2>从一个问题开始</h2>
       <p>询问知识库中的技术资料、验证一个想法，或让 Agent 调用可用工具。回答会尽可能标注证据来源。</p>
       <div className="empty-capabilities" aria-label="支持的任务"><span>知识检索</span><span>来源追溯</span><span>工具协作</span></div>

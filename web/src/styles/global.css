@@ -46,6 +46,10 @@ button.primary:not(:disabled):hover {
   filter: brightness(1.08);
 }
 
+@media (prefers-color-scheme: dark) {
+  button.primary { color: #092a31; }
+}
+
 :focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
@@ -73,8 +77,8 @@ button.primary:not(:disabled):hover {
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 64px;
-  padding: 10px 20px;
+  min-height: 66px;
+  padding: 10px 24px;
   border-bottom: 1px solid var(--grid-line);
   background: var(--panel);
 }
@@ -83,9 +87,10 @@ button.primary:not(:disabled):hover {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.2px;
+  font-size: 16px;
+  letter-spacing: -0.25px;
   white-space: nowrap;
 }
 
@@ -94,9 +99,10 @@ button.primary:not(:disabled):hover {
   width: 32px;
   height: 32px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--laser-cyan) 55%, var(--grid-line));
-  border-radius: 9px;
-  color: var(--laser-cyan);
+  border: 1px solid var(--signal-blue);
+  border-radius: 7px;
+  background: var(--signal-blue);
+  color: var(--panel);
   font: 700 17px var(--font-mono);
 }
 
@@ -112,10 +118,10 @@ button.primary:not(:disabled):hover {
 .side-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 190px;
-  flex: 0 0 190px;
-  padding: 18px 10px;
+  gap: 3px;
+  width: 204px;
+  flex: 0 0 204px;
+  padding: 22px 12px;
   border-right: 1px solid var(--grid-line);
   background: var(--panel);
 }
@@ -125,9 +131,9 @@ button.primary:not(:disabled):hover {
   align-items: center;
   gap: 11px;
   text-align: left;
-  min-height: 42px;
-  padding: 9px 12px;
-  border-radius: 8px;
+  min-height: 43px;
+  padding: 9px 13px;
+  border-radius: 7px;
   color: var(--muted);
   font-weight: 500;
 }
@@ -137,9 +143,10 @@ button.primary:not(:disabled):hover {
 }
 
 .side-nav button.active {
-  background: color-mix(in srgb, var(--laser-cyan) 9%, var(--panel));
-  color: var(--signal-blue);
-  box-shadow: inset 3px 0 0 var(--laser-cyan);
+  background: color-mix(in srgb, var(--laser-cyan) 12%, var(--panel));
+  color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--signal-blue);
+  font-weight: 650;
 }
 
 .nav-icon { width: 19px; height: 19px; flex: 0 0 auto; }
@@ -835,21 +842,143 @@ button.primary:not(:disabled):hover {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: clamp(20px, 3vw, 38px);
   overflow-y: auto;
-  gap: 16px;
+  gap: 18px;
 }
 
 .card {
   background: var(--panel);
   border: 1px solid var(--grid-line);
-  border-radius: 12px;
-  padding: 18px;
+  border-radius: 10px;
+  padding: 22px 24px;
 }
 
 .card h2 {
   font-size: 15px;
   margin-bottom: 10px;
+}
+
+/* Knowledge is a source register: the file list is the workspace, metrics are context. */
+.knowledge-page {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.knowledge-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 1px 0 5px;
+}
+
+.page-kicker {
+  color: var(--laser-cyan);
+  font: 600 11px/1.4 var(--font-mono);
+  letter-spacing: 1.1px;
+}
+
+.knowledge-page-head h1 {
+  margin-top: 6px;
+  font: 700 clamp(26px, 3vw, 34px)/1.2 var(--font-display);
+  letter-spacing: -.6px;
+}
+
+.knowledge-page-head p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.knowledge-page-head .primary {
+  flex: 0 0 auto;
+  min-height: 42px;
+}
+
+.knowledge-page-head .ui-hint::after {
+  left: auto;
+  right: 0;
+}
+
+.knowledge-overview {
+  padding-block: 18px 21px;
+  background: var(--panel-raised);
+}
+
+.knowledge-overview h2 {
+  margin-bottom: 17px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.knowledge-overview .kv {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.knowledge-overview .kv > div {
+  min-width: 0;
+  padding-inline: 20px;
+  border-left: 1px solid var(--grid-line);
+}
+
+.knowledge-overview .kv > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.knowledge-overview .kv dd {
+  margin-top: 5px;
+  font: 600 22px/1.25 var(--font-display);
+  overflow-wrap: anywhere;
+}
+
+.knowledge-overview .kv dd span {
+  display: block;
+  margin-top: 3px;
+  font: 12px/1.35 var(--font-ui);
+}
+
+.knowledge-page .source-health-card {
+  border-left: 1px solid var(--grid-line);
+}
+
+.knowledge-page .source-health-note {
+  max-width: 68ch;
+}
+
+.knowledge-page .tracked-file-list {
+  gap: 0;
+  margin-top: 20px;
+}
+
+.knowledge-page .tracked-file-list li {
+  min-height: 64px;
+  padding: 12px 0;
+}
+
+.knowledge-page .tracked-file-info strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.knowledge-page .file-empty {
+  padding: 17px 0 2px;
+}
+
+@media (max-width: 960px) {
+  .knowledge-overview .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 0; }
+  .knowledge-overview .kv > div { padding-inline: 14px 0; }
+  .knowledge-overview .kv > div:nth-child(odd) { padding-left: 0; border-left: 0; }
+}
+
+@media (max-width: 680px) {
+  .knowledge-page-head { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .knowledge-page-head .primary { width: 100%; }
 }
 
 .kv {
@@ -1043,11 +1172,11 @@ button.primary:not(:disabled):hover {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  max-width: 1020px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
-  padding: 20px 28px 22px;
-  gap: 18px;
+  padding: 27px 32px 24px;
+  gap: 20px;
 }
 
 .chat-meta {
@@ -1069,7 +1198,7 @@ button.primary:not(:disabled):hover {
   font: 600 10px/1.4 var(--font-mono);
   letter-spacing: 1.2px;
 }
-.chat-heading h1 { margin: 2px 0 2px; font-size: 25px; line-height: 1.25; letter-spacing: -.6px; }
+.chat-heading h1 { margin: 3px 0 5px; font: 700 30px/1.2 var(--font-display); letter-spacing: -.7px; }
 .chat-meta { display: flex; align-items: center; gap: 5px; padding: 0; }
 .chat-state-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--warn-amber); }
 .chat-state-dot.ready { background: var(--pass-green); }
@@ -1513,37 +1642,39 @@ button.primary:not(:disabled):hover {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  text-align: center;
-  gap: 14px;
-  padding: 32px 24px;
+  width: min(100%, 650px);
+  margin-inline: auto;
+  text-align: left;
+  gap: 15px;
+  padding: 38px 24px;
 }
 
 .empty-mark {
   display: grid;
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--laser-cyan) 40%, var(--grid-line));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--laser-cyan) 8%, var(--panel));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--laser-cyan) 10%, var(--panel));
   color: var(--laser-cyan);
-  font: 700 30px var(--font-mono);
+  font: 700 24px var(--font-mono);
 }
 .empty-mark span { display: inline; color: var(--signal-blue); }
 
 .empty-state h2 {
-  font-size: clamp(23px, 3vw, 32px);
+  font: 700 clamp(25px, 3vw, 34px)/1.2 var(--font-display);
   letter-spacing: -.7px;
 }
 
 .empty-state p {
   color: var(--muted);
-  max-width: 520px;
+  max-width: 560px;
   font-size: 14px;
 }
-.empty-capabilities { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 5px; }
+.empty-capabilities { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; margin-top: 5px; }
 .empty-capabilities span { padding: 5px 10px; border: 1px solid var(--grid-line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 12px; }
 
 .empty-state .hint {

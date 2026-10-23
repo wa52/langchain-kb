@@ -244,3 +244,28 @@ exact-source endpoint and keep original files by default.
 ## Status
 
 DONE. See `reports/LOOP-015.md`.
+
+# Loop 016 — Web Visual Hierarchy Pass
+
+## Goal
+
+Improve the visual hierarchy and readability of the shared Web shell, Chat
+empty state, and Knowledge source management without changing chat or indexing
+behavior.
+
+## Acceptance
+
+- [x] Stable app name and existing navigation remain; the Knowledge page has
+      one clear add-source action and an ordered, responsive metric strip.
+- [x] Typography, spacing, and color tokens form a consistent light/dark
+      system; semantic icons and delayed Chinese hints remain accessible.
+- [x] Real isolated Web views at 1280px, 768px, and 390px show no horizontal
+      overflow, clipped file actions, or hidden primary controls.
+- [x] Add-source drawer opens and closes at mobile width; no source is indexed
+      or removed during visual testing.
+- [x] Web typecheck/build and isolated full regression pass.
+
+## Status
+
+DONE for shell, Chat empty state, and Knowledge page. Other product pages are
+not claimed visually redesigned. See `reports/LOOP-016.md`.
