@@ -74,7 +74,7 @@ export default function App() {
         <button type="button" className="mobile-nav-toggle ui-hint" data-hint="展开或收起主导航" aria-label="主导航" aria-expanded={mobileNavOpen} aria-controls="primary-nav" onClick={() => setMobileNavOpen((open) => !open)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
-        <div className="brand"><span className="brand-mark" aria-hidden="true">K</span><span>Knowledge Agent</span></div>
+        <div className="brand"><img className="brand-mark" src="/assets/knowledge-agent.svg" alt="" aria-hidden="true" /><span>Knowledge Agent</span></div>
         <SystemRail
           components={status?.components ?? {}}
         />

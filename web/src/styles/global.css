@@ -95,15 +95,11 @@ button.primary:not(:disabled):hover {
 }
 
 .brand-mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid var(--signal-blue);
+  flex: 0 0 auto;
   border-radius: 7px;
-  background: var(--signal-blue);
-  color: var(--panel);
-  font: 700 17px var(--font-mono);
 }
 
 .mobile-nav-toggle { display: none; }
@@ -1652,17 +1648,11 @@ button.primary:not(:disabled):hover {
 }
 
 .empty-mark {
-  display: grid;
+  display: block;
   width: 52px;
   height: 52px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--laser-cyan) 40%, var(--grid-line));
   border-radius: 9px;
-  background: color-mix(in srgb, var(--laser-cyan) 10%, var(--panel));
-  color: var(--laser-cyan);
-  font: 700 24px var(--font-mono);
 }
-.empty-mark span { display: inline; color: var(--signal-blue); }
 
 .empty-state h2 {
   font: 700 clamp(25px, 3vw, 34px)/1.2 var(--font-display);

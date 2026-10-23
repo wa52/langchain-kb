@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Knowledge Agent">
+  <rect width="64" height="64" rx="14" fill="#17343d"/>
+  <path d="M12 18.5c6.3-3 12.4-2.6 18 1.1v27.8c-5.6-3.7-11.7-4.1-18-1.1z" fill="#f3faf7"/>
+  <path d="M34 19.6c5.6-3.7 11.7-4.1 18-1.1v27.8c-6.3-3-12.4-2.6-18 1.1z" fill="#bde8e4"/>
+  <path d="M32 19v29" fill="none" stroke="#65c7c6" stroke-linecap="round" stroke-width="2.5"/>
+  <path d="M17.8 24.2c2.5-.8 4.7-.8 7.2-.1M17.8 29.5c2.5-.8 4.7-.8 7.2-.1" fill="none" stroke="#86adb0" stroke-linecap="round" stroke-width="2"/>
+  <path d="m39.7 25.4 5.1 4.2-5.1 5.1" fill="none" stroke="#277c83" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <circle cx="39.4" cy="25.2" r="2.3" fill="#277c83"/>
+  <circle cx="45" cy="29.6" r="2.3" fill="#277c83"/>
+  <circle cx="39.4" cy="34.8" r="2.3" fill="#277c83"/>
+</svg>

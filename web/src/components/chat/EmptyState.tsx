@@ -7,7 +7,7 @@ export function EmptyState({ knowledgeEmpty, onAddMaterials }: EmptyStateProps) 
   if (knowledgeEmpty) {
     return (
       <div className="empty-state">
-        <div className="empty-mark" aria-hidden="true">K<span>·</span></div>
+        <img className="empty-mark" src="/assets/knowledge-agent.svg" alt="" aria-hidden="true" />
         <h2>知识库还没有资料</h2>
         <p>
           添加文档后，Agent 会基于你的资料回答问题、引用来源并关联图谱。
@@ -21,7 +21,7 @@ export function EmptyState({ knowledgeEmpty, onAddMaterials }: EmptyStateProps) 
   }
   return (
     <div className="empty-state">
-      <div className="empty-mark" aria-hidden="true">K<span>·</span></div>
+      <img className="empty-mark" src="/assets/knowledge-agent.svg" alt="" aria-hidden="true" />
       <span className="empty-kicker">知识已就绪</span>
       <h2>从一个问题开始</h2>
       <p>询问知识库中的技术资料、验证一个想法，或让 Agent 调用可用工具。回答会尽可能标注证据来源。</p>
