@@ -193,6 +193,8 @@ knowledge design "设计一个PCB缺陷检测系统"
 knowledge map
 ```
 
+当前索引完整性问题待处理期间，`knowledge web` 和 `knowledge serve` 默认暂停经验库自动及手动同步，目录配置不会丢失。确认索引已恢复后，可在启动前显式设置 `KNOWLEDGE_DISABLE_EXPERIENCE_SYNC=0` 重新启用；桌面快捷方式仍强制保持暂停。不要在恢复前用其他入口绕过这项保护。
+
 ---
 
 ## 📖 命令参考

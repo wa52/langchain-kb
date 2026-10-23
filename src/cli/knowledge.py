@@ -427,6 +427,11 @@ def _serve(host, port, reload, as_json, open_browser=False, stop=False):
         _stop_service(as_json)
         return
 
+    # Until index recovery is decided, Web/API startup must not schedule a
+    # write to the configured experience directories. An explicit "0" keeps
+    # the operator's opt-in available without changing other CLI commands.
+    os.environ.setdefault("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", "1")
+
     managed_url = _running_project_url(host)
     if managed_url:
         if as_json:

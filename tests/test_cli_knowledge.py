@@ -673,6 +673,32 @@ class TestWebCommand:
         assert result.exit_code == 0
         mock_open.assert_not_called()
 
+    def test_web_pauses_experience_sync_by_default(self, monkeypatch):
+        monkeypatch.delenv("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", raising=False)
+        with (
+            patch("uvicorn.run") as run,
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
+            patch("src.cli.knowledge._port_is_listening", return_value=False),
+        ):
+            result = runner.invoke(app, ["web", "--no-open"])
+        assert result.exit_code == 0
+        run.assert_called_once()
+        assert os.environ["KNOWLEDGE_DISABLE_EXPERIENCE_SYNC"] == "1"
+
+    def test_web_respects_explicit_sync_opt_in(self, monkeypatch):
+        monkeypatch.setenv("KNOWLEDGE_DISABLE_EXPERIENCE_SYNC", "0")
+        with (
+            patch("uvicorn.run") as run,
+            patch("src.cli.knowledge._running_project_url", return_value=None),
+            patch("src.cli.knowledge._managed_pid_is_running", return_value=False),
+            patch("src.cli.knowledge._port_is_listening", return_value=False),
+        ):
+            result = runner.invoke(app, ["web", "--no-open"])
+        assert result.exit_code == 0
+        run.assert_called_once()
+        assert os.environ["KNOWLEDGE_DISABLE_EXPERIENCE_SYNC"] == "0"
+
     def test_browser_opens_only_after_health_is_ready(self):
         from src.cli.knowledge import _open_browser_when_ready
 
