@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { setAuthRequiredHandler } from "./api/client";
 import { DeveloperPane } from "./components/DeveloperPane";
-import { SystemRail } from "./components/SystemRail";
 import { TokenDialog } from "./components/TokenDialog";
 import { useDeveloperMode } from "./hooks/useDeveloperMode";
 import { useSystemStatus } from "./hooks/useSystemStatus";
@@ -75,9 +74,6 @@ export default function App() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
         <div className="brand"><img className="brand-mark" src="/assets/knowledge-agent.svg" alt="" aria-hidden="true" /><span>Knowledge Agent</span></div>
-        <SystemRail
-          components={status?.components ?? {}}
-        />
         <button
           type="button"
           className={devMode ? "dev-toggle active" : "dev-toggle"}
