@@ -1,4 +1,5 @@
 const STATE_LABEL: Record<string, string> = {
+  ok: "运行中",
   ready: "就绪",
   loading: "加载中",
   error: "错误",

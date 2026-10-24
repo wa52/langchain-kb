@@ -116,7 +116,7 @@ export default function App() {
           ) : view === "traces" ? (
             <TraceViewerPage />
           ) : view === "status" ? (
-            <StatusPage {...pageProps} />
+            <StatusPage status={status} statusError={statusError} />
           ) : (
             <SettingsPage
               onOpenTokenDialog={() => {

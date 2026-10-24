@@ -1,24 +1,34 @@
 import { useState } from "react";
 
-import { StatusDot as StatusDotSafe } from "../components/StatusDot";
+import { StatusDot } from "../components/StatusDot";
 import { useDiagnostics } from "../hooks/useDiagnostics";
 import type { DiagnosticsCheck, SystemStatus } from "../types/api";
 
 const STATE_LABEL: Record<string, string> = {
-  ok: "正常",
-  degraded: "降级",
-  error: "错误",
+  ok: "服务运行中",
+  ready: "可用",
+  degraded: "部分可用",
+  error: "异常",
   loading: "加载中",
-  pending: "待启动",
+  pending: "待就绪",
+  disabled: "未启用",
 };
 
-function metric(name: string, value: string | number) {
-  return (
-    <span className="rail-item" title={name}>
-      <span>{name}</span>
-      <span className="mono">{value}</span>
-    </span>
-  );
+const COMPONENT_LABEL: Record<string, string> = {
+  embedding: "向量模型",
+  llm: "语言模型",
+  vector: "向量索引",
+  vector_store: "向量索引",
+  bm25: "关键词索引",
+  graph: "知识图谱",
+  agent: "Agent",
+  index: "索引任务",
+};
+
+function componentDetail(key: string, state: string, detail?: string | null, error?: string | null): string | null {
+  if (error) return error;
+  if (key === "vector_store" && state === "ready") return "存储已连接";
+  return detail ?? null;
 }
 
 interface IssueRowProps {
@@ -41,33 +51,35 @@ function IssueRow({ check, onRepair }: IssueRowProps) {
   }
 
   return (
-    <div className={`issue ${check.status === "error" ? "error" : ""}`}>
-      <p>
-        <strong>{check.name}</strong>
-        {check.error ? `：${check.error}` : check.detail ? `：${check.detail}` : ""}
-      </p>
-      {check.fix ? <p className="fix-hint">建议：{check.fix}</p> : null}
+    <div className={`status-issue ${check.status === "error" ? "error" : ""}`}>
+      <div>
+        <strong>{COMPONENT_LABEL[check.name] ?? check.name}</strong>
+        <p>{check.error || check.detail || "检查未通过"}</p>
+        {check.fix ? <p className="status-fix-hint">建议：{check.fix}</p> : null}
+        {repaired ? <p className="status-fix-hint">已执行修复，请重新运行诊断验证。</p> : null}
+      </div>
       {check.repairable && !repaired ? (
-        <button type="button" className="repair-btn" onClick={() => void handleRepair()}>
-          {confirming ? "确认修复?" : "修复"}
+        <button type="button" className="status-repair ui-hint" data-hint={confirming ? "确认执行此项修复操作" : "查看此项修复的确认步骤"} aria-label={`${confirming ? "确认修复" : "修复"} ${COMPONENT_LABEL[check.name] ?? check.name}`} onClick={() => void handleRepair()}>
+          <span aria-hidden="true">↻</span>{confirming ? "确认修复" : "修复"}
         </button>
       ) : null}
-      {repaired ? <p className="fix-hint">已修复，可重新运行完整诊断验证。</p> : null}
     </div>
   );
 }
 
-export function StatusPage({ status }: { status: SystemStatus | null }) {
+export function StatusPage({ status, statusError }: { status: SystemStatus | null; statusError?: string | null }) {
   const { task, running, error: diagError, run, repair } = useDiagnostics();
   const [repairNote, setRepairNote] = useState<string | null>(null);
 
-  const components = status?.components ?? {};
-  const issues = Object.values(components).filter(
-    (c) => c.state === "error" || c.state === "degraded" || c.state === "pending",
+  const components = Object.entries(status?.components ?? {});
+  const issues = components.filter(
+    ([, component]) => component.state === "error" || component.state === "degraded" || component.state === "pending",
   );
 
   const result = task?.status === "done" ? task.result : null;
   const failedChecks = (result?.checks ?? []).filter((c) => !c.ok);
+  const overallState = status?.status ?? (statusError ? "error" : "loading");
+  const overallLabel = status ? (STATE_LABEL[overallState] ?? "状态未知") : statusError ? "服务未连接" : "正在读取状态";
 
   async function handleRepair(name: string): Promise<boolean> {
     const ok = await repair(name);
@@ -76,101 +88,98 @@ export function StatusPage({ status }: { status: SystemStatus | null }) {
   }
 
   return (
-    <div className="page">
-      <div className="card">
-        <h2>整体状态</h2>
-        <p style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <strong>{STATE_LABEL[status?.status ?? "pending"] ?? status?.status}</strong>
-          <span className="muted">
-            索引版本 {status?.index_version ?? "—"} · 运行 {Math.round(status?.uptime ?? 0)}s
-          </span>
-        </p>
-        <div className="sys-rail" style={{ marginTop: 12, cursor: "default" }}>
-          {Object.values(components).map((c) => (
-            <span key={c.name} className="rail-item" title={c.detail ?? c.name}>
-              <StatusDotSafe state={c.state} />
-              <span>{c.name}</span>
-            </span>
-          ))}
-        </div>
-      </div>
+    <div className="status-page">
+      <header className="status-page-head">
+        <span className="status-eyebrow">SYSTEM / STATUS</span>
+        <h1>服务状态</h1>
+        <p>先看当前可用性，再查看组件与诊断结果。</p>
+      </header>
 
-      <div className="card">
-        <h2>关键指标</h2>
-        <div className="sys-rail" style={{ cursor: "default", gap: 18 }}>
-          {metric("chunks", status?.vector_count ?? "—")}
-          {metric("bm25", status?.bm25_chunks ?? "—")}
-          {metric("entities", status?.entity_count ?? "—")}
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>问题</h2>
-        {status === null ? (
-          <div className="issue error">
-            <p>无法读取状态：状态服务不可用。</p>
+      <section className={`status-overview state-${overallState}`} aria-label="总体状态" role="status">
+        <div className="status-overview-main">
+          <span className="status-overview-icon" aria-hidden="true"><StatusDot state={overallState} /></span>
+          <div>
+            <span className="status-overview-kicker">总体可用性</span>
+            <h2>{overallLabel}</h2>
+            <p>{status
+              ? "以下状态来自各组件的运行报告，不等同于索引完整性校验。"
+              : statusError
+                ? "当前无法读取组件状态。请检查服务是否启动及网络连接。"
+                : "正在获取组件状态，请稍候。"}</p>
           </div>
-        ) : issues.length === 0 ? (
-          <p className="muted">当前没有发现异常。</p>
-        ) : (
-          issues.map((c) => (
-            <div key={c.name} className={`issue ${c.state === "error" ? "error" : ""}`}>
-              <p>
-                <strong>{c.name}</strong> · {c.state}
-                {c.error ? `：${c.error}` : c.detail ? `：${c.detail}` : ""}
-              </p>
+        </div>
+        {status ? (
+          <div className="status-overview-meta">
+            <span>索引版本 <strong>{status.index_version}</strong></span>
+            <span>运行时间 <strong>{Math.round(status.uptime)} 秒</strong></span>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="status-section" aria-labelledby="status-components-title">
+        <div className="status-section-head"><h2 id="status-components-title">组件</h2><span>{components.length} 项</span></div>
+        {components.length ? (
+          <ul className="status-components">
+            {components.map(([key, component]) => {
+              const detail = componentDetail(key, component.state, component.detail, component.error);
+              return <li key={key}>
+                <div className="status-component-name"><StatusDot state={component.state} /><strong>{COMPONENT_LABEL[key] ?? component.name}</strong></div>
+                <span className="status-component-state">{STATE_LABEL[component.state] ?? "状态未知"}</span>
+                {detail ? <p>{detail}</p> : null}
+              </li>;
+            })}
+          </ul>
+        ) : <p className="status-no-data">{statusError ? "连接恢复后会显示组件状态。" : "等待组件状态…"}</p>}
+      </section>
+
+      <section className="status-section" aria-labelledby="status-metrics-title">
+        <div className="status-section-head"><h2 id="status-metrics-title">关键指标</h2></div>
+        <dl className="status-metrics">
+          <div><dt>知识片段</dt><dd>{status?.vector_count.toLocaleString() ?? "—"}</dd></div>
+          <div><dt>BM25 条目</dt><dd>{status?.bm25_chunks?.toLocaleString() ?? "—"}</dd></div>
+          <div><dt>图谱实体</dt><dd>{status?.entity_count.toLocaleString() ?? "—"}</dd></div>
+        </dl>
+      </section>
+
+      <div className="status-detail-grid">
+        <section className="status-section" aria-labelledby="status-issues-title">
+          <div className="status-section-head"><h2 id="status-issues-title">需要关注</h2><span>{issues.length} 项</span></div>
+          {status === null ? (
+            <p className="status-no-data">{statusError ? "服务未连接，暂时无法判断组件问题。" : "状态读取中…"}</p>
+          ) : issues.length === 0 ? (
+            <p className="status-no-data">组件状态未报告异常；这不代表数据索引已通过完整性校验。</p>
+          ) : (
+            <ul className="status-issue-list">{issues.map(([key, component]) => (
+              <li key={key} className={component.state}>
+                <strong>{COMPONENT_LABEL[key] ?? component.name}</strong>
+                <span>{STATE_LABEL[component.state] ?? "状态未知"}</span>
+                {componentDetail(key, component.state, component.detail, component.error) ? <p>{componentDetail(key, component.state, component.detail, component.error)}</p> : null}
+              </li>
+            ))}</ul>
+          )}
+        </section>
+
+        <section className="status-section status-diagnostics" aria-labelledby="status-diagnostics-title">
+          <div className="status-section-head"><h2 id="status-diagnostics-title">完整诊断</h2></div>
+          <p>逐项探测服务组件，可能加载模型并耗时较长。诊断只读；修复需在失败项中再次确认。</p>
+          <button
+            type="button"
+            className="primary ui-hint"
+            data-hint="执行只读的组件诊断，不会自动修复"
+            onClick={() => { setRepairNote(null); void run(); }}
+            disabled={running}
+          ><span aria-hidden="true">⌕</span>{running ? "诊断中…" : "运行完整诊断"}</button>
+          {diagError ? <p className="msg-error" role="alert">{diagError}</p> : null}
+          {repairNote ? <p className="status-repair-note" role="status">{repairNote}</p> : null}
+          {result ? (
+            <div className="status-diagnostic-result">
+              <p>检查 {result.summary.total} 项 · 通过 {result.summary.ok} · 失败 {result.summary.failed}</p>
+              {failedChecks.length ? failedChecks.map((check) => (
+                <IssueRow key={check.name} check={check} onRepair={handleRepair} />
+              )) : <p className="status-no-data">本次组件诊断全部通过。</p>}
             </div>
-          ))
-        )}
-      </div>
-
-      <div className="card">
-        <h2>完整诊断</h2>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => {
-            setRepairNote(null);
-            void run();
-          }}
-          disabled={running}
-        >
-          {running ? "诊断中…" : "运行完整诊断"}
-        </button>
-        <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>
-          完整诊断会逐一探测各组件（可能加载模型，耗时较长），只读；修复动作仅在失败项中显式确认后执行。
-        </p>
-
-        {diagError ? (
-          <p className="msg-error" role="alert" style={{ marginTop: 10 }}>
-            {diagError}
-          </p>
-        ) : null}
-        {repairNote ? (
-          <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>
-            {repairNote}
-          </p>
-        ) : null}
-
-        {result ? (
-          <div style={{ marginTop: 12 }}>
-            <p className="muted" style={{ fontSize: 13 }}>
-              结果：{result.summary.total} 项，通过 {result.summary.ok}，失败{" "}
-              {result.summary.failed}
-            </p>
-            {failedChecks.length > 0 ? (
-              <div style={{ marginTop: 10 }}>
-                {failedChecks.map((c) => (
-                  <IssueRow key={c.name} check={c} onRepair={handleRepair} />
-                ))}
-              </div>
-            ) : (
-              <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-                所有检查通过。
-              </p>
-            )}
-          </div>
-        ) : null}
+          ) : null}
+        </section>
       </div>
     </div>
   );

@@ -796,7 +796,7 @@ button.primary:not(:disabled):hover {
   background: var(--grid-line);
 }
 
-.dot.ready {
+.dot.ready, .dot.ok {
   background: var(--pass-green);
 }
 
@@ -1131,26 +1131,107 @@ button.primary:not(:disabled):hover {
   }
 }
 
-.issue {
-  border-left: 3px solid var(--warn-amber);
-  padding: 10px 12px;
+/* ---------- Service status ---------- */
+
+.status-page {
+  display: flex;
+  width: 100%;
+  max-width: 1280px;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 auto;
+  padding: 26px 32px 32px;
+  overflow: auto;
+}
+.status-page-head h1 { margin: 4px 0 2px; font: 700 29px/1.2 var(--font-display); letter-spacing: -.6px; }
+.status-page-head p { color: var(--muted); font-size: 13px; }
+.status-eyebrow, .status-overview-kicker { color: var(--laser-cyan); font: 600 10px/1.4 var(--font-mono); letter-spacing: 1px; }
+.status-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--grid-line);
+  border-left: 3px solid var(--pass-green);
+  border-radius: 9px;
   background: var(--panel);
-  border-radius: 8px;
-  margin-bottom: 10px;
 }
+.status-overview.state-degraded, .status-overview.state-pending, .status-overview.state-loading { border-left-color: var(--warn-amber); }
+.status-overview.state-error { border-left-color: var(--fail-red); }
+.status-overview-main { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.status-overview-main > div { min-width: 0; }
+.status-overview-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: color-mix(in srgb, var(--pass-green) 10%, var(--panel)); }
+.status-overview.state-degraded .status-overview-icon, .status-overview.state-pending .status-overview-icon, .status-overview.state-loading .status-overview-icon { background: color-mix(in srgb, var(--warn-amber) 10%, var(--panel)); }
+.status-overview.state-error .status-overview-icon { background: color-mix(in srgb, var(--fail-red) 10%, var(--panel)); }
+.status-overview-icon .dot { width: 12px; height: 12px; }
+.status-overview h2 { margin: 2px 0 4px; font: 700 22px/1.25 var(--font-display); }
+.status-overview p { max-width: 65ch; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.status-overview-meta { display: flex; flex: 0 0 auto; flex-direction: column; gap: 5px; padding-left: 18px; border-left: 1px solid var(--grid-line); color: var(--muted); font-size: 11px; white-space: nowrap; }
+.status-overview-meta strong { margin-left: 5px; color: var(--ink); font-family: var(--font-mono); }
+.status-section { min-width: 0; padding: 16px 18px 18px; border: 1px solid var(--grid-line); border-radius: 9px; background: var(--panel); }
+.status-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+.status-section-head h2 { font: 650 15px/1.3 var(--font-display); }
+.status-section-head > span { color: var(--muted); font: 11px var(--font-mono); }
+.status-components { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; list-style: none; border: 1px solid var(--grid-line); border-radius: 7px; overflow: hidden; background: var(--grid-line); }
+.status-components li { display: flex; min-width: 0; min-height: 82px; flex-direction: column; gap: 3px; padding: 11px 13px; background: var(--panel); }
+.status-components li:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
+.status-components li:last-child:nth-child(3n+2) { grid-column: span 2; }
+.status-component-name { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.status-component-name strong { font-weight: 600; }
+.status-component-state { margin-left: 17px; color: var(--muted); font-size: 11px; }
+.status-components li p { margin-left: 17px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.status-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--grid-line); }
+.status-metrics > div { min-width: 0; padding: 13px 16px 2px; border-right: 1px solid var(--grid-line); }
+.status-metrics > div:first-child { padding-left: 0; }
+.status-metrics > div:last-child { border-right: 0; }
+.status-metrics dt { color: var(--muted); font-size: 11px; }
+.status-metrics dd { margin-top: 3px; font: 650 23px/1.2 var(--font-mono); overflow-wrap: anywhere; }
+.status-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.status-no-data { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.status-issue-list { display: flex; flex-direction: column; gap: 8px; list-style: none; }
+.status-issue-list li { min-width: 0; padding: 10px 12px; border-left: 2px solid var(--warn-amber); background: var(--panel-raised); }
+.status-issue-list li.error { border-left-color: var(--fail-red); }
+.status-issue-list strong { font-size: 12px; }
+.status-issue-list span { margin-left: 8px; color: var(--warn-amber); font-size: 11px; }
+.status-issue-list li.error span { color: var(--fail-red); }
+.status-issue-list p { margin-top: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.status-diagnostics > p { color: var(--muted); font-size: 12px; }
+.status-diagnostics > button { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
+.status-diagnostics > button span { font-size: 19px; line-height: 1; }
+.status-diagnostics .msg-error, .status-repair-note { margin-top: 12px; }
+.status-repair-note { color: var(--muted); font-size: 12px; }
+.status-diagnostic-result { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid-line); }
+.status-diagnostic-result > p:first-child { margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+.status-issue { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 10px 12px; border-left: 2px solid var(--warn-amber); background: var(--panel-raised); }
+.status-issue.error { border-left-color: var(--fail-red); }
+.status-issue > div { min-width: 0; }
+.status-issue strong { font-size: 12px; }
+.status-issue p { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.status-issue .status-fix-hint { margin-top: 5px; }
+.status-repair { display: inline-flex; min-height: 34px; flex: 0 0 auto; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--grid-line); border-radius: 6px; background: var(--panel); font-size: 12px; white-space: nowrap; }
+.status-repair:hover { border-color: var(--laser-cyan); }
 
-.issue.error {
-  border-left-color: var(--fail-red);
+@media (max-width: 980px) {
+  .status-components { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-components li:last-child:nth-child(3n+1), .status-components li:last-child:nth-child(3n+2) { grid-column: auto; }
+  .status-components li:last-child:nth-child(2n+1) { grid-column: 1 / -1; }
+  .status-detail-grid { grid-template-columns: 1fr; }
 }
-
-.issue p {
-  font-size: 14px;
-}
-
-.issue .fix-hint {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 4px;
+@media (max-width: 640px) {
+  .status-page { padding: 17px 13px 22px; gap: 12px; }
+  .status-page-head h1 { font-size: 23px; }
+  .status-overview { align-items: stretch; flex-direction: column; gap: 12px; padding: 14px; }
+  .status-overview-meta { flex-direction: row; flex-wrap: wrap; gap: 12px; padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--grid-line); }
+  .status-section { padding: 13px; }
+  .status-components { grid-template-columns: 1fr; }
+  .status-components li:last-child:nth-child(2n+1) { grid-column: auto; }
+  .status-metrics > div { padding: 10px 8px 2px; }
+  .status-metrics dd { font-size: 18px; }
+  .status-issue { flex-direction: column; }
 }
 
 .muted {
@@ -1386,20 +1467,6 @@ button.primary:not(:disabled):hover {
 
 .task-state.failed {
   color: var(--fail-red);
-}
-
-.repair-btn {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--signal-blue);
-  border: 1px solid var(--grid-line);
-  border-radius: 6px;
-  padding: 4px 10px;
-  background: var(--bg);
-}
-
-.repair-btn:hover {
-  border-color: var(--signal-blue);
 }
 
 .message-list {
