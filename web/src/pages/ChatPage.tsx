@@ -13,6 +13,15 @@ interface ChatPageProps {
   onNavigate: (view: "knowledge") => void;
 }
 
+const AGENT_STATE_LABELS: Record<string, string> = {
+  ready: "可用",
+  loading: "加载中",
+  pending: "待就绪",
+  degraded: "部分可用",
+  error: "不可用",
+  disabled: "未启用",
+};
+
 export function ChatPage({ status, statusError, onNavigate }: ChatPageProps) {
   const { messages, streaming, error, send, stop, newChat, sessionId, loadSession } = useChat();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -22,6 +31,7 @@ export function ChatPage({ status, statusError, onNavigate }: ChatPageProps) {
   const vectorCount = status?.vector_count ?? 0;
   const knowledgeEmpty = status !== null && vectorCount === 0;
   const isEmpty = messages.length === 0;
+  const connection = statusError && !status ? "unavailable" : status ? "ready" : "loading";
 
   async function resume(s: SessionSummary): Promise<void> {
     try {
@@ -38,17 +48,18 @@ export function ChatPage({ status, statusError, onNavigate }: ChatPageProps) {
         <div className="chat-heading">
           <span className="chat-eyebrow">WORKSPACE / CHAT</span>
           <h1>对话</h1>
-          <div className="chat-meta"><span className={`chat-state-dot ${statusError && !status ? "error" : agentState}`} aria-hidden="true" />{statusError && !status ? "服务暂不可用" : `Agent ${agentState}`}{status ? ` · ${vectorCount.toLocaleString()} 个知识片段` : ""}</div>
+          <div className="chat-meta"><span className={`chat-state-dot ${statusError && !status ? "error" : agentState}`} aria-hidden="true" />{statusError && !status ? "服务暂不可用" : `Agent ${AGENT_STATE_LABELS[agentState] ?? "状态未知"}`}{status ? ` · ${vectorCount.toLocaleString()} 个知识片段` : ""}</div>
         </div>
         <div className="chat-head-actions">
           <button type="button" className="chat-action ui-hint" data-hint="开始一个没有上下文的新会话" onClick={newChat} disabled={streaming || isEmpty} aria-label="新建会话"><span aria-hidden="true">＋</span><span>新建会话</span></button>
           <button type="button" className="chat-action ui-hint" data-hint="查看和恢复历史会话" onClick={() => setHistoryOpen(true)} aria-label="历史会话"><span aria-hidden="true">◷</span><span>历史会话</span></button>
         </div>
       </div>
-      {statusError && !status ? <div className="chat-connect-error" role="status">连接不到知识库服务。请确认服务已启动后重试。</div> : null}
+      {statusError && !status && !isEmpty ? <div className="chat-connect-error" role="status">连接不到知识库服务。请确认服务已启动后重试。</div> : null}
       {isEmpty ? (
         <EmptyState
           knowledgeEmpty={knowledgeEmpty}
+          connection={connection}
           onAddMaterials={() => onNavigate("knowledge")}
         />
       ) : (

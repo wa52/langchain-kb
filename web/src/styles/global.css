@@ -1654,6 +1654,24 @@ button.primary:not(:disabled):hover {
   border-radius: 9px;
 }
 
+.empty-symbol {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--laser-cyan) 35%, var(--grid-line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--laser-cyan) 10%, var(--panel));
+  color: var(--laser-cyan);
+}
+.empty-symbol svg { width: 28px; height: 28px; }
+.empty-state.is-unavailable .empty-symbol {
+  border-color: color-mix(in srgb, var(--warn-amber) 40%, var(--grid-line));
+  background: color-mix(in srgb, var(--warn-amber) 9%, var(--panel));
+  color: var(--warn-amber);
+}
+.empty-state.is-unavailable .empty-kicker { color: var(--warn-amber); }
+
 .empty-state h2 {
   font: 700 clamp(25px, 3vw, 34px)/1.2 var(--font-display);
   letter-spacing: -.7px;
